@@ -4,7 +4,7 @@ import inspect as ins
 import pytest
 from typing import Optional, Union
 
-from djx.ioc.inspect import Depends, InjectableBoundArguments, signature, InjectableSignature, InjectableParameter
+from djx.ioc.inspect import  Depends, xDepends, InjectableBoundArguments, signature, InjectableSignature, InjectableParameter
 from djx.ioc.symbols import symbol
 
 
@@ -41,11 +41,20 @@ class Baz(Bar):
 
 
 
-def foo(a: Depends(Foo, symbol(Foo)), 
+# def foo(a: xDepends(Foo, symbol(Foo)), 
+#         b: Optional['Bar'], 
+#         c: Union[Baz, tuple, list], 
+#         o: Optional[dict]=None, 
+#         d: xDepends(Union[Foo], symbol('raw.bar'), Bar) = None):
+#     pass
+
+
+
+def foo(a: Depends[Foo], 
         b: Optional['Bar'], 
         c: Union[Baz, tuple, list], 
         o: Optional[dict]=None, 
-        d: Depends[Foo, symbol('raw.bar'), Bar] = None):
+        d: Depends[list, Foo, symbol('raw.bar'), Bar] = None):
     pass
 
 
@@ -59,7 +68,7 @@ class SignatureTests:
 
         for n, p in sig.parameters.items():
             assert isinstance(p, InjectableParameter)
-            print(f'  {n.rjust(20)} --> {p!r}')
+            print(f'{n.rjust(16)} --> {p!r}')
 
         args = sig.bind_partial()
         assert isinstance(args, InjectableBoundArguments)
@@ -68,3 +77,9 @@ class SignatureTests:
         assert signature(foo) is sig
 
         assert 0, '\n'
+ 
+
+
+            
+        
+    

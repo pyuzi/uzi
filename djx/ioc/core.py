@@ -1,157 +1,65 @@
 
-from collections import defaultdict
-from email.policy import strict
-import gc
-import inspect
-
-from inspect import Signature, Parameter, signature
-from types import FunctionType, LambdaType, MethodType
-from typing import Any, Callable, ClassVar, ContextManager, Generator, Generic, List, Mapping, MutableMapping, NoReturn, Optional, Type, TypeVar, Union, final
-from contextlib import contextmanager
-from weakref import WeakKeyDictionary, ref
+from collections.abc import Mapping, MutableMapping
+from djx.ioc.exc import ProviderNotFoundError
+from types import FunctionType
+from typing import Optional, Type, TypeVar, Union
 
 
 from flex.utils.decorators import export
 
 
-from .exc import ProviderNotFoundError
-from .symbols import Symbol
+from .providers import Container, Provider
+from .symbols import symbol
 
 
-__all__ = [
 
-]
 
-_TD = TypeVar('_TD')
-
-ProvidedType = TypeVar('ProvidedType')
-
-FuncProviderType = TypeVar("FuncProviderType", bound=Callable[..., Any])
-
-InjectableType = Union[Symbol, Type, FunctionType]
+InjectableType = Union[symbol, Type, FunctionType]
 
 
 _I = TypeVar('_I', bound=InjectableType)
 _T = TypeVar('_T')
 
 
-class DependencySignature(Signature):
-    __slots__ = ('_deps',)
 
-
-
-@export()
-class Resolver(Generic[_T]):
-
-    __slots__ = ('_')
-    priority: int = 0
-
-    symbol: Symbol
-
-    shared: bool = False
-
-    dependencies: Mapping[str, _I]
-
-    def __init__(self, symbol: Symbol, /, priority: int=None) -> None:
-        self.symbol = symbol
-        self.priority = self.priority if priority is None else priority
-    
-    def deconstruct(self, injetor):
-        raise NotImplementedError(f'{type(self)}.deconstruct()')
-
-    def resolve(self, injetor: 'Injector', abstract) -> _T:
-        raise NotImplementedError(f'{type(self)}.deconstruct()')
-
-
-
-@export()
-class ContextProvider(Resolver[_T]):
-    """FunctionProvider Object"""
-
-    func: Callable[...,Generator[ProvidedType, Optional[Any], Optional[Any]]]
-
-
-
-
-@export()
-class FunctionResolver(Resolver[_T]):
-    """FunctionProvider Object"""
-
-    func: FunctionType
-
-    def __init__(self, func: FunctionType, priority: int=None):
-        if isinstance(func, LambdaType):
-            raise ValueError(f'LambdaTypes are not resolvable.')
-        self.func = func
-        super().__init__(priority=priority)
-
-
-    def deconstruct(self, injetor):
-        sig = signature(self.func)
-        for n ,p in sig.parameters.items():
-            if self.is_injectable(p):
-                pass
-
-
-
-
-
-@export()
-class ClassResolver(FunctionResolver):
-    """ClassResolver Object"""
-    pass
-
-
-@export()
-class MethodResolver(FunctionResolver):
-    """MethodResolver Object"""
-    pass
-
-@export()
-class ValueResolver(Resolver):
-    """ValueResolver Object"""
-    pass
-
-
-_missing = object()
-
-class _ResolverMap(WeakKeyDictionary, Mapping[_I, List[Resolver[_T]]]):
-
-    def __init__(self) -> None:
-        self.data = WeakKeyDictionary()   
-
-    def head(self, k, default=None) -> Optional[Resolver[_T]]:
-        return self.data.get(k, (default,))[-1]
-    
-    def setdefault(self, k, val: Resolver[_T]) -> Resolver[_T]:
-        return self.data.setdefault(k, [val])[-1]
-    
-    def push(self, k, resolver: Resolver[_T]) -> Resolver[_T]:
-        stack: List[Resolver] = self.data.setdefault(k, [])
-        i = len(stack) - 1
-        while i > 0:
-            if stack[i].priority <= resolver.priority:
-                break
-            i -= 1
-        
-        stack.insert(i+1, resolver)
-        return resolver
-
-    
 
 
 @export()
 class Injector(Mapping[_I, _T]):
 
-    resolvers: _ResolverMap
+    container: Container
 
-    resolved: Mapping[_I, _T]
+    cached: MutableMapping[_I, _T]
 
-    resolved: MutableMapping[_I, _T]
+    name: str
 
-    def __init__(self):
-        self.resolvers = _ResolverMap()
-        self.resolved = dict()
+    parent: Optional['Injector'] = None
+
+    def __init__(self, name: str, parent: Optional['Injector']=None):
+        self.name = name
+        self.parent = parent
+        self.cached = dict()
+
+        if parent:
+            self.container = parent.container
+        else:
+            self.container = Container()
+
+    @property
+    def root(self):
+        return self if self.parent is None else self.parent.root
+
+    def ancestors(self, inc_self=True):
+        if inc_self:
+            yield self
+
+        p = self.parent
+        while p is not None:
+            yield p
+            p = p.parent
+
+    def setup_context(self) -> Mapping:
+        return {}
     
     def get(self, k: _I, default=None) -> _I:
         try:
@@ -159,40 +67,61 @@ class Injector(Mapping[_I, _T]):
         except KeyError:
             return default
     
+    def __bool__(self):
+        return True
+  
     def __len__(self) -> int:
-        return len(self.resolved)
+        return len(self.cached)
   
     def __iter__(self):
-        return iter(self.resolved)
+        return iter(self.cached)
 
     def __getitem__(self, k: _I) -> _I:
-        s = Symbol(k)
-        try:
-            return self.resolved[s]
-        except KeyError:
-            res = self.get_resolver(k)
-            if res.shared:
-                return self.resolved.setdefault(s, res.resolve(self, k))
-            else:
-                return res.resolve(self, k)
-    
-    def get_resolver(self, k: _I) -> Resolver[_T]:
+        if isinstance(k, list):
+            return [self[d] for d in k]
+        elif not isinstance(k, Provider):
+            p = self.get_provider(k)
+        else:
+            p = k
 
-        s = Symbol(k)
-        if rv := self.resolvers.head(s):
-            return rv
-
-        if isinstance(k, type):
-            return self.resolvers.push(s, ClassResolver(s, -1))
-        elif isinstance(k, MethodType):
-            return self.resolvers.push(s, MethodResolver(s, -1))
-        elif isinstance(k, FunctionType):
-            return self.resolvers.push(s, FunctionResolver(s, -1))
+        if p.is_cached:
+            rv = self.cached.get(p, ...)
+            if rv is ...:
+                return self.parent[p] if self.parent else None
             
-        raise ProviderNotFoundError(s)
+            # for a in self.ancestors():
+            #     if a.name in p.contexts:
+            #         self = a
+            #         break
+            # else:
+            #     raise LookupError(f'Context not found: {p.contexts}')
 
+        return p.provide(self, __self__=getattr(k, '__self__', None))
+    
+    def __enter__(self):
+        return self
 
+    def __exit__(self, *exec):
+        pass
+    
+    def __call__(self, name):
+        return self.__class__(name, self)
+    
+    def bind(self, arg) -> None:
+        pass
+    
+    def create(self, scope):
+        pass
+
+    def get_provider(self, k: _I, *, create=True) -> Provider[_T]:
+        if rv := self.container.get(s := symbol(k), recursive=True):
+            return rv
+        elif create and callable(v := s()):
+            return self.container.bind(s, v, -10)
+        else:
+            raise ProviderNotFoundError(s)
         
+
 
 
 

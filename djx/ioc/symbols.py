@@ -1,61 +1,91 @@
-
-from functools import partialmethod
+import sys
+from functools import partial
+from abc import ABCMeta, abstractmethod
 from types import FunctionType, MethodType
-from weakref import finalize, ref
+from weakref import WeakMethod, finalize, ref
 from typing import (
-    Any, Callable, ClassVar, Dict, Generic, Hashable, Optional, TYPE_CHECKING, Type, TypeVar, Union, 
+    Any, Callable, ClassVar, Dict, Generic, Hashable, Literal, NamedTuple, Optional, TYPE_CHECKING, Type, TypeVar, Union, 
 )
-from attr import s
 
+from flex.datastructures.enum import IntEnum, auto, unique 
 from flex.utils.decorators import export
 
 __all__ = [
-    'symbol'
+
 ]
 
 
 _S = TypeVar('_S', str, FunctionType, Type, Hashable)
-
-
-# class SymbolRef(ref, Generic[_S]):
-
-    # __slots__ = () # 'ash',
-
-    # def __init__(self, o: _S, callback: Optional[Callable[['SymbolRef[_S]'], Any]]=None, /, ash: tuple = None) -> None:
-    #     super().__init__(o, callback)
-    #     self.ash = ash
-
-    # if TYPE_CHECKING:
-    #     def __call__(self) -> _S: ...
-
         
 
 
 
-class _HashTuple(tuple):
-    """A tuple that ensures that hash() will be called no more than once
-    per element, since cache decorators will hash the key multiple
-    times on a cache miss.  See also _HashedSeq in the standard
-    library functools implementation.
 
-    """
-    __ash: int = None
+def identity(obj):
 
-    def __hash__(self, hash=tuple.__hash__):
-        if self.__ash is None:
-            self.__ash = hash(self)
-        return self.__ash
+    if isinstance(obj, StaticIndentity):
+        return obj
+    
+    if isinstance(obj, MethodType):
+        obj = obj.__func__
 
-    def __add__(self, other, add=tuple.__add__):
-        return self.__class__(add(self, other))
+    return ReferredIdentity(type(obj), id(obj)) 
 
-    def __radd__(self, other, add=tuple.__add__):
-        return self.__class__(add(other, self))
+
+
+
+
+@unique
+class KindOfSymbol(IntEnum):
+    TYPE = 1
+    OBJECT = auto()
+    LITERAL = auto()
+    METHOD = auto()
+    FUNCTION = auto()
 
 
 
 @export()
-class Symbol(Generic[_S]):
+class UnsupportedTypeError(TypeError):
+    pass
+
+
+
+@export()
+class SupportsIndentity(metaclass=ABCMeta):
+
+    __slots__ = ()
+
+
+SupportsIndentity.register(type)
+SupportsIndentity.register(MethodType)
+SupportsIndentity.register(FunctionType)
+
+
+
+@export()
+class StaticIndentity(SupportsIndentity):
+
+    __slots__ = ()
+
+    @abstractmethod
+    def __hash__(self):
+        return 0
+
+
+StaticIndentity.register(str)
+StaticIndentity.register(bytes)
+StaticIndentity.register(int)
+StaticIndentity.register(float)
+StaticIndentity.register(tuple)
+StaticIndentity.register(frozenset)
+
+
+
+
+@export()
+@StaticIndentity.register
+class symbol(Generic[_S]):
     """A constant symbol representing given object. 
         
     They are singletons. So, repeated calls of symbol(object) will all
@@ -75,83 +105,93 @@ class Symbol(Generic[_S]):
         def foo(): 
             ...
         assert symbol(foo) is symbol(foo)
-    
     """
-    __slots__ = ('_ref', '_ash', '_name', '__weakref__')
 
-    __instances: ClassVar[Dict['Symbol', 'Symbol[_S]']] = dict()
+    __slots__ = ('_ref', '_ident', '_kind', '_name', '__weakref__')
+    
+
+    Kind: ClassVar[type[KindOfSymbol]] = KindOfSymbol
+
+    __instances: ClassVar[Dict['symbol', 'symbol[_S]']] = dict()
 
     _name: str
+    
+    _kind: Kind
 
     _ref: Callable[..., _S]
 
-    _ash: Union[_HashTuple, str]
+    _ident: StaticIndentity
 
     @classmethod
-    def __pop(cls, wr: ref) -> None:
-        return cls.__instances.pop(wr(), None)
+    def __pop(cls, ash, wr = None) -> None:
+        return cls.__instances.pop(ash, None)
 
-    def __new__(cls, obj: _S, name = None, /) -> 'Symbol[_S]':
-
-        ash = obj if isinstance(obj, (Symbol, str)) else _HashTuple((Symbol, type(obj), hash(obj)))
+    def __new__(cls, obj: _S, name = None, /, _kind=None) -> 'symbol[_S]':
+        if isinstance(obj, symbol):
+            return obj
+       
+        ident = identity(obj) 
 
         try:
-            rv = Symbol.__instances[ash]
-        except KeyError as e:
-            if isinstance(obj, MethodType):
-                return Symbol(obj.__func__, name)
-            elif isinstance(obj, (ref, Symbol)):
-                return Symbol(obj(), name)
-            elif obj is None:
-                raise ValueError(f'NoneTypes cannot have a Symbol') from e
+            rv = symbol.__instances[ident]
+        except KeyError:
+            
+            if isinstance(obj, ref):
+                return symbol(obj(), name)
+            elif not isinstance(obj, SupportsIndentity):
+                raise UnsupportedTypeError(f'Cannot create Symbol for: {type(obj)}')
 
-            if isinstance(obj, str):
-                rv = Symbol.__instances.setdefault(ash, (s := object.__new__(_StrSymbol)))
-                if rv is s:
-                    rv._ash = ash
-                    rv._name = name or obj
-            else:
-                rv = Symbol.__instances.setdefault(ash, (s := object.__new__(Symbol)))
-                if rv is s:
-                    rv._ref = ref(obj, partialmethod(Symbol.__pop, ash))
-                    rv._ash = ash
-                    rv._name = name or getattr(obj, '__name__', str(obj))
-                
+            rv = symbol.__instances.setdefault(ident, (s := object.__new__(cls)))
+            if rv is s:
+                rv._ident = ident
+                rv._name = name
+                if isinstance(obj, StaticIndentity):
+                    rv._kind = KindOfSymbol.LITERAL
+                else:                
+                    if isinstance(obj, type):
+                        rv._kind = KindOfSymbol.TYPE
+                    elif isinstance(obj, (FunctionType, MethodType)):
+                        rv._kind, obj = _real_func_and_kind(obj)
+                    else:
+                        rv._kind = KindOfSymbol.OBJECT
+                    rv._ref = ref(obj, partial(symbol.__pop, ident))
+
         return rv
 
     @property
     def __name__(self):
-        return self._name
+        return self._name\
+            or getattr(self(), '__qualname__', None)\
+            or str(self._ident) 
+
+    @property
+    def kind(self):
+        return self._kind
 
     def __eq__(self, x) -> bool:
-        if isinstance(x, Symbol):
-            return self._ash == x._ash
-        elif isinstance(x, type(self._ash)):
-            return x == self._ash
-
+        if isinstance(x, StaticIndentity):
+            return x == self._ident
         return NotImplemented
     
     def __hash__(self):
-        return hash(self._ash)
+        return hash(self._ident)
      
     def __bool__(self):
         return self() is not None
     
-    def __reduce__(self):
-        if self._name:
-            return type(self), (self(strict=True), self._name)
-        else:
-            return type(self), (self(strict=True),)
+    # def __reduce__(self):
+    #     return self.__class__, (self(strict=True), self._name, self._kind)
 
     def __str__(self):
-        return f'Symbol("{self._name}")'
+        return f'symbol("{self.__name__}")'
 
     def __repr__(self):
-        return f'<{self}, {self()!r}>'
+        return f'symbol({self.__name__!r}, ref={self()!r})'
 
     def __call__(self, *, strict=False) -> _S:
-        if (rv := self._ref()) is None:
-            Symbol.__pop(self._ash)
+        rv = self._ident if self._kind is KindOfSymbol.LITERAL else self._ref()
+        if rv is None:
+            symbol.__pop(self._ident)
             if strict:
                 raise RuntimeError(f'Symbol ref is no longer available')
         return rv
@@ -159,13 +199,46 @@ class Symbol(Generic[_S]):
 
 
 
-class _StrSymbol(Symbol[str]):
+class ReferredIdentity(NamedTuple):
 
-    __slots__ = ()
-    
-    def __call__(self, *, strict=False) -> str:
-        return self._ash
+    type: type
+    id: int
+    nspace: Any = symbol
+
+    def __reduce__(self):
+        raise ValueError(f'ReferredIdentity cannot be pickled.')
 
 
 
-symbol = Symbol
+
+
+def _isunboundmethod(obj: FunctionType) -> bool:
+    from .inspect import signature
+    if next(iter(signature(obj).parameters), None) == 'self':
+        _mod = sys.modules[obj.__module__]
+        p, _, n = obj.__qualname__.rpartition('.')
+        if p and isinstance(t := getattr(_mod, p), type):
+            return getattr(t, obj.__name__) is obj
+    return False
+
+
+
+def _real_func_and_kind(obj: Union[MethodType, FunctionType]):
+    if isinstance(obj, MethodType):
+        return KindOfSymbol.METHOD, obj.__func__
+    elif _isunboundmethod(obj):
+        return KindOfSymbol.METHOD, obj
+    else:
+        return KindOfSymbol.FUNCTION, obj
+
+
+
+
+
+
+
+
+
+
+
+

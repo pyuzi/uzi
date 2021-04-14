@@ -6,7 +6,7 @@ _IK = TypeVar("_IK")
 _IV = TypeVar("_IV")
 
 
-class Injector(Protocol[_IK, _IV]):
+class InjectorProto(Protocol[_IK, _IV]):
 
     def get(self, k: _IK) -> _IV:
         ...

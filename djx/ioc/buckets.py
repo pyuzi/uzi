@@ -31,7 +31,7 @@ BucketManagerType = Union[BucketManager,Union[BucketManager, Generator[Mapping]]
 __buckets: MutableMapping[str, BucketManagerType] = WeakValueDictionary()
 
 
-def ioc_bucket_manager(manager: Optional[BucketManagerType] = None, /, *, 
+def di_bucket_manager(manager: Optional[BucketManagerType] = None, /, *, 
                     name: Optional[str]=None, 
                     replace: Optional[BucketManager]=None) -> Callable[[], BucketManager]:
                     
@@ -62,7 +62,7 @@ def get_bucket_manager(name, default=...) -> BucketManager:
 
 
 __global_stack = []
-@ioc_bucket_manager
+@di_bucket_manager
 def global_bucket():
     __global_stack.append(buc := {})
     try:
@@ -73,7 +73,7 @@ def global_bucket():
 
 
 __thread_local = threading.local()
-@ioc_bucket_manager
+@di_bucket_manager
 def thread_bucket():
     __thread_local.stack = getattr(__thread_local, 'stack', [])
     __thread_local.stack.append(buc := {})
@@ -86,7 +86,7 @@ def thread_bucket():
 
 
 __context_stack = ContextVar('__context_stack')
-@ioc_bucket_manager
+@di_bucket_manager
 def context_bucket():
     token = __context_stack.set(stack := list(__context_stack.get([])))
     stack.append({})

@@ -1,7 +1,7 @@
 
+from collections import defaultdict
 from collections.abc import Sequence
 
-from djx.ioc.interfaces import InjectorProto
 from weakref import WeakSet
 
 from types import FunctionType, MethodType
@@ -11,101 +11,182 @@ from typing import Any, Callable, ClassVar, Generic, Optional, Type, TypeVar, Un
 from flex.utils.decorators import export
 
 
-from .exc import ProviderNotFoundError
-from .symbols import KindOfSymbol, symbol, SupportsIndentity
-from .inspect import _empty
+from .symbols import symbol, _ordered_id
+from . import abc, registry
 
 __all__ = [
 
 ]
 
 
-ProvidedType = TypeVar('ProvidedType')
-
-FuncProviderType = TypeVar("FuncProviderType", bound=Callable[..., Any])
-
-InjectableType = Union[symbol, Type, FunctionType, MethodType]
-
-
-_I = TypeVar('_I', bound=InjectableType)
 _T = TypeVar('_T')
+_I = TypeVar('_I', bound=abc.Injectable)
+_P = TypeVar('_P', bound='Provider')
+
+
+_provided = WeakSet()
+
+def has_provider(obj) -> bool:
+    return isinstance(obj, abc.SupportsIndentity) and symbol(obj) in _provided
 
 
 
+@export()
+def alias(abstract: _I, 
+        alias: abc.Injectable[_T], 
+        priority: int = 1, *, 
+        context: Optional[str] = None, 
+        **opts) -> 'AliasProvider':
+    """Registers an `AliasProvider`
+    """
+    return provide(abstract, priority, alias=alias, context=context, **opts)
+        
 
 
-__provided = WeakSet()
+@export()
+def injectable(concrete: Callable[..., _T]=None, /,
+        priority: int = 1, *, 
+        context: Optional[str] = None, 
+        abstract: _I = None,
+        **opts):
 
-def is_provided(obj) -> bool:
-    return isinstance(obj, SupportsIndentity) and symbol(obj) in __provided
+    def register(using):
+        provide(abstract or using, priority, using=using, context=context, **opts)
+        return using
+    return register if concrete is None else register(concrete)
+     
+
+
+
+_kwd_cls_map = dict(
+    using=lambda: FactoryProvider, 
+    alias=lambda: AliasProvider, 
+    value=lambda: ValueProvider
+)
+
+@overload
+def provide(abstract: _I, priority: int = 1, /, *, value: _T, context: str = None, **opts) -> 'ValueProvider': ...
+@overload
+def provide(abstract: _I, priority: int = 1, /, *, alias: abc.Injectable[_T], context: str = None, **opts) -> 'AliasProvider': ...
+@overload
+def provide(abstract: _I, priority: int = 1, /, *, using: Callable[..., _T],
+        context: str = None, cache: Union[str, bool] = False, **opts) -> 'FactoryProvider': 
+        ...
+@export()
+def provide(abstract: _I, priority: int = 1, /, *, 
+        using: Callable[..., _T] = ..., alias: abc.Injectable[_T]=..., value: _T=...,
+        cache: Optional[Union[str, bool]] = None, context: Optional[str] = None, 
+        **opts) -> 'Provider':
+    var = vars()
+    concrete = next((c for c in _kwd_cls_map if var[c] is not ...))
+    cls = _kwd_cls_map[concrete]()
+    return register_provider(cls(abstract, var[concrete], priority, cache=cache, context=context, **opts))
+        
+
 
 
 
 
 @export()
+def register_provider(provider: _P, context: str = None) -> _P:
+    return registry.add_provider(provider, context)
+
+
+
+
+
+
+@export()
+@abc.SupportsIndentity.register
+@abc.CanSetupContext.register
 class Provider(Generic[_I, _T]):
 
-    __slots__ = ('abstract', 'contexts', 'is_cached', 'concrete', 'priority', 'options',)
+    __slots__ = (
+        'abstract', 'concrete', 'context', '__pos',
+        'cache', 'priority', 'options', '__weakref__',
+    )
 
+    _default_context: ClassVar[str] = 'main'
+    
     abstract: symbol[_I]
 
-    contexts: Optional[Sequence[str]]
+    context: Optional[str]
     priority: int
     concrete: Any
-    is_cached: bool
+    cache: bool
     options: dict
+    __pos: int
 
-    def __init__(self, abstract: _I, concrete: Any, priority: Optional[int]=1, contexts: Optional[Sequence[str]]=None, **options) -> None:
+    def __init__(self, 
+                abstract: _I,   
+                concrete: Any, 
+                priority: Optional[int]=1, *,
+                context: Optional[str] = None, 
+                cache: Union[bool, str]=False, 
+                **options) -> None:
+        global _provided
+
         self.abstract = symbol(abstract)
-        self.contexts = list(contexts or ())
-        self.is_cached = bool(self.contexts)
+        self.__pos = _ordered_id()
+        self.context = context or self._default_context
+        self.cache = cache
         self.priority = priority or 0
         self.options = options
         self.set_concrete(concrete)
-        __provided.add(self.abstract)
+        _provided.add(self.abstract)
 
     def set_concrete(self, concrete) -> None:
         self.concrete = concrete
     
-    def provide(self, inj: InjectorProto, *args, **kwds) -> _T:
-        raise NotImplementedError(f'{self.__class__.__name__}.resolve()')
+    def check(self):
+        assert isinstance(self.abstract, symbol), '`abstract` must be a `symbpl`'
 
-    def get_cached(self, inj) -> Optional[_T]:
+    def setup(self, context: abc.Context) -> None:
+        pass
 
-        return _empty
-    
-    def set_cached(self, inj, val: _T) -> _T:
-        return val
-    
+    def provide(self, inj: abc.Injector, *args, **kwds) -> _T:
+        return self.concrete
+#
     def __ge__(self, x) -> bool:
         if isinstance(x, Provider):
-            return self.priority >= x.priority
+            return self.priority > x.priority\
+                or self.priority == x.priority\
+                    and self.__pos >= x.__pos
         return NotImplemented
 
     def __gt__(self, x) -> bool:
         if isinstance(x, Provider):
-            return self.priority > x.priority
+            return self.priority > x.priority\
+                or self.priority == x.priority\
+                    and self.__pos > x.__pos
+
         return NotImplemented
 
     def __le__(self, x) -> bool:
         if isinstance(x, Provider):
-            return self.priority <= x.priority
+            return self.priority < x.priority\
+                or self.priority == x.priority\
+                    and self.__pos <= x.__pos
         return NotImplemented
 
     def __lt__(self, x) -> bool:
         if isinstance(x, Provider):
-            return self.priority < x.priority
+            return self.priority < x.priority\
+                or self.priority == x.priority\
+                    and self.__pos < x.__pos
         return NotImplemented
 
     def __eq__(self, x) -> bool:
-        return x == self.abstract
+        if isinstance(x, Provider):
+            return self.abstract == x.abstract\
+                and self.context == x.context\
+                and self.priority == x.priority\
 
-    def __hash__(self, x) -> bool:
-        return hash(self.abstract)
+        return NotImplemented
 
-
-
-
+    # def __hash__(self, x) -> bool:
+    #     return hash((self.__class__, self.context, self.abstract, self.concrete))
+    
 
 @export()
 class ValueProvider(Provider):
@@ -113,7 +194,7 @@ class ValueProvider(Provider):
     __slots__ = ()
     concrete: _T
 
-    def provide(self, inj: InjectorProto, *args, **kwds) -> _T:
+    def provide(self, inj: abc.Injector, *args, **kwds) -> _T:
         return self.concrete
 
 
@@ -124,10 +205,16 @@ class AliasProvider(Provider):
     __slots__ = ()
     concrete: symbol[_T]
 
+    def check(self):
+        super().check()
+        assert has_provider(self.concrete), (
+                f'No provider for aliased `{self.concrete}` in `{self.abstract}`'
+            )
+
     def set_concrete(self, concrete) -> None:
         self.concrete = symbol(concrete)
     
-    def provide(self, inj: InjectorProto, *args, **kwds) -> _T:
+    def provide(self, inj: abc.Injector, *args, **kwds) -> _T:
         return inj[self.concrete]
 
 
@@ -149,153 +236,31 @@ class FactoryProvider(Provider):
             return rv
         
         from .inspect import signature
-
         self._sig = signature(self.factory)
         return self._sig
 
-    def set_concrete(self, concrete) -> None:
-        concrete = symbol(concrete)
-        if not callable(concrete()):
-            raise ValueError(
-                f'Invalid concrete in {self.__class__.__name__}. '
-                f'Expected Callable but got {type(concrete())}.'
+    def check(self):
+        super().check()
+        assert callable(self.factory), (
+                f'`concrete` must be a valid Callable. Got: {type(self.factory)}'
             )
-        
-        self.concrete = concrete
+
+    def set_concrete(self, concrete) -> None:
+        self.concrete = symbol(concrete)
     
-    def get_params(self, inj: InjectorProto, *args, __self__=None, **kwds) -> None:
-        if __self__ is not None:
-            return self.signature.bind_partial(__self__, *args, **kwds)
-        return self.signature.bind_partial(*args, **kwds)
+    def bind(self, injector: abc.Injector, *args, **kwds):
+        return self.signature.inject(injector, *args, **kwds)
 
-    def provide(self, inj: InjectorProto, *args, **kwds):
-        rv = self.get_cached(inj)
-        if rv is _empty:
-            params = self.get_params(inj, *args, **kwds)
-            params.apply_dependencies(inj)
-            rv = self.set_cached(self.factory(*params.args, **params.kwargs))
-        return rv
+    def provide(self, injector: abc.Injector, *args, **kwds):
+        params = self.bind(injector, *args, **kwds)
+        return self.factory(*params.args, **params.kwargs)
 
 
-
-@export()
-class TypeProvider(FactoryProvider):
-    __slots__ = ()
-
-    concrete: symbol[type[_T]]
-
-
-
-@export()
-class MethodProvider(FactoryProvider):
-    __slots__ = ()
-
-
-
-@export()
-class FunctionProvider(FactoryProvider):
-    __slots__ = ()
-
-
-
-
-_P = TypeVar('_P', bound=Provider)
-
-
-# _P = Provider[_I, _T]
-
-class Container(dict[symbol[_I], list[_P]]):
+class ProviderStack(dict[symbol[_I], list[_P]]):
     
     __slots__= ()
 
-    _alias_provider_cls: ClassVar[type[AliasProvider]] = AliasProvider
-    _value_provider_cls: ClassVar[type[_P]] = ValueProvider
-    
-
-    _factory_provider_cls: ClassVar[type[_P]] = FactoryProvider
-
-    _type_provider_cls: ClassVar[type[_P]] = TypeProvider
-    _func_provider_cls: ClassVar[type[_P]] = FunctionProvider
-    _method_provider_cls: ClassVar[type[_P]] = MethodProvider
-
-    def get(self, k: _I, *, default: Optional[_P]=None, recursive: bool=True) -> _P:
-        try:
-            rv = self[symbol(k)][-1]
-        except KeyError:
-            return default
-        else:
-            if recursive and isinstance(rv, AliasProvider):
-                return self.get(rv.concrete, default=default)
-            return rv
-
-    def alias(self, 
-            abstract: _I, 
-            concrete: _I, 
-            priority: int = 1, 
-            contexts: Optional[Sequence[str]] = None, 
-            **opts) -> AliasProvider:
-        return self.push(self.make_alias(abstract, concrete, priority, contexts, **opts))
-            
-    def factory(self, 
-            abstract: _I, 
-            concrete: Callable[..., _T], 
-            priority: int = 1, 
-            contexts: Optional[Sequence[str]] = None, 
-            **opts) -> _P:
-        
-        sa = symbol(abstract)
-        sc = symbol(concrete)
-
-        if sa() is not sc():
-            self.setdefault(self.make_factory(sc, sc, priority, contexts, **opts))
-            return self.alias(sa, sc, priority, contexts, **opts)
-
-        return self.push(self.make_factory(abstract, concrete, priority, contexts, **opts))
-    
-    bind = factory
-
-    def value(self, 
-            abstract: _I, 
-            concrete: Callable[..., _T], 
-            priority: int = 1, 
-            contexts: Optional[Sequence[str]] = None, 
-            **opts) -> _P:
-        return self.push(self.make_value(abstract, concrete, priority, contexts, **opts))
-   
-    def make_alias(self, 
-            abstract: _I, 
-            concrete: _I, 
-            priority: int = 1, 
-            contexts: Optional[Sequence[str]] = None, 
-            **options) -> AliasProvider:
-        cls = self._alias_provider_cls
-        return cls(abstract, concrete, priority, contexts, **options)
-            
-    def make_factory(self, 
-            abstract: _I, 
-            concrete: Callable[..., _T], 
-            priority: int = 1, 
-            contexts: Optional[Sequence[str]] = None, 
-            **options) -> _P:
-
-        cls = {
-            KindOfSymbol.TYPE: self._type_provider_cls,
-            KindOfSymbol.FUNCTION: self._method_provider_cls,
-            KindOfSymbol.METHOD: self._method_provider_cls,
-        }.get(symbol(concrete).kind, self._factory_provider_cls)
-
-        return cls(abstract, concrete, priority, contexts, **options)
-                   
-    def make_value(self, 
-            abstract: _I, 
-            concrete: Callable[..., _T], 
-            priority: int = 1, 
-            contexts: Optional[Sequence[str]] = None, 
-            **options) -> _P:
-        cls = self._value_provider_cls
-        return cls(abstract, concrete, priority, contexts, **options)
-            
-    def push(self, provider: _P):
+    def push(self, provider: _P) -> _P:
         stack = super().setdefault(provider.abstract, [])
         stack.append(provider)
         stack.sort()
@@ -331,6 +296,15 @@ class Container(dict[symbol[_I], list[_P]]):
         stack or stack.append(provider)
         return stack[-1]
 
+    @overload
+    def __getitem__(self, k: slice) -> list[_P]: ...
+    @overload
+    def __getitem__(self, k: Any) -> _P: ...
+    def __getitem__(self, k) -> _P:
+        if isinstance(k, slice):
+            return self[k.start]
+        else:
+            return self[symbol(k)][-1]
 
-
+            
 

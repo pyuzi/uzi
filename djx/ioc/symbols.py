@@ -10,6 +10,10 @@ from typing import (
 from flex.datastructures.enum import IntEnum, auto, unique 
 from flex.utils.decorators import export
 
+
+from .abc import StaticIndentity, Injectable, SupportsIndentity
+
+
 __all__ = [
 
 ]
@@ -29,7 +33,7 @@ def identity(obj):
     if isinstance(obj, MethodType):
         obj = obj.__func__
 
-    return ReferredIdentity(type(obj), id(obj)) 
+    return HashIdentity(id(obj)) 
 
 
 
@@ -51,39 +55,17 @@ class UnsupportedTypeError(TypeError):
 
 
 
-@export()
-class SupportsIndentity(metaclass=ABCMeta):
-
-    __slots__ = ()
 
 
-SupportsIndentity.register(type)
-SupportsIndentity.register(MethodType)
-SupportsIndentity.register(FunctionType)
-
+__last_id: int = 0
+def _ordered_id():
+    global __last_id
+    __last_id += 1
+    return __last_id
 
 
 @export()
-class StaticIndentity(SupportsIndentity):
-
-    __slots__ = ()
-
-    @abstractmethod
-    def __hash__(self):
-        return 0
-
-
-StaticIndentity.register(str)
-StaticIndentity.register(bytes)
-StaticIndentity.register(int)
-StaticIndentity.register(float)
-StaticIndentity.register(tuple)
-StaticIndentity.register(frozenset)
-
-
-
-
-@export()
+@Injectable.register
 @StaticIndentity.register
 class symbol(Generic[_S]):
     """A constant symbol representing given object. 
@@ -107,26 +89,24 @@ class symbol(Generic[_S]):
         assert symbol(foo) is symbol(foo)
     """
 
-    __slots__ = ('_ref', '_ident', '_kind', '_name', '__weakref__')
+    __slots__ = ('__ref', '__ident', '__kind', '_name', '__pos', '__weakref__')
     
 
-    Kind: ClassVar[type[KindOfSymbol]] = KindOfSymbol
+    Kinds: ClassVar[type[KindOfSymbol]] = KindOfSymbol
 
     __instances: ClassVar[Dict['symbol', 'symbol[_S]']] = dict()
 
     _name: str
-    
-    _kind: Kind
-
-    _ref: Callable[..., _S]
-
-    _ident: StaticIndentity
+    # __pos: int
+    __kind: Kinds
+    __ref: Callable[..., _S]
+    __ident: StaticIndentity
 
     @classmethod
     def __pop(cls, ash, wr = None) -> None:
         return cls.__instances.pop(ash, None)
 
-    def __new__(cls, obj: _S, name = None, /, _kind=None) -> 'symbol[_S]':
+    def __new__(cls, obj: _S, name = None) -> 'symbol[_S]':
         if isinstance(obj, symbol):
             return obj
        
@@ -143,44 +123,58 @@ class symbol(Generic[_S]):
 
             rv = symbol.__instances.setdefault(ident, (s := object.__new__(cls)))
             if rv is s:
-                rv._ident = ident
+                rv.__ident = ident
+                
+                # rv.__pos = _ordered_id()
+
                 rv._name = name
                 if isinstance(obj, StaticIndentity):
-                    rv._kind = KindOfSymbol.LITERAL
+                    rv.__kind = KindOfSymbol.LITERAL
                 else:                
                     if isinstance(obj, type):
-                        rv._kind = KindOfSymbol.TYPE
+                        rv.__kind = KindOfSymbol.TYPE
                     elif isinstance(obj, (FunctionType, MethodType)):
-                        rv._kind, obj = _real_func_and_kind(obj)
+                        rv.__kind, obj = _real_func_and_kind(obj)
                     else:
-                        rv._kind = KindOfSymbol.OBJECT
-                    rv._ref = ref(obj, partial(symbol.__pop, ident))
-
+                        rv.__kind = KindOfSymbol.OBJECT
+                    rv.__ref = ref(obj, partial(symbol.__pop, ident))
+                
         return rv
 
     @property
     def __name__(self):
         return self._name\
             or getattr(self(), '__qualname__', None)\
-            or str(self._ident) 
+            or str(self.__ident) 
+
+    @property
+    def ident(self):
+        return self.__ident
+
+    @property
+    def ref(self):
+        return self.__ref
 
     @property
     def kind(self):
-        return self._kind
+        return self.__kind
 
     def __eq__(self, x) -> bool:
-        if isinstance(x, StaticIndentity):
-            return x == self._ident
+        if isinstance(x, symbol):
+            return self() == x()
+        elif isinstance(x, SupportsIndentity):
+            return self() == x
+        
         return NotImplemented
     
     def __hash__(self):
-        return hash(self._ident)
+        return hash(self.__ident)
      
     def __bool__(self):
         return self() is not None
     
-    # def __reduce__(self):
-    #     return self.__class__, (self(strict=True), self._name, self._kind)
+    def __reduce__(self):
+        return type(self), (self(strict=True), self._name)
 
     def __str__(self):
         return f'symbol("{self.__name__}")'
@@ -189,21 +183,41 @@ class symbol(Generic[_S]):
         return f'symbol({self.__name__!r}, ref={self()!r})'
 
     def __call__(self, *, strict=False) -> _S:
-        rv = self._ident if self._kind is KindOfSymbol.LITERAL else self._ref()
+        rv = self.__ident if self.__kind is KindOfSymbol.LITERAL else self.__ref()
         if rv is None:
-            symbol.__pop(self._ident)
+            symbol.__pop(self.__ident)
             if strict:
                 raise RuntimeError(f'Symbol ref is no longer available')
         return rv
 
+    # def __ge__(self, x) -> bool:
+    #     if isinstance(x, symbol):
+    #         return self.__pos >= x.__pos
+    #     return NotImplemented
+
+    # def __gt__(self, x) -> bool:
+    #     if isinstance(x, symbol):
+    #         return self.__pos < x.__pos
+    #     return NotImplemented
+
+    # def __le__(self, x) -> bool:
+    #     if isinstance(x, symbol):
+    #         return self.__pos >= x.__pos
+    #     return NotImplemented
+
+    # def __lt__(self, x) -> bool:
+    #     if isinstance(x, symbol):
+    #         return self.__pos > x.__pos
+    #     return NotImplemented
 
 
 
-class ReferredIdentity(NamedTuple):
 
-    type: type
-    id: int
-    nspace: Any = symbol
+
+class HashIdentity(NamedTuple):
+
+    hash: int
+    hmark: Any = symbol
 
     def __reduce__(self):
         raise ValueError(f'ReferredIdentity cannot be pickled.')

@@ -4,8 +4,8 @@ import inspect as ins
 import pytest
 from typing import Optional, Union
 
-from djx.ioc.inspect import  Depends, xDepends, InjectableBoundArguments, signature, InjectableSignature, InjectableParameter
-from djx.ioc.symbols import symbol
+from ...inspect import  Depends, BoundArguments, signature, InjectableSignature, Parameter
+from ...symbols import symbol
 
 
 xfail = pytest.mark.xfail
@@ -67,16 +67,16 @@ class SignatureTests:
         print(f'{sig=!r}')
 
         for n, p in sig.parameters.items():
-            assert isinstance(p, InjectableParameter)
+            assert isinstance(p, Parameter)
             print(f'{n.rjust(16)} --> {p!r}')
 
         args = sig.bind_partial()
-        assert isinstance(args, InjectableBoundArguments)
+        assert isinstance(args, BoundArguments)
 
 
         assert signature(foo) is sig
 
-        assert 0, '\n'
+        assert 1, '\n'
  
 
 

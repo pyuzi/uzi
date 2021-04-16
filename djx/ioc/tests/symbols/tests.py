@@ -6,9 +6,9 @@ import pickle
 import pytest
 
 from weakref import WeakMethod, ref
-from djx.ioc.symbols import (
+from ...symbols import (
     StaticIndentity, KindOfSymbol, SupportsIndentity, 
-    UnsupportedTypeError, ReferredIdentity,
+    UnsupportedTypeError, HashIdentity,
     symbol
 )
 
@@ -21,12 +21,12 @@ parametrize = pytest.mark.parametrize
 
 
 
-class ReferredIdentityTests:
+class HashIdentityTests:
     """ReferredIdentityTests Object"""
 
     @xfail(raises=ValueError)
     def test_pickle(self):
-        obj = ReferredIdentity(type(Foo), id(Foo))
+        obj = HashIdentity(type(Foo), id(Foo))
         pickle.dumps(obj)
 
 
@@ -46,7 +46,7 @@ class SymbolTests:
         kind = kind or s.kind
         assert s.kind is kind
         
-        assert s is symbol(s) is symbol(s()) is symbol(s._ident) is symbol(obj)
+        assert s is symbol(s) is symbol(s()) is symbol(s.ident) is symbol(obj)
 
         if isinstance(obj, (symbol, ref)):
             obj = getattr(o := obj(), '__func__', o)
@@ -56,12 +56,12 @@ class SymbolTests:
 
         if s.kind is KindOfSymbol.LITERAL:
             assert isinstance(obj, StaticIndentity)
-            assert s() is s._ident is obj
+            assert s() is s.ident is obj
         else:
             assert isinstance(obj, SupportsIndentity)
             assert obj is s()
-            assert type(obj) is s._ident.type
-            assert id(obj) == s._ident.id
+            # assert type(obj) is s.ident.type
+            # assert id(obj) == s.ident.id
 
         return True
 

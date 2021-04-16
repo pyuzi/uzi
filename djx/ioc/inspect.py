@@ -14,7 +14,9 @@ from collections.abc import Iterator, Mapping
 
 from flex.utils.decorators import export
 from flex.utils.proxy import Proxy, ValueProxy
-from .interfaces import InjectorProto
+
+
+from .abc import Injector
 
 
 _empty = ins.Parameter.empty
@@ -23,20 +25,7 @@ _empty = ins.Parameter.empty
 _expand_generics = {Union, Literal, type, Type}
 
 
-_depends_set = WeakSet()
 
-
-
-
-
-
-@export()
-def xDepends(tp: Any, *deps):
-
-
-    bases = (tp,) if isinstance(tp, type) else ()
-    _depends_set.add(rv := type(f'Depended{bases and tp.__name__.title() or "Type"}', bases, dict(__dependencies__=tuple(deps))))
-    return rv
 
 
 
@@ -46,9 +35,6 @@ class Depends(type):
 
     __depends__: Union[list, Any]
 
-    # def __new__(mcls, name, bases, ns) -> None:
-    #     return super().__new__(mcls, name, bases, ns)
-    
     def __class_getitem__(cls, parameters):
         if not isinstance(parameters, tuple):
             parameters = (parameters,)
@@ -63,21 +49,6 @@ class Depends(type):
 
     def __str__(cls) -> str:
         return f'Depends({cls.__depends__})'
-
-# @export()
-# class Depends(ValueProxy):
-#     __slots__ = ('__depends__',)
-    
-#     __depends__: Union[list, Any]
-
-#     def __init__(self, default, dep=..., *deps) -> None:
-#         if dep is ...:
-#             dep = default
-#             default = _empty
-
-#         super().__init__(default)
-#         object.__setattr__(self, '__depends__', [dep, *deps] if deps else dep)
-
 
 
 
@@ -97,8 +68,8 @@ def annotated_deps(obj) -> Union[list, Any]:
 
 @export()
 def is_injectable(obj) -> bool:
-    from .providers import is_provided
-    return is_provided(obj)
+    from .providers import has_provider
+    return has_provider(obj)
 
 
 
@@ -114,7 +85,7 @@ def signature(callable: Callable[..., Any], *, follow_wrapped=True) -> 'Injectab
 
 
 @export()
-class InjectableParameter(ins.Parameter):
+class Parameter(ins.Parameter):
     
     __slots__ = ('_depends',)
     
@@ -145,13 +116,13 @@ class InjectableParameter(ins.Parameter):
 
 
 @export()
-class InjectableBoundArguments(ins.BoundArguments):
+class BoundArguments(ins.BoundArguments):
     
     __slots__ = ()
 
     _signature: 'InjectableSignature'
 
-    def apply_dependencies(self, injector: InjectorProto, *, set_defaults: bool = True) -> None:
+    def apply_injected(self, injector: Injector, *, set_defaults: bool = False) -> None:
         """Set the values for injectable arguments.
 
         This should be called before apply_defaults
@@ -162,7 +133,6 @@ class InjectableBoundArguments(ins.BoundArguments):
             try:
                 new_arguments.append((name, arguments[name]))
             except KeyError:
-
 
                 if param.depends:
                     try:
@@ -175,9 +145,9 @@ class InjectableBoundArguments(ins.BoundArguments):
                 if set_defaults:
                     if param.default is not _empty:
                         val = param.default
-                    elif param.kind is InjectableParameter.VAR_POSITIONAL:
+                    elif param.kind is Parameter.VAR_POSITIONAL:
                         val = ()
-                    elif param.kind is InjectableParameter.VAR_KEYWORD:
+                    elif param.kind is Parameter.VAR_KEYWORD:
                         val = {}
                     else:
                         # This BoundArguments was likely produced by
@@ -196,19 +166,23 @@ class InjectableBoundArguments(ins.BoundArguments):
 class InjectableSignature(ins.Signature):
     __slots__ = ()
 
-    _parameter_cls: ClassVar[type[InjectableParameter]] = InjectableParameter
-    _bound_arguments_cls: ClassVar[type[InjectableBoundArguments]] = InjectableBoundArguments
+    _parameter_cls: ClassVar[type[Parameter]] = Parameter
+    _bound_arguments_cls: ClassVar[type[BoundArguments]] = BoundArguments
 
-    parameters: Mapping[str, InjectableParameter]
-    
+    parameters: Mapping[str, Parameter]
+
+    def inject(self, _injector: Injector, *args: Any, **kwargs: Any) -> BoundArguments:
+        rv = self.bind_partial(*args, **kwargs)
+        rv.apply_injected(_injector)
+        return rv
+
+
     if TYPE_CHECKING:
-        def bind(self, *args: Any, **kwargs: Any) -> InjectableBoundArguments:
+        def bind(self, *args: Any, **kwargs: Any) -> BoundArguments:
             return super().bind(*args, **kwargs)
 
-        def bind_partial(self, *args: Any, **kwargs: Any) -> InjectableBoundArguments:
+        def bind_partial(self, *args: Any, **kwargs: Any) -> BoundArguments:
             return super().bind_partial(*args, **kwargs)
-
-
-
-
+        
+        
 

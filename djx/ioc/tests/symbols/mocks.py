@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from djx.ioc.symbols import StaticIndentity, SupportsIndentity
+from ...symbols import StaticIndentity, SupportsIndentity
 
 
 

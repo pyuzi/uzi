@@ -45,22 +45,14 @@ __state_ctx_var = ContextVar['ScopeContext']('__state_ctx_var')
 
 @export()
 @contextmanager
-def scope(scope: str=abc.Scope.MAIN):
-    state = __state_ctx_var.get(None)
+def scope(name: str=abc.Scope.MAIN):
+    cur, injs = __state_ctx_var.get(_null_scope_ctx)
 
-    if state is None:
-        if scope != Scope.MAIN:
-            pass
-
-        state = setup()
-    
-    cur, injs = state
     token = None
-    if scope not in injs:
+    if name not in injs:
         injs = injs.copy()
-        injs[scope] = registry.scopes[scope].create_injector(injs[cur])
-        cur = scope
-        token = __state_ctx_var.set(ScopeContext(cur, injs))
+        injs[name] = registry.scopes[name].create_injector(injs[cur])
+        token = __state_ctx_var.set(ScopeContext(cur := name, injs))
 
     try:
         with injs[cur] as inj:
@@ -71,15 +63,20 @@ def scope(scope: str=abc.Scope.MAIN):
     
 
 
+@export()
+def current_injector():
+    cur, injs = __state_ctx_var.get(_null_scope_ctx)
+    return injs[cur]
 
-def setup():
-    return ScopeContext(None, { None: NullInjector() })
 
 
 class ScopeContext(NamedTuple):
     current: str
     injectors: dict[str, _T_Injector]
+    
 
+
+_null_scope_ctx = ScopeContext(None, { None: NullInjector() })
 
 
 @export()
@@ -199,7 +196,7 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf], meta
 
     def create_injector(self, parent: _T_Injector) -> _T_Injector:
         return self.injector_class(self, parent)
-    #
+#
     def __order__(self):
         return self.__pos, self.__class__
         

@@ -19,14 +19,16 @@ class _ScopeDefaultdict(defaultdict[str, type[_T_Scope]]):
         super().__init__(None, *args, **kwargs)
     
     def __missing__(self, key: str) -> _T_Scope:
-        return registry._create_scope(key)
+        self[key] = registry._create_scope(key)
+        return self[key]
 
+        
 @export()
 class Registry:
 
     all_providers: defaultdict[str, abc.PriorityStack]
     scope_types: abc.PriorityStack[str, type[abc.Scope]]
-    scopes: _ScopeDefaultdict
+    scopes: _ScopeDefaultdict[_T_Scope]
 
     def __init__(self):
         self.all_providers = defaultdict(abc.PriorityStack)

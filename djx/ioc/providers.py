@@ -197,7 +197,7 @@ class AliasProvider(Provider):
 @export()
 class FactoryProvider(Provider):
 
-    __slots__ = ('_sig')
+    __slots__ = ('_sig', '_params')
     concrete: symbol[Callable[..., _T]]
 
     @property
@@ -209,18 +209,25 @@ class FactoryProvider(Provider):
         self._sig = signature(self.concrete)
         return self._sig
 
+    @property
+    def params(self):
+        try:
+            return self._params
+        except AttributeError:
+            self._params = self.signature.bind_partial() or None
+            return self._params
+
     def check(self):
         super().check()
         assert callable(self.concrete), (
                 f'`concrete` must be a valid Callable. Got: {type(self.concrete)}'
             )
 
-    def bind(self, injector: abc.Injector):
-        return self.signature.inject(injector)
-
-    def provide(self, injector: abc.Injector):
-        params = self.bind(injector)
-        return self.concrete(*params.args, **params.kwargs)
+    def provide(self, inj: abc.Injector):
+        if None is (params := self.params):
+            return self.concrete()
+        else:
+            return self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
 
 
 

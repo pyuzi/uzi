@@ -26,6 +26,10 @@ _expand_generics = {Union, Literal, type, Type}
 
 
 
+_VAR_KEYWORD = ins.Parameter.VAR_KEYWORD
+_VAR_POSITIONAL = ins.Parameter.VAR_POSITIONAL
+
+_KEYWORD_ONLY = ins.Parameter.KEYWORD_ONLY
 
 
 
@@ -80,7 +84,9 @@ def signature(callable: Callable[..., Any], *, follow_wrapped=True) -> 'Injectab
     return InjectableSignature.from_callable(callable, follow_wrapped=follow_wrapped)
 
 
-
+def _current_injector():
+    from . import current_injector
+    return current_injector()
 
 
 
@@ -93,7 +99,7 @@ class Parameter(ins.Parameter):
         
         super().__init__(name, kind, default=default, annotation=annotation)
 
-        self._depends = annotated_deps(self._annotation)
+        self._depends = annotated_deps(self._annotation) or None
 
     @property
     def default(self):
@@ -121,6 +127,7 @@ class BoundArguments(ins.BoundArguments):
     __slots__ = ()
 
     _signature: 'InjectableSignature'
+
 
     def apply_injected(self, injector: Injector, *, set_defaults: bool = False) -> None:
         """Set the values for injectable arguments.
@@ -158,18 +165,102 @@ class BoundArguments(ins.BoundArguments):
         self.arguments = dict(new_arguments)
 
 
+    def inject_args(self, inj: Injector):
+        # args = []
+        # for param_name, param in self._signature.parameters.items():
+        blank = len(self.arguments) == 0
+        for param_name, param in self._signature.positional_parameters.items():
+            # if param.kind in (_VAR_KEYWORD, _KEYWORD_ONLY):
+            #     break
+            
+            if not blank and param_name in self.arguments:
+                arg = self.arguments[param_name]
+            elif param.depends is not None:
+                try:
+                    arg = inj[param.depends]
+                except KeyError:
+                    break    
+            else:
+                break
 
+            if param.kind == _VAR_POSITIONAL:
+                # *args
+                yield from arg
+            else:
+                # plain argument
+                yield arg
+
+    def inject_kwargs(self, inj: Injector):
+        kwargs = {}
+        # kwargs_started = False
+        blank = len(self.arguments) == 0
+        # for param_name, param in self._signature.parameters.items():
+        for param_name, param in self._signature.keyword_parameters.items():
+            # if not kwargs_started:
+            #     if param.kind not in (_VAR_KEYWORD, _KEYWORD_ONLY):
+            #         continue    
+            #     kwargs_started = True
+                # else:
+                #     if param_name not in self.arguments:
+                #         kwargs_started = True
+                #         continue
+
+            # if not kwargs_started:
+            #     continue
+            
+            if not blank and param_name in self.arguments:
+                arg = self.arguments[param_name]
+            elif param.depends is not None:
+                try:
+                    arg = inj[param.depends]
+                except KeyError:
+                    continue    
+            else:
+                continue
+            
+            if param.kind == _VAR_KEYWORD:
+                # **kwargs
+                kwargs.update(arg)
+            else:
+                # plain keyword argument
+                kwargs[param_name] = arg
+        return kwargs
+
+    def __bool__(self):
+        return bool(self._signature.parameters)
 
 
 
 @export()
 class InjectableSignature(ins.Signature):
-    __slots__ = ()
+    __slots__ = ('_pos_params', '_kw_params')
 
     _parameter_cls: ClassVar[type[Parameter]] = Parameter
     _bound_arguments_cls: ClassVar[type[BoundArguments]] = BoundArguments
 
     parameters: Mapping[str, Parameter]
+
+    @property
+    def positional_parameters(self):
+        try:
+            return self._pos_params
+        except AttributeError:
+            self._pos_params = { n : p 
+                    for n,p in self.parameters.items() 
+                        if p.kind in (_VAR_KEYWORD, _KEYWORD_ONLY)
+                }
+            return self._pos_params
+
+    @property
+    def keyword_parameters(self):
+        try:
+            return self._kw_params
+        except AttributeError:
+            self._kw_params = { n : p 
+                    for n,p in self.parameters.items() 
+                        if p.kind not in (_VAR_KEYWORD, _KEYWORD_ONLY)
+                }
+            return self._kw_params
 
     def inject(self, _injector: Injector, *args: Any, **kwargs: Any) -> BoundArguments:
         rv = self.bind_partial(*args, **kwargs)

@@ -46,28 +46,54 @@ class Injector(abc.Injector[_T_Scope, _T_Injected, _T_Provider]):
     def root(self):
         return self if self.isroot else self.parent.root
 
+    @property
+    def head(self):
+        return self.parent.head if self._skipself else self
+
     def __getitem__(self, k: _T_Injectable) -> _T_Injected:
         if self._skipself:
             return self.parent[k]
 
-        try:
+        p = self.providers[k]
+        if p is None:
+            try:
+                self._skipself = True
+                return self.parent[k]
+            except KeyError as e:
+                raise KeyError(f'scope={self.scope.name} {k}') from e
+            finally:
+                self._skipself = False
+        
+        if p.cache and k in self.cache:
             return self.cache[k]
-        except KeyError:
-            p = self.providers[k]
-            if p is None:
-                try:
-                    self._skipself = True
-                    return self.parent[k]
-                finally:
-                    self._skipself = False
-            elif isinstance(p, list):
-                rv = [_p.provide(self) for _p in p]
-            else:
-                rv = p.provide(self)
+
+        if isinstance(p, list):
+            rv = [_p.provide(self) for _p in p]
+        else:
+            rv = p.provide(self)
+        
+        if p.cache:
+            self.cache[k] = rv
+        return rv
+
+        # try:
+        #     return self.cache[k]
+        # except KeyError:
+        #     p = self.providers[k]
+        #     if p is None:
+        #         try:
+        #             self._skipself = True
+        #             return self.parent[k]
+        #         finally:
+        #             self._skipself = False
+        #     elif isinstance(p, list):
+        #         rv = [_p.provide(self) for _p in p]
+        #     else:
+        #         rv = p.provide(self)
             
-            if p.cache:
-                self.cache[k] = rv
-            return rv
+        #     if p.cache:
+        #         self.cache[k] = rv
+        #     return rv
     
 
 
@@ -80,7 +106,11 @@ class NullInjector(abc.Injector[None, _T_Injected, None]):
 
     def __init__(self):
         super().__init__(None, None)
-        
+   
+    @property
+    def head(self):
+        return self
+     
     def __len__(self):
         return 0
 
@@ -88,10 +118,11 @@ class NullInjector(abc.Injector[None, _T_Injected, None]):
         return iter(())
     
     def __getitem__(self, k: _T_Injectable) -> None:
+        # return None
         raise KeyError(k)
 
     def __enter__(self):
         return self
 
-    def __enter__(self, *exc):
+    def __exit__(self, *exc):
         pass

@@ -19,14 +19,15 @@ noop_symb = symbol('noop-symbol')
 class AbcScope(Scope):
 
     class Config:
-        name = Scope.MAIN
-        aliases = [
-            'abc'
-        ]
+        name = 'abc'
+        # name = Scope.MAIN
+        # aliases = [
+            # 'abc'
+        # ]
 
         
 
-@injectable(cache=False)
+@injectable(cache=True)
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], user: Depends[str, user_str]) -> None:
@@ -42,17 +43,25 @@ class Foo:
 
 provide('foo.name', value='My Name Is Foo!!')
 
-@injectable(scope='abc')
-def user_func_injectable():
-    return f'user_func_injectable -> #{_ordered_id()}'
+@injectable(scope='abc', cache=True)
+def user_func_injectable(user: Depends[str, user_str]):
+    return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
-@injectable(cache=True, scope='abc')
+@injectable(cache=False)
+class Baz:
+    pass
+
+
+
+@injectable(scope='abc', cache=False)
 class Bar:
 
-    def __init__(self, foo: Foo, user: Depends[user_func_injectable]) -> None:
+    def __init__(self, foo: Foo, user: Depends[user_func_injectable], sym: Depends[str, user_symb], baz: Baz) -> None:
         self.foo = foo
         self.user = user
+        self.sym = sym
+        self.baz = baz
  
     def __repr__(self):
         return f'Bar(foo={self.foo!r}, user={self.user!r})'
@@ -60,7 +69,7 @@ class Bar:
     def __str__(self):
         return f'Bar(foo={self.foo!r}, user={self.user!r})'
     
-alias(Bar, Foo)
+
 
 def user_func_symb():
     return f'user_func_symb {user_symb} -> #{_ordered_id()}'
@@ -69,8 +78,11 @@ def user_func_symb():
 provide(user_symb, factory=user_func_symb, cache=True)
 
 
-@injectable(abstract=user_str)
+@injectable(abstract=user_str, cache=True)
 def user_func_str():
     return f'user_func_str {user_str} -> #{_ordered_id()}'
     
+
+
+
 

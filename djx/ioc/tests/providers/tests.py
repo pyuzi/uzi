@@ -18,6 +18,7 @@ from ... import is_injectable, scope
 
 from .mocks import *
 
+from statistics import mean, median
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
@@ -42,51 +43,43 @@ class SymbolTests:
         assert not is_injectable(noop_symb)
         assert not is_injectable(user_func_symb)
 
+    def test_speed(self, ops_per_sec):
+       
         from timeit import timeit, repeat
 
-        with scope() as inj:
+        with scope() as _inj:
             nl = "\n    -- "
-            print('---', inj.providers)
-            print('--- ', inj[Foo])
-            print('--- ', user_symb, '::', inj[user_symb])
-            print('--- ', user_symb, '::', inj[user_symb])
-            print('--- ', user_symb, '::', inj[user_symb])
-            print('---')
-
-            with scope() as inj1:
-                # print('--- ', user_func_injectable, '::', inj[user_symb])
+            with scope('abc') as inj:
 
                 mkfoo = lambda: Foo('simple foo', user_func_str())
+                mkbaz = lambda: Baz()
+                mkfunc = lambda: user_func_injectable(user_func_str())
+                mkbar = lambda: Bar(mkfoo(), mkfunc(), user_func_symb(), mkbaz())
                 injfoo = lambda: inj[Foo]
-                injbar = lambda: inj1[Bar]
+                injbar = lambda: inj[Bar]
+                injbaz = lambda: _inj[Baz]
+                xinjbar = lambda: _inj[Bar]
 
-                print('--- ', inj1[user_func_injectable])
-                print('--- ', inj1[user_func_injectable])
-                print('--- ', inj1[user_func_injectable])
-                print('---')
-                print('--- ', inj1[Bar])
-                print('--- ', inj1[user_func_injectable])
-                print('--- ', inj1[Bar])
-                print('--- ', inj1[user_func_injectable])
-                print('--- ', inj1[Bar])
-                print('---')
-                n = int(1e5)
-                res = repeat(mkfoo, number=n)
-                print('- MAK Foo: ', res)
+                _n = int(1e4)
+                def run(lbl, mfn, ifn, n=_n, r=4):
+                    mres = ops_per_sec(n, *repeat(mfn, number=n))
+                    ires = ops_per_sec(n, *repeat(ifn, number=n))
+                    if mres > ires:
+                        d = f'M {round(mres/ires, r)}x faster'
+                    else:
+                        d = f'I {round(ires/mres, r)}x faster'
+                    M, I = round(mres, r), round(ires, r)
+                    print(f'{lbl} {M=} ops/sec, {I=} ops/sec, {d}')
 
-                res = repeat(injbar, number=n)
-                print('- INJ Bar: ', res)
+                run('Foo', mkfoo, injfoo)
+                run('Baz', mkbaz, injbaz)
+                run('Bar', mkbar, injbar)
 
-                res = repeat(injfoo, number=n)
-                print('- INJ Foo: ', res)
+                print(registry.scopes)
 
-            # for s in registry.all_providers:
-            #     print(f'scope: {s}')
-            #     col = registry.all_providers[s]
-            #     for k, v in col.all_items():
-            #         print(f' - {k} --> {col[k]}', *map(str, v), sep=nl)
-            #     print('')
+                run('Bar', mkbar, xinjbar)
+
 
             assert 0
         
-    
+

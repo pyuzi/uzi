@@ -1,42 +1,60 @@
-
+from functools import partial
 from collections import defaultdict
-from typing import TypeVar
-
+from itertools import chain
 from flex.utils.decorators import export
 
 
 from . import abc
-from .symbols import symbol
-from .providers import ProviderStack, Provider, has_provider
 
+
+_T_Scope = abc._T_Scope
 
 __all__ = [
 
 ]
 
-
-_T = TypeVar('_T')
-_I = TypeVar('_I', bound=abc.Injectable)
-
-
-
+class _ScopeDefaultdict(defaultdict[str, type[_T_Scope]]):
+    """_ScopeDefaultdict Object"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(None, *args, **kwargs)
+    
+    def __missing__(self, key: str) -> _T_Scope:
+        return registry._create_scope(key)
 
 @export()
 class Registry:
 
-    providers: defaultdict[symbol[_I], ProviderStack]
-    contexts: defaultdict[symbol[_I], ProviderStack]
+    all_providers: defaultdict[str, abc.PriorityStack]
+    scope_types: abc.PriorityStack[str, type[abc.Scope]]
+    scopes: _ScopeDefaultdict
 
     def __init__(self):
-        self.providers = defaultdict(ProviderStack)
+        self.all_providers = defaultdict(abc.PriorityStack)
+        self.scope_types = abc.PriorityStack()
+        self.scopes = _ScopeDefaultdict()
     
-    def add_provider(self, provider: Provider, context: str = None):
-        return self.providers[context or provider.context].push(provider)
+    def add_provider(self, provider: abc.Provider, scope: str = None):
+        self.all_providers[scope or provider.scope][provider.abstract] = provider
     
-    def add_context(self, context: type[abc.Context]):
-        pass
+    def add_scope(self, cls: type[abc.Scope]):
+        self.scope_types[cls.conf.name] = cls
 
+    def collect_providers(self, scope, *aliases):
+        reg = self.all_providers
+        if scope != abc.ANY_SCOPE:
+            aliases = (abc.ANY_SCOPE,) + aliases + (scope,)
+            provs = chain(*(reg[a].values() for a in aliases if a in reg))
+        else:
+            provs = reg[scope].values()
+        
+        return defaultdict(lambda: None, ((p.abstract(), p) for p in provs))
 
+    def _create_scope(self, name: str):
+        return self.scope_types[name]()
+
+    def get_scope(self, name: str) -> abc.Scope:
+        return self.scopes[name]
+    
         
 
 registry = Registry()

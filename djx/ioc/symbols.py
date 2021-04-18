@@ -11,7 +11,7 @@ from flex.datastructures.enum import IntEnum, auto, unique
 from flex.utils.decorators import export
 
 
-from .abc import StaticIndentity, Injectable, SupportsIndentity
+from .abc import StaticIndentity, Injectable, SupportsIndentity, SupportsOrdering
 
 
 __all__ = [
@@ -67,6 +67,7 @@ def _ordered_id():
 @export()
 @Injectable.register
 @StaticIndentity.register
+@SupportsOrdering.register
 class symbol(Generic[_S]):
     """A constant symbol representing given object. 
         
@@ -97,7 +98,7 @@ class symbol(Generic[_S]):
     __instances: ClassVar[Dict['symbol', 'symbol[_S]']] = dict()
 
     _name: str
-    # __pos: int
+    __pos: int
     __kind: Kinds
     __ref: Callable[..., _S]
     __ident: StaticIndentity
@@ -125,7 +126,7 @@ class symbol(Generic[_S]):
             if rv is s:
                 rv.__ident = ident
                 
-                # rv.__pos = _ordered_id()
+                rv.__pos = _ordered_id()
 
                 rv._name = name
                 if isinstance(obj, StaticIndentity):
@@ -189,27 +190,21 @@ class symbol(Generic[_S]):
             if strict:
                 raise RuntimeError(f'Symbol ref is no longer available')
         return rv
+        
+    def __order__(self):
+        return (self.__pos, self())
+        
+    def __ge__(self, x) -> bool:
+        return self.__order__() >= x
 
-    # def __ge__(self, x) -> bool:
-    #     if isinstance(x, symbol):
-    #         return self.__pos >= x.__pos
-    #     return NotImplemented
+    def __gt__(self, x) -> bool:
+        return self.__order__() > x
 
-    # def __gt__(self, x) -> bool:
-    #     if isinstance(x, symbol):
-    #         return self.__pos < x.__pos
-    #     return NotImplemented
+    def __le__(self, x) -> bool:
+        return self.__order__() <= x
 
-    # def __le__(self, x) -> bool:
-    #     if isinstance(x, symbol):
-    #         return self.__pos >= x.__pos
-    #     return NotImplemented
-
-    # def __lt__(self, x) -> bool:
-    #     if isinstance(x, symbol):
-    #         return self.__pos > x.__pos
-    #     return NotImplemented
-
+    def __lt__(self, x) -> bool:
+        return self.__order__() < x
 
 
 

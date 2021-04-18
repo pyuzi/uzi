@@ -68,8 +68,8 @@ def annotated_deps(obj) -> Union[list, Any]:
 
 @export()
 def is_injectable(obj) -> bool:
-    from .providers import has_provider
-    return has_provider(obj)
+    from .providers import is_provided
+    return is_provided(obj)
 
 
 

@@ -9,6 +9,7 @@ from typing import Any, Callable, ClassVar, Generic, NamedTuple, Optional, Seque
 
 
 from flex.utils import text
+from flex.utils.proxy import Proxy
 from flex.utils.decorators import cached_property, export, lookup_property
 from flex.utils.metadata import metafield, BaseMetadata, get_metadata_class
 
@@ -20,6 +21,9 @@ from .injectors import Injector, NullInjector
 from .reg import registry
 from . import abc
 
+__all__ = [
+    'injector',
+]
 
 
 logger = logging.getLogger(__name__)
@@ -62,41 +66,28 @@ def scope(name: str=None):
             yield inj
     finally:
         reset and __inj_ctxvar.reset(reset)
-    
-# @export()
-# @contextmanager
-# def scope(name: str=abc.Scope.MAIN):
-#     cur, injs = __state_ctx_var.get(_null_scope_ctx)
+  
 
-#     token = None
-#     scope = Scope(name)
-#     if scope not in injs:
-#         injs = injs.copy()
-#         injs[scope] = scope.setup(injs[cur])
-#         token = __state_ctx_var.set(ScopeContext(cur := scope, injs))
-
-#     try:
-#         with injs[cur] as inj:
-#             yield inj
-#     finally:
-#         if token is not None:
-            # __state_ctx_var.reset(token)
-    
 
 
 @export()
 def current_injector():
-    return __inj_ctxvar.get(__null_inj).top
+    return __inj_ctxvar.get(__null_inj)
 
 
 
-class ScopeContext(NamedTuple):
-    current: str
-    injectors: dict[str, _T_Injector]
-    
+@export()
+def actual_injector():
+    return __inj_ctxvar.get(__null_inj).actual
 
 
-_null_scope_ctx = ScopeContext(None, { None: NullInjector() })
+
+injector = Proxy(actual_injector)
+
+
+
+
+
 
 @export()
 @abc.ScopeConfig.register
@@ -145,6 +136,9 @@ class Config(BaseMetadata[_T_Scope]):
         return [p for p in value if not seen(p)]
 
 
+
+
+
 @export
 @abc.ScopeConfig.register
 class ScopeType(abc.ABCMeta):
@@ -172,6 +166,7 @@ class ScopeType(abc.ABCMeta):
         conf_cls(cls, 'conf', raw_conf)
 
         if not cls.conf.is_abstract:
+            cls._Scope__instance = None
             registry.add_scope(cls)
 
         return cls
@@ -226,15 +221,23 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
         cls = ScopeType(name or cls)
         if cls.conf.is_abstract:
             raise TypeError(f'Cannot create scope {cls}. {cls.conf.is_abstract=}')
-        elif cls.conf.name in registry.scopes:
-            return registry.scopes[cls.conf.name]
-        else:
-            registry.scopes[cls.conf.name] = super().__new__(cls)
-            # return registry.scopes[cls.conf.name] 
-            return registry.scopes.setdefault(cls.conf.name, super().__new__(cls))
+        elif cls._Scope__instance is None:
+            cls._Scope__instance = super().__new__(cls)
+        
+        return cls._Scope__instance
+
+        # elif cls.conf.name in registry.scopes:
+        #     return registry.scopes[cls.conf.name]
+        # else:
+        #     registry.scopes[cls.conf.name] = super().__new__(cls)
+        #     # return registry.scopes[cls.conf.name] 
+        #     return registry.scopes.setdefault(cls.conf.name, super().__new__(cls))
 
     def __init__(self, *args) -> None:
         self.__pos = 0
+        assert self.__class__._Scope__instance is self, (
+            f'Scope are singletons. {self} already created.'
+        )
 
     def __contains__(self, x) -> None:
         if isinstance(x, Scope):
@@ -292,7 +295,7 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
         return self
 
     def _prepare(self):
-        logger.info(f'{self}._prepare()')
+        logger.debug(f'prepare({self})')
 
     def _make_providerstack(self):
         stack = abc.PriorityStack()
@@ -306,7 +309,7 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
         return stack
     
     def setup(self, inj: _T_Injector) -> _T_Injector:
-        logger.info(f'{self}.setup():  {inj}')
+        logger.debug(f'setup({self}):  {inj}')
 
         self.prepare()
         self.setup_providers(inj)
@@ -314,7 +317,7 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
         return inj
 
     def teardown(self, inj: _T_Injector):
-        logger.info(f'{self}.teardown():  {inj}')
+        logger.debug(f'teardown({self}):  {inj}')
 
         inj.cache = None
         inj.providers = None
@@ -326,7 +329,11 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
         inj.cache = self.cache_class()
 
     def create(self, parent: _T_Injector) -> _T_Injector:
-
+        if self in parent:
+            return parent
+        
+        logger.debug(f'create({self}):  parent = {parent}')
+        
         for scope in sorted(self.parents):
             if scope not in parent:
                 parent = scope.create(parent)
@@ -360,10 +367,10 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
         return hash(self.__class__)
 #
     def __str__(self) -> str:
-        return f'{self.__class__.__name__}({self.conf.name!r} #{self.ready and self.__pos or 0})'
+        return f'{self.__class__.__name__}({self.conf.name!r} #{self.ready and self.__pos or ""})'
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.conf.name!r}, #{self.ready and self.__pos or 0}, {self.conf!r})'
+        return f'{self.__class__.__name__}({self.conf.name!r}, #{self.ready and self.__pos or ""}, {self.conf!r})'
 
 
 

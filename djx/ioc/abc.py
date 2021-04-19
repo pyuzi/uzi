@@ -1,3 +1,4 @@
+import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import (
     Mapping, MutableSequence, ItemsView, ValuesView, MutableMapping, 
@@ -19,6 +20,8 @@ __all__ = [
     'MAIN_SCOPE',
 ]
 
+
+logger = logging.getLogger(__name__)
 
 
 _T_Injected = TypeVar("_T_Injected")
@@ -284,24 +287,31 @@ class Provider(SupportsOrdering, CanSetupAndTeardownSope[_T_Scope], Generic[_T_I
 @export()
 class Injector(InjectedContextManager, CanSetupAndTeardown, Mapping[Injectable[_T_Injected], _T_Injected], Generic[_T_Scope, _T_Injected, _T_Provider, _T_Injector]):
 
-    __slots__ = ('scope', 'parent', 'cache', 'providers', '_entries', '_lvl')
+    __slots__ = ('scope', 'parent', 'cache', 'providers', '_exits', '_lvl')
 
     scope: _T_Scope
     parent: _T_Injector
     cache: _T_Cache[_T_Injected]
     providers: _T_Providers[_T_Provider]
-    _entries: int
+
+    _exits: int
     _lvl: int
 
-    def __init__(self, scope: _T_Scope, parent: _T_Injector) -> None:
+    def __init__(self, scope: _T_Scope, parent: _T_Injector, providers: _T_Providers=None, cache: _T_Cache=None) -> None:
         self.scope = scope
         self.parent = parent
         self._lvl = 0 if parent is None else parent._lvl + 1 
-        self._entries = 0
+        self._exits = 0
+        self.providers = providers
+        self.cache = cache
+
+    @property
+    def actual(self):
+        return self
 
     @property
     def is_ready(self):
-        return self._entries > 0
+        return self._exits > 0
 
     def setup(self: _T_Injector) -> _T_Injector:
         if self.is_ready:
@@ -329,7 +339,7 @@ class Injector(InjectedContextManager, CanSetupAndTeardown, Mapping[Injectable[_
             return False
 
     def __bool__(self) -> bool:
-        return self.is_ready and bool(getattr(self, 'providers', False))
+        return self.is_ready and bool(self.providers)
 
     def __len__(self) -> bool:
         return len(self.providers)
@@ -338,19 +348,19 @@ class Injector(InjectedContextManager, CanSetupAndTeardown, Mapping[Injectable[_
         return iter(self.providers)
 
     def __enter__(self):
-        if self._entries == 0:
+        if self._exits == 0:
             self.parent.__enter__()
             self.setup()
-        self._entries += 1
+        self._exits += 1
         return self
 
     def __exit__(self, *exc):
-        if self._entries == 1:
+        if self._exits == 1:
             self.teardown()
             self.parent.__exit__(*exc)
 
-        self._entries -= 1
-        assert self._entries >= 0, f'Context exited more time than it was entered'
+        self._exits -= 1
+        assert self._exits >= 0, f'Context exited more time than it was entered'
 
 
 

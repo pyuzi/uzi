@@ -12,8 +12,8 @@ from ...providers import (
     FactoryProvider, ValueProvider, AliasProvider, registry, 
 )
 
-from ... import is_injectable, scope
-
+from ... import is_injectable, scope, get, injector
+from djx import di
 
 
 
@@ -51,13 +51,13 @@ class SymbolTests:
 
         # with scope('abc') as _inj:
         #     nl = "\n    -- "
-        with scope('abc') as inj:
+        with scope('abcd') as inj:
 
             mkfoo = lambda: Foo('simple foo', user_func_str())
             mkbaz = lambda: Baz()
             mkfunc = lambda: user_func_injectable(user_func_str())
             mkbar = lambda: Bar(mkfoo(), mkfunc(), user_func_symb(), mkbaz())
-            injfoo = lambda: inj[Foo]
+            injfoo = lambda: injector[Foo]
             injbar = lambda: inj[Bar]
             injbaz = lambda: inj[Baz]
 

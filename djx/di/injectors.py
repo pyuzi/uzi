@@ -39,8 +39,8 @@ class Injector(abc.Injector[_T_Scope, _T_Injected, _T_Provider, _T_Injector]):
         self.__skipself = False
   
     @property
-    def actual(self):
-        return self.parent.actual if self.__skipself else self
+    def head(self):
+        return self.parent.head if self.__skipself is True else self
 
     def __getitem__(self, k: _T_Injectable) -> _T_Injected:
         if self.__skipself:

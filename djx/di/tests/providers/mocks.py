@@ -34,7 +34,7 @@ class LocalScope(Scope):
 class AbcScope(Scope):
 
     class Config:
-        name = 'abc'
+        name = 'abcd'
         depends = [
             'local'
         ]

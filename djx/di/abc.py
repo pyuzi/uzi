@@ -6,7 +6,6 @@ from collections.abc import (
 )
 from collections import defaultdict
 from contextlib import AbstractContextManager
-from djx.ioc.tests import providers
 from itertools import chain
 from types import FunctionType, GenericAlias, MethodType
 from typing import Any, Callable, ClassVar, Iterable, Literal, Optional, Protocol, Generic, TYPE_CHECKING, Type, TypeVar, Union, overload, runtime_checkable
@@ -306,7 +305,7 @@ class Injector(InjectedContextManager, CanSetupAndTeardown, Mapping[Injectable[_
         self.cache = cache
 
     @property
-    def actual(self):
+    def head(self):
         return self
 
     @property

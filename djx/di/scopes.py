@@ -71,18 +71,23 @@ def scope(name: str=None):
 
 
 @export()
-def current_injector():
+def current():
     return __inj_ctxvar.get(__null_inj)
 
 
 
 @export()
-def actual_injector():
-    return __inj_ctxvar.get(__null_inj).actual
+def head():
+    return __inj_ctxvar.get(__null_inj).head
+
+
+@export()
+def get(key: _T_Injectable, default=None) -> _T_Injected:
+    return head().get(key, default)
 
 
 
-injector = Proxy(actual_injector)
+injector = Proxy(head)
 
 
 
@@ -226,26 +231,11 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
         
         return cls._Scope__instance
 
-        # elif cls.conf.name in registry.scopes:
-        #     return registry.scopes[cls.conf.name]
-        # else:
-        #     registry.scopes[cls.conf.name] = super().__new__(cls)
-        #     # return registry.scopes[cls.conf.name] 
-        #     return registry.scopes.setdefault(cls.conf.name, super().__new__(cls))
-
     def __init__(self, *args) -> None:
         self.__pos = 0
         assert self.__class__._Scope__instance is self, (
             f'Scope are singletons. {self} already created.'
         )
-
-    def __contains__(self, x) -> None:
-        if isinstance(x, Scope):
-            return x is self or any(True for s in self.depends if x in s)
-        return False
-
-    def __reduce__(self) -> None:
-        return self.__class__, self.name
 
     @property
     def is_ready(self):
@@ -340,6 +330,14 @@ class Scope(abc.Scope[_T_Injector, _T_Conf], Generic[_T_Injector, _T_Conf, _T_Pr
             
         return self.injector_class(self, parent)
 #
+    def __contains__(self, x) -> None:
+        if isinstance(x, Scope):
+            return x is self or any(True for s in self.depends if x in s)
+        return False
+
+    def __reduce__(self) -> None:
+        return self.__class__, self.name
+
     def __order__(self):
         return self.__class__
         

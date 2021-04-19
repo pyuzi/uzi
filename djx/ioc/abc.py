@@ -1,5 +1,8 @@
 from abc import ABCMeta, abstractmethod
-from collections.abc import Mapping, MutableSequence, ItemsView, ValuesView, MutableMapping, Sequence, Hashable
+from collections.abc import (
+    Mapping, MutableSequence, ItemsView, ValuesView, MutableMapping, 
+    Sequence, Hashable, Container
+)
 from collections import defaultdict
 from contextlib import AbstractContextManager
 from djx.ioc.tests import providers
@@ -36,7 +39,7 @@ _T_Injectable = TypeVar('_T_Injectable', bound='Injectable')
 
 
 _T_Cache = MutableMapping['StaticIndentity', _T_Injected]
-_T_Providers = defaultdict['StaticIndentity', Optional[_T_Provider]]
+_T_Providers = Mapping['StaticIndentity', Optional[_T_Provider]]
 
 
 ANY_SCOPE = '__any__'
@@ -200,13 +203,15 @@ class ScopeConfig(Generic[_T_Injector], metaclass=ABCMeta):
     priority: ClassVar[int]
     injector_class: ClassVar[type[_T_Injector]]
     cache_class: ClassVar[type[_T_Cache]]
-    aliases: Sequence[str]
+    depends: ClassVar[Sequence[str]]
+    embed_only: ClassVar[bool]
+    implicit: ClassVar[bool]
 
 
 
 
 @export()
-class Scope(SupportsOrdering, CanSetupAndTeardown[_T_Injector], Generic[_T_Injector, _T_Conf]):
+class Scope(SupportsOrdering, CanSetupAndTeardown[_T_Injector], Container, Generic[_T_Injector, _T_Conf, _T_Provider]):
     
     __slots__ = ()
 
@@ -214,14 +219,18 @@ class Scope(SupportsOrdering, CanSetupAndTeardown[_T_Injector], Generic[_T_Injec
 
     name: str
     providers: _T_Providers
+    providerstack: 'PriorityStack[StaticIndentity, _T_Provider]'
     peers: list['Scope']
-
+    embed_only: bool
     ANY: ClassVar[ANY_SCOPE] = ANY_SCOPE
     MAIN: ClassVar[MAIN_SCOPE] = MAIN_SCOPE
 
     def ready(self) -> None:
         pass
-
+    
+    @abstractmethod
+    def create(self, parent: _T_Injector) -> _T_Injector:
+        return self.conf.injector_class(self, parent)
 
 @export()
 class CanSetupSope(CanSetup[_T_Scope]):
@@ -273,59 +282,74 @@ class Provider(SupportsOrdering, CanSetupAndTeardownSope[_T_Scope], Generic[_T_I
 
 
 @export()
-class Injector(InjectedContextManager, CanSetupAndTeardown, Mapping[Injectable[_T_Injected], _T_Injected], Generic[_T_Scope, _T_Injected, _T_Provider]):
+class Injector(InjectedContextManager, CanSetupAndTeardown, Mapping[Injectable[_T_Injected], _T_Injected], Generic[_T_Scope, _T_Injected, _T_Provider, _T_Injector]):
 
-    __slots__ = ('scope', 'parent', 'cache', 'providers', '_entries')
+    __slots__ = ('scope', 'parent', 'cache', 'providers', '_entries', '_lvl')
 
     scope: _T_Scope
     parent: _T_Injector
     cache: _T_Cache[_T_Injected]
     providers: _T_Providers[_T_Provider]
     _entries: int
+    _lvl: int
 
     def __init__(self, scope: _T_Scope, parent: _T_Injector) -> None:
         self.scope = scope
         self.parent = parent
+        self._lvl = 0 if parent is None else parent._lvl + 1 
         self._entries = 0
 
     @property
-    def has_setup(self):
-        return bool(self)
+    def is_ready(self):
+        return self._entries > 0
 
     def setup(self: _T_Injector) -> _T_Injector:
-        if self.has_setup:
+        if self.is_ready:
             raise RuntimeError(f'Injector {self} has already setup')
         self.scope.setup(self)
 
     def teardown(self):
-        if not self.has_setup:
+        if not self.is_ready:
             raise RuntimeError(f'Injector {self} has not been setup')
         self.scope.teardown(self)
 
+    def __str__(self) -> str:
+        lvl = self._lvl
+        return f'{self.__class__.__name__}({lvl=}, {self.scope})'
+
+    def __repr__(self) -> str:
+        return f'<{self} parent={self.parent!r}>'
+
+    def __contains__(self, x) -> bool:
+        if isinstance(x, Scope):
+            return x in self.scope or x in self.parent
+        elif self.is_ready:
+            return x in self.providers or x in self.parent
+        else:
+            return False
+
     def __bool__(self) -> bool:
-        return getattr(self, '_entries', 0) > 0 \
-            and (getattr(self, 'cache', None) or getattr(self, 'providers', None)) is not None
+        return self.is_ready and bool(getattr(self, 'providers', False))
 
     def __len__(self) -> bool:
-        return len(self.cache)
+        return len(self.providers)
 
     def __iter__(self) -> bool:
-        return iter(self.cache)
+        return iter(self.providers)
 
     def __enter__(self):
-        self._entries += 1
-        if self._entries == 1:
-            # self.parent.__enter__()
+        if self._entries == 0:
+            self.parent.__enter__()
             self.setup()
-
+        self._entries += 1
         return self
 
     def __exit__(self, *exc):
         if self._entries == 1:
-            # self.parent.__exit__(*exc)
             self.teardown()
-        self._entries -= 1
+            self.parent.__exit__(*exc)
 
+        self._entries -= 1
         assert self._entries >= 0, f'Context exited more time than it was entered'
 
 
@@ -376,16 +400,31 @@ class PriorityStack(dict[_T_Stack_K, _T_Stack_S], Generic[_T_Stack_K, _T_Stack_V
     def items(self):
         return ItemsView[tuple[_T_Stack_K, _T_Stack_V]](self)
 
-    def merge(self, *args, **kwds):
-        items = chain(args[0], kwds.items()) if args else kwds.items()
+    def merge(self, __PriorityStack_arg=None, /, **kwds):
+        
+        if isinstance(__PriorityStack_arg, PriorityStack):
+            items = chain(__PriorityStack_arg.all_items(), kwds.items())
+        elif isinstance(__PriorityStack_arg, Mapping):
+            items = chain(__PriorityStack_arg.items(), kwds.items())
+        elif __PriorityStack_arg is not None:
+            items = chain(__PriorityStack_arg, kwds.items())
+        else:
+            items = kwds.items()
+
         for k,v in items:
             stack = super().setdefault(k, self.stackfactory())
             stack.extend(v)
             stack.sort()
 
     replace = dict.update
-    def update(self, *args, **kwds):
-        items = chain(args[0], kwds.items()) if args else kwds.items()
+    def update(self, __PriorityStack_arg=None, /, **kwds):
+        if isinstance(__PriorityStack_arg, Mapping):
+            items = chain(__PriorityStack_arg.items(), kwds.items())
+        elif __PriorityStack_arg is not None:
+            items = chain(__PriorityStack_arg, kwds.items())
+        else:
+            items = kwds.items()
+
         for k,v in items:
             self[k] = v
 

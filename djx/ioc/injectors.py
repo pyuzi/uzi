@@ -28,53 +28,66 @@ _T_Providers =  abc._T_Providers
 
 
 @export()
-class Injector(abc.Injector[_T_Scope, _T_Injected, _T_Provider]):
+class Injector(abc.Injector[_T_Scope, _T_Injected, _T_Provider, _T_Injector]):
 
-    __slots__ = ('_skipself',)
+    __slots__ = ('__skipself', '_verb')
 
-    _skipself: bool
+    __skipself: bool
 
-    def __init__(self, scope: abc.Scope, parent: abc.Injector):
+    def __init__(self, scope: _T_Scope, parent: _T_Injector):
         super().__init__(scope, parent)
-        self._skipself = False
-        
-    @property
-    def isroot(self):
-        return not bool(self.parent)
-
-    @property
-    def root(self):
-        return self if self.isroot else self.parent.root
-
+        self.__skipself = False
+  
     @property
     def head(self):
-        return self.parent.head if self._skipself else self
+        return self.parent.head if self.__skipself else self
 
     def __getitem__(self, k: _T_Injectable) -> _T_Injected:
-        if self._skipself:
+        if self.__skipself:
             return self.parent[k]
+        elif k in self.providers:
+            p = self.providers[k]
+            if p.cache and k in self.cache:
+                return self.cache[k]
 
-        p = self.providers[k]
-        if p is None:
-            try:
-                self._skipself = True
-                return self.parent[k]
-            except KeyError as e:
-                raise KeyError(f'scope={self.scope.name} {k}') from e
-            finally:
-                self._skipself = False
-        
-        if p.cache and k in self.cache:
-            return self.cache[k]
-
-        if isinstance(p, list):
-            rv = [_p.provide(self) for _p in p]
+            if isinstance(p, list):
+                rv = [_p.provide(self) for _p in p]
+            else:
+                rv = p.provide(self)
+            
+            if p.cache:
+                self.cache[k] = rv
+            return rv
         else:
-            rv = p.provide(self)
+            try:
+                self.__skipself = True
+                return self.parent[k]
+            finally:
+                self.__skipself = False
+
+        # # p = self.providers[k]
+        # if k not in self.providers:
+        # # if p is None:
+        #     try:
+        #         self._skipself = True
+        #         return self.parent[k]
+        #     except KeyError as e:
+        #         raise KeyError(f'scope={self.scope.name} {k}') from e
+        #     finally:
+        #         self._skipself = False
         
-        if p.cache:
-            self.cache[k] = rv
-        return rv
+        # p = self.providers[k]
+        # if p.cache and k in self.cache:
+        #     return self.cache[k]
+
+        # if isinstance(p, list):
+        #     rv = [_p.provide(self) for _p in p]
+        # else:
+        #     rv = p.provide(self)
+        
+        # if p.cache:
+        #     self.cache[k] = rv
+        # return rv
 
         # try:
         #     return self.cache[k]
@@ -104,13 +117,17 @@ class Injector(abc.Injector[_T_Scope, _T_Injected, _T_Provider]):
 class NullInjector(abc.Injector[None, _T_Injected, None]):
     """NullInjector Object"""
 
+    __slots__ = ()
+
     def __init__(self):
         super().__init__(None, None)
    
-    @property
-    def head(self):
-        return self
-     
+    def __contains__(self, x) -> bool:
+        return False
+
+    def __bool__(self):
+        return False
+
     def __len__(self):
         return 0
 
@@ -126,3 +143,7 @@ class NullInjector(abc.Injector[None, _T_Injected, None]):
 
     def __exit__(self, *exc):
         pass
+
+    def __str__(self) -> str:
+        lvl = self._lvl
+        return f'{self.__class__.__name__}({lvl=})'

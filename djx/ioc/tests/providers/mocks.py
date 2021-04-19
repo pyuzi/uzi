@@ -16,18 +16,32 @@ user_symb = symbol('test-import')
 noop_symb = symbol('noop-symbol')
 
 
+class MainScope(Scope):
+
+    class Config:
+        name = Scope.MAIN
+        
+        
+        
+
+class LocalScope(Scope):
+
+    class Config:
+        name = 'local'
+
+        
+
 class AbcScope(Scope):
 
     class Config:
         name = 'abc'
-        # name = Scope.MAIN
-        # aliases = [
-            # 'abc'
-        # ]
+        depends = [
+            'local'
+        ]
 
         
 
-@injectable(cache=True)
+@injectable(cache=True, scope=Scope.ANY)
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], user: Depends[str, user_str]) -> None:
@@ -43,18 +57,18 @@ class Foo:
 
 provide('foo.name', value='My Name Is Foo!!')
 
-@injectable(scope='abc', cache=True)
+@injectable(scope=Scope.ANY, cache=True)
 def user_func_injectable(user: Depends[str, user_str]):
     return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
-@injectable(cache=False)
+@injectable(cache=False, scope=Scope.ANY)
 class Baz:
     pass
 
 
 
-@injectable(scope='abc', cache=False)
+@injectable(cache=False)
 class Bar:
 
     def __init__(self, foo: Foo, user: Depends[user_func_injectable], sym: Depends[str, user_symb], baz: Baz) -> None:

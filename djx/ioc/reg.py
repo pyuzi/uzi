@@ -13,16 +13,16 @@ __all__ = [
 
 ]
 
-class _ScopeDefaultdict(defaultdict[str, type[_T_Scope]]):
+class _ScopeDefaultdict(defaultdict[str, _T_Scope]):
     """_ScopeDefaultdict Object"""
     def __init__(self, *args, **kwargs):
         super().__init__(None, *args, **kwargs)
     
-    def __missing__(self, key: str) -> _T_Scope:
-        self[key] = registry._create_scope(key)
-        return self[key]
+    def __missing__(self, key) -> _T_Scope:
+        from .scopes import Scope
+        return Scope(key)
 
-        
+
 @export()
 class Registry:
 
@@ -41,22 +41,32 @@ class Registry:
     def add_scope(self, cls: type[abc.Scope]):
         self.scope_types[cls.conf.name] = cls
 
-    def collect_providers(self, scope, *aliases):
-        reg = self.all_providers
-        if scope != abc.ANY_SCOPE:
-            aliases = (abc.ANY_SCOPE,) + aliases + (scope,)
-            provs = chain(*(reg[a].values() for a in aliases if a in reg))
-        else:
-            provs = reg[scope].values()
-        
-        return defaultdict(lambda: None, ((p.abstract(), p) for p in provs))
-
-    def _create_scope(self, name: str):
-        return self.scope_types[name]()
-
     def get_scope(self, name: str) -> abc.Scope:
         return self.scopes[name]
     
+
+    # def collect_providers(self, scope: _T_Scope, *embeds: _T_Scope):
+    #     # reg = self.all_providers
+    #     embeds
+    #     provs = chain(*(a.providers.values() for a in embeds))
+    #     if scope != abc.ANY_SCOPE:
+    #         embeds = (abc.ANY_SCOPE,) + embeds + (scope,)
+            
+    #     else:
+    #         provs = reg[scope].values()
+        
+    #     return defaultdict(lambda: None, ((p.abstract(), p) for p in provs))
+
+    # def _create_scope(self, name: str):
+    #     from .scopes import ImplicitScope, ScopeType
+
+    #     if name in self.scope_types:
+    #         return self.scope_types[name]()
+    #     elif name in self.all_providers:
+    #         return ScopeType(name, (ImplicitScope,), {})
+        
+    #     raise KeyError(f'Scope not defined: {name}')
+
         
 
 registry = Registry()

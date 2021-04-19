@@ -43,14 +43,14 @@ def alias(abstract: _I,
         **opts) -> 'AliasProvider':
     """Registers an `AliasProvider`
     """
-    return provide(abstract, priority, alias=alias, scope=scope, **opts)
+    return provide(abstract, priority=priority, alias=alias, scope=scope, **opts)
         
 
 
 @export()
 def injectable(priority: int = 1, scope: str = None, *, cache:bool=None, abstract: _I = None, **opts):
     def register(factory: Callable[..., _T]):
-        provide(abstract or factory, priority, factory=factory, scope=scope, cache=cache, **opts)
+        provide(abstract or factory, priority=priority, factory=factory, scope=scope, cache=cache, **opts)
         return factory
 
     return register
@@ -65,25 +65,34 @@ _kwd_cls_map = dict[str, Callable[..., type[_P]]](
 )
 
 @overload
-def provide(abstract: _I, priority: int = 1, /, *, value: _T, scope: str = None, **opts) -> 'ValueProvider': ...
+def provide(*abstracts: _I, priority: int = 1, value: _T, scope: str = None, **opts) -> 'ValueProvider': ...
 @overload
-def provide(abstract: _I, priority: int = 1, /, *, alias: abc.Injectable[_T], scope: str = None, **opts) -> 'AliasProvider': ...
+def provide(*abstracts: _I, priority: int = 1, alias: abc.Injectable[_T], scope: str = None, **opts) -> 'AliasProvider': ...
 @overload
-def provide(abstract: _I, priority: int = 1, /, *, factory: Callable[..., _T],
+def provide(*abstracts: _I, priority: int = 1, factory: Callable[..., _T],
             scope: str = None, cache: bool = None, **opts) -> 'FactoryProvider': ...
 @export()
-def provide(abstract: _I, priority: int = 1, /, *, 
+def provide(*abstracts: _I, priority: int = 1, 
             scope: str = None, cache: bool = None, **kwds) -> _P:
     cls, concrete = next((c(), kwds.pop(k)) for k,c in _kwd_cls_map.items() if k in kwds)
-    return register_provider(cls(abstract, concrete, priority, cache=cache, scope=scope, **kwds))
-        
+
+    rv = {}
+    for abstract in abstracts:
+        if abstract in rv:
+            continue
+
+        rv[abstract] = add_provider(
+            cls(abstract, concrete, priority, cache=cache, scope=scope, **kwds)
+        )
+
+    return rv[abstracts[0]] if len(abstracts) == 1 else rv.values()
 
 
 
 
 
 @export()
-def register_provider(provider: _P, scope: str = None) -> _P:
+def add_provider(provider: _P, scope: str = None) -> _P:
     registry.add_provider(provider, scope)
     return provider
 

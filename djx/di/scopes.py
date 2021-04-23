@@ -166,7 +166,7 @@ class Scope(abc.Scope, metaclass=ScopeType):
 
     @cached_property
     def providers(self):
-        rv = fluentdict(None, ((p.abstract(), p) for p in self.providerstack.values()))
+        rv = fluentdict((p.abstract(), p) for p in self.providerstack.values())
         self.prepare()
         return rv
 

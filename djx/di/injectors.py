@@ -48,10 +48,9 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
         self.__skipself = False
 
     @property
-    def head(self):
-        return self.parent.head if self.__skipself is True else self
+    def final(self):
+        return self.parent.final if self.__skipself is True else self
 
-    @property
     def context(self):
         return self.scope.create_context(self)
 
@@ -164,10 +163,9 @@ class NullInjector:
     
 
     @property
-    def head(self):
+    def final(self):
         return self
  
-    @property
     def context(self):
         return nullcontext(self)
  
@@ -184,12 +182,12 @@ class NullInjector:
         return iter(())
     
     def __getitem__(self, k: T_Injectable) -> None:
-        from .di import current
-        raise abc.InjectorKeyError(f'{k} in {current()!r}')
+        from .di import head
+        raise abc.InjectorKeyError(f'{k} in {head()!r}')
 
     def __missing__(self, k: T_Injectable) -> None:
-        from .di import current
-        raise abc.InjectorKeyError(f'{k} in {current()!r}')
+        from .di import head
+        raise abc.InjectorKeyError(f'{k} in {head()!r}')
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}'

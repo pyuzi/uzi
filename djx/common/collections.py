@@ -1,5 +1,5 @@
 from itertools import chain
-from typing import Generic, Optional, TYPE_CHECKING, TypeVar, overload
+from typing import Generic, Optional, TYPE_CHECKING, TypeVar, Union, overload
 from collections.abc import (
     Hashable, Mapping, MutableSet, Iterable, Set, MutableSequence, 
     Callable, ItemsView, ValuesView
@@ -23,33 +23,63 @@ def _noop(*k):
     return None
 
 
+_FallbackCallable =  Callable[[TK], Optional[TV]]
+_FallbackMap = Mapping[TK, Optional[TV]]
+_FallbackType =  Union[_FallbackCallable[TK, TV], _FallbackMap[TK, TV]] 
 
 
 @export()
 @FluentMapping.register
-class fluentdict(dict[TK, TV]):
+class fallbackdict(dict[TK, TV]):
     """A dict that retruns a fallback value when a missing key is retrived.
     
     Unlike defaultdict, the fallback value will not be set.
     """
-    __slots__ = ('fallback_factory',)
+    __slots__ = ('fallback', '__missing__')
 
-    fallback_factory: Optional[Callable[[TK], Optional[TV]]]
+    fallback: _FallbackType[TK, TV]
 
-    def _set_fallback_factory(self, func=None):
-        self.fallback_factory = _noop if func is None else func
-
-    def __init__(self, fluentdict_fallback: Callable[[TK], Optional[TV]]=None, *args, **kwds):
-        self._set_fallback_factory(fluentdict_fallback)
+    def __init__(self, fallback: _FallbackType[TK, TV], *args, **kwds):
+        if isinstance(fallback, Callable):
+            self.fallback = self.__missing__ = fallback
+        elif isinstance(fallback, Mapping):
+            self.fallback, self.__missing__ = fallback, fallback.__getitem__
+        else:
+            raise TypeError(f'Fallback must be a Mapping or Callable. Got: {type(fallback)}')
         super().__init__(*args, **kwds)
 
-    def __missing__(self, key: TK) -> TV:
-        return self.fallback_factory(key) 
+    def __reduce__(self):
+        return self.__class__, (self.fallback, self)
 
     def copy(self):
-        self.__class__(self.fallback_factory, self)
+        return self.__class__(self.fallback, self)
 
     __copy__ = copy
+
+
+
+
+@export()
+class fluentdict(fallbackdict[TK, TV]):
+    """A dict that retruns a fallback value when a missing key is retrived.
+    
+    Unlike defaultdict, the fallback value will not be set.
+    """
+    __slots__ = ()
+
+    def __init__(self, *args: Union[Iterable[tuple[TK, TV]], Mapping[TK, TV]], **kwds: TV):
+        super().__init__(_noop, *args, **kwds)
+
+    def __reduce__(self):
+        return self.__class__, (self,)
+
+    def copy(self):
+        return self.__class__(self)
+
+    __copy__ = copy
+
+
+
 
 
 

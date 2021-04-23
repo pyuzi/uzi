@@ -373,8 +373,6 @@ class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=Sco
     MAIN: ClassVar[MAIN_SCOPE] = MAIN_SCOPE
     LOCAL: ClassVar[LOCAL_SCOPE] = LOCAL_SCOPE
 
-    context_factory: _T_ContextFactory
-
     __class_getitem__ = classmethod(ScopeType.__getitem__)
 
     def __init__(self) -> None:
@@ -501,7 +499,7 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=
    
     @property
     @abstractmethod
-    def head(self) -> T_Injector:
+    def final(self) -> T_Injector:
         return self
 
     @property
@@ -514,9 +512,10 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=
     def local(self) -> T_Injector:
         return self[Scope[Scope.LOCAL]]
 
-    @property
     @abstractmethod
     def context(self) -> InjectorContext[T_Injector]:
+        """Get a reusable contextmanager for this injector.
+        """
         return self
 
     @abstractmethod

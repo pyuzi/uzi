@@ -1,3 +1,4 @@
+from djx.common.collections import fallbackdict, fluentdict
 import logging
 from functools import update_wrapper
 from contextlib import contextmanager
@@ -20,7 +21,6 @@ __all__ = [
     'injector',
 
 ]
-
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +60,12 @@ def scope(name: str=None):
 
 
 @export()
-def current():
+def head():
     return __inj_ctxvar.get()
 
-
 @export()
-def head():
-    return __inj_ctxvar.get().head
+def final():
+    return __inj_ctxvar.get().final
 
 
 @export()
@@ -79,13 +78,14 @@ def get(key: T_Injectable, default=None) -> T_Injected:
 @export()
 def wrapped(func: Callable[..., T], /, args: tuple=(), keywords:dict={}) -> Callable[..., T]:
     params = signature(func).bind_partial(*args, **keywords)
-    def wrapper(inj: Injector=None) -> T:
+    def wrapper(inj: Injector=None, /, *args, **kwds) -> T:
         if inj is None: inj = __inj_ctxvar.get()
-        return func(*params.inject_args(inj), **params.inject_kwargs(inj))
+        # fallbackdict(params.arguments, kwds)
+        return func(*params.inject_args(inj, args, **kwds), **params.inject_kwargs(inj, **kwds))
     
     update_wrapper(wrapper, func)
 
-    return wrapper
+    return wrapper if params else func
 
 
 

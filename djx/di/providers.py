@@ -145,7 +145,7 @@ class Provider(abc.Provider[T, T_Injectable]):
 
     def __call__(self, inj: abc.Injector) -> T:
         return self.concrete
-#
+
     def __order__(self):
         return (self.priority, self.abstract, symbol(self.scope), self.__pos)
         
@@ -354,5 +354,5 @@ class Inject(Dependency[T_Injectable], Generic[T_Injectable, T_Injected]):
     __slots__ = ()
     
     def __get__(self, typ, obj=None) -> T_Injected:
-        from .di import head
-        return self(head())
+        from .di import final
+        return self(final())

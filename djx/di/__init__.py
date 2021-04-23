@@ -3,14 +3,13 @@ default_app_config = f'{__package__}.apps.DefaultApp'
 
 
 
+
 from .symbols import *
 from .inspect import *
-from .providers import *
+from .providers import * 
 from .injectors import *
-from .scopes import head 
 from .scopes import * 
+from .di import * 
 
-from . import abc
+from . import abc, di
 
-# def __getitem__(key: abc._T_Injectable) -> abc._T_Injected:
-#     return head()[key]

@@ -5,7 +5,7 @@ from functools import partial
 from cachetools.func import lru_cache
 from weakref import WeakSet
 from typing import (
-    Any, Callable, ClassVar, ForwardRef, 
+    Annotated, Any, Callable, ClassVar, ForwardRef, 
     Generic, Literal, Optional, Type, TypeVar, 
     TYPE_CHECKING,
     Union, get_args, get_origin
@@ -16,13 +16,13 @@ from flex.utils.decorators import export
 from flex.utils.proxy import Proxy, ValueProxy
 
 
-from .abc import Injector
+from .abc import Injector, T_Injectable
 
 
 _empty = ins.Parameter.empty
 
 
-_expand_generics = {Union, Literal, type, Type}
+_expand_generics = {Annotated}
 
 
 
@@ -34,34 +34,35 @@ _KEYWORD_ONLY = ins.Parameter.KEYWORD_ONLY
 
 
 
-@export()
-class Depends(type):
+# @export()
+# class Depends(type):
 
-    __depends__: Union[list, Any]
+#     __depends__: Union[list, Any]
 
-    def __class_getitem__(cls, parameters):
-        if not isinstance(parameters, tuple):
-            parameters = (parameters,)
+#     def __class_getitem__(cls, parameters):
+#         if not isinstance(parameters, tuple):
+#             parameters = (parameters,)
         
-        typ, *deps = parameters
-        deps = [*deps] if len(deps) > 1 else deps[0] if deps else typ if isinstance(typ, type) else None
+#         typ, *deps = parameters
+#         deps = [*deps] if len(deps) > 1 else deps[0] if deps else typ if isinstance(typ, type) else None
 
-        return Union[cls('Depends', (), dict(__depends__=deps)), typ]
+#         return Union[cls('Depends', (), dict(__depends__=deps)), typ]
 
-    def __repr__(cls) -> str:
-        return f'Depends({cls.__depends__!r})'
+#     def __repr__(cls) -> str:
+#         return f'Depends({cls.__depends__!r})'
 
-    def __str__(cls) -> str:
-        return f'Depends({cls.__depends__})'
+#     def __str__(cls) -> str:
+#         return f'Depends({cls.__depends__})'
 
 
 
 
 def annotated_deps(obj) -> Union[list, Any]:
+    from .providers import Dependency
     if is_injectable(obj):
         return obj
-    elif isinstance(obj, Depends):
-        return obj.__depends__
+    elif isinstance(obj, Dependency):
+        return obj.deps
     elif get_origin(obj) in _expand_generics:
         for d in get_args(obj):
             if rv := annotated_deps(d):
@@ -84,9 +85,9 @@ def signature(callable: Callable[..., Any], *, follow_wrapped=True) -> 'Injectab
     return InjectableSignature.from_callable(callable, follow_wrapped=follow_wrapped)
 
 
-def _current_injector():
-    from . import current_injector
-    return current_injector()
+def _get_injector():
+    from . import injector
+    return injector
 
 
 
@@ -128,7 +129,6 @@ class BoundArguments(ins.BoundArguments):
 
     _signature: 'InjectableSignature'
 
-
     def apply_injected(self, injector: Injector, *, set_defaults: bool = False) -> None:
         """Set the values for injectable arguments.
 
@@ -165,14 +165,9 @@ class BoundArguments(ins.BoundArguments):
         self.arguments = dict(new_arguments)
 
 
-    def inject_args(self, inj: Injector):
-        # args = []
-        # for param_name, param in self._signature.parameters.items():
+    def inject_args(self, inj: Injector=None):
         blank = len(self.arguments) == 0
         for param_name, param in self._signature.positional_parameters.items():
-            # if param.kind in (_VAR_KEYWORD, _KEYWORD_ONLY):
-            #     break
-            
             if not blank and param_name in self.arguments:
                 arg = self.arguments[param_name]
             elif param.depends is not None:
@@ -184,30 +179,15 @@ class BoundArguments(ins.BoundArguments):
                 break
 
             if param.kind == _VAR_POSITIONAL:
-                # *args
-                yield from arg
+                yield from arg # *args
             else:
-                # plain argument
-                yield arg
+                yield arg # plain positional argument
 
     def inject_kwargs(self, inj: Injector):
         kwargs = {}
-        # kwargs_started = False
         blank = len(self.arguments) == 0
-        # for param_name, param in self._signature.parameters.items():
         for param_name, param in self._signature.keyword_parameters.items():
-            # if not kwargs_started:
-            #     if param.kind not in (_VAR_KEYWORD, _KEYWORD_ONLY):
-            #         continue    
-            #     kwargs_started = True
-                # else:
-                #     if param_name not in self.arguments:
-                #         kwargs_started = True
-                #         continue
-
-            # if not kwargs_started:
-            #     continue
-            
+           
             if not blank and param_name in self.arguments:
                 arg = self.arguments[param_name]
             elif param.depends is not None:
@@ -219,24 +199,29 @@ class BoundArguments(ins.BoundArguments):
                 continue
             
             if param.kind == _VAR_KEYWORD:
-                # **kwargs
-                kwargs.update(arg)
+                kwargs.update(arg) # **kwargs
             else:
-                # plain keyword argument
-                kwargs[param_name] = arg
+                kwargs[param_name] = arg # plain keyword argument
         return kwargs
+    
+    def copy(self):
+        return self.__class__(self._signature, self.arguments.copy())
+
+    __copy__ = copy
 
     def __bool__(self):
         return bool(self._signature.parameters)
 
 
 
+
 @export()
 class InjectableSignature(ins.Signature):
-    __slots__ = ('_pos_params', '_kw_params')
+    __slots__ = ('_pos_params', '_kw_params', '_bound')
 
     _parameter_cls: ClassVar[type[Parameter]] = Parameter
     _bound_arguments_cls: ClassVar[type[BoundArguments]] = BoundArguments
+    _bound: BoundArguments
 
     parameters: Mapping[str, Parameter]
 
@@ -247,7 +232,7 @@ class InjectableSignature(ins.Signature):
         except AttributeError:
             self._pos_params = { n : p 
                     for n,p in self.parameters.items() 
-                        if p.kind in (_VAR_KEYWORD, _KEYWORD_ONLY)
+                        if p.kind not in (_VAR_KEYWORD, _KEYWORD_ONLY)
                 }
             return self._pos_params
 
@@ -258,7 +243,7 @@ class InjectableSignature(ins.Signature):
         except AttributeError:
             self._kw_params = { n : p 
                     for n,p in self.parameters.items() 
-                        if p.kind not in (_VAR_KEYWORD, _KEYWORD_ONLY)
+                        if p.kind in (_VAR_KEYWORD, _KEYWORD_ONLY)
                 }
             return self._kw_params
 
@@ -267,13 +252,22 @@ class InjectableSignature(ins.Signature):
         rv.apply_injected(_injector)
         return rv
 
+    def bound(self) -> BoundArguments:
+        try:
+            return self._bound.copy()
+        except AttributeError:
+            self._bound = super().bind_partial()
+            return self._bound.copy()
 
-    if TYPE_CHECKING:
-        def bind(self, *args: Any, **kwargs: Any) -> BoundArguments:
-            return super().bind(*args, **kwargs)
+    def bind(self, *args: Any, **kwargs: Any) -> BoundArguments:
+        if not args and not kwargs:
+            return self.bound()
+        return super().bind(*args, **kwargs)
 
-        def bind_partial(self, *args: Any, **kwargs: Any) -> BoundArguments:
-            return super().bind_partial(*args, **kwargs)
+    def bind_partial(self, *args: Any, **kwargs: Any) -> BoundArguments:
+        if not args and not kwargs:
+            return self.bound()
+        return super().bind_partial(*args, **kwargs)
         
         
 

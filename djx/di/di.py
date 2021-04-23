@@ -1,61 +1,118 @@
-from typing import (
-    TypeVar,
-    Union
-)
-from contextvars import ContextVar
+import logging
+from functools import update_wrapper
 from contextlib import contextmanager
+from contextvars import ContextVar
+from collections.abc import Callable
 
 
-from flex.utils.decorators import export
 from flex.utils.proxy import Proxy
+from flex.utils.decorators import export
 
-from .abc import Injectable, Injector
+
+from .injectors import Injector, NullInjector
+from .scopes import Scope, ScopeType
+from .inspect import signature
+from .providers import alias, provide, injectable
+from . import abc
+from .abc import T, T_Injected, T_Injector, T_Injectable
 
 __all__ = [
-    'injector'
+    'injector',
+
 ]
 
 
-
-_I = TypeVar('_I', bound=Injector)
-
-InjectorStack = tuple[_I]
+logger = logging.getLogger(__name__)
 
 
-__ctx_stack_var: ContextVar[InjectorStack[_I]] = ContextVar('__ctx_stack_var', default=())
+provide(abc.Injector, alias=Injector, priority=-1, scope=Scope.ANY)
+
+
+__inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar')
+
+__null_inj = NullInjector()
+
+__inj_ctxvar.set(__null_inj)
+
+
+injector = Proxy(__inj_ctxvar.get)
+
+@export()
+@contextmanager
+def scope(name: str=None):
+    cur = __inj_ctxvar.get()
+
+    scope = Scope[name] if name else Scope[Scope.MAIN] \
+        if cur is __null_inj else None
+
+    if scope is None or scope in cur:
+        reset = None
+    elif scope not in cur:
+        cur = scope().create(cur)
+        reset = __inj_ctxvar.set(cur)
+    try:
+        with cur.context as inj:
+            yield inj
+    finally:
+        reset is None or __inj_ctxvar.reset(reset)
+  
 
 
 
-@export
-def get_current_injector(*a) -> Injector:
-    return get_current_stack((None,))[-1]
+@export()
+def current():
+    return __inj_ctxvar.get()
 
 
-def get_current_stack(default=()) -> InjectorStack[_I]:
-    return __ctx_stack_var.get(None) or default
+@export()
+def head():
+    return __inj_ctxvar.get().head
 
 
-injector = Proxy(get_current_injector)
+@export()
+def get(key: T_Injectable, default=None) -> T_Injected:
+    return __inj_ctxvar.get().get(key, default)
 
 
 
 
 @export()
-@contextmanager
-def use_context(*ctx):
+def wrapped(func: Callable[..., T], /, args: tuple=(), keywords:dict={}) -> Callable[..., T]:
+    params = signature(func).bind_partial(*args, **keywords)
+    def wrapper(inj: Injector=None) -> T:
+        if inj is None: inj = __inj_ctxvar.get()
+        return func(*params.inject_args(inj), **params.inject_kwargs(inj))
     
+    update_wrapper(wrapper, func)
 
-    
-    print(f'+++ switch sites {token.old_value} -->', get_all_current_site_pks())
+    return wrapper
 
-    try:
-        yield get_current_site()
-        print(f' - start using site -->', get_all_current_site_pks(), '-->', get_current_site())
-    finally:
-        print(f' - end using site   -->', s := get_all_current_site_pks())
-        _site_pk_ctx_var.reset(token)
 
-    print(f'--- reset sites {s} ---> {token.old_value}')
+
+
+
+@export()
+def wrap(*args, **kwds):
+    def decorate(fn):
+        return wrapped(fn, args, kwds)
+    return decorate
+
+
+
+
+@export()
+def call(func: Callable[..., T], /, args: tuple=(), keywords:dict={}) -> T:
+    inj = __inj_ctxvar.get()
+    params = signature(func).bind_partial(*args, **keywords)
+    return func(*params.inject_args(inj), **params.inject_kwargs(inj))
+
+
+
+
+
+
+
+
 
 
 

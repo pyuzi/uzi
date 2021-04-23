@@ -10,8 +10,9 @@ from typing import (
 from flex.datastructures.enum import IntEnum, auto, unique 
 from flex.utils.decorators import export
 
+from djx.common.abc import Orderable
 
-from .abc import StaticIndentity, Injectable, SupportsIndentity, SupportsOrdering
+from .abc import StaticIndentity, Injectable, SupportsIndentity
 
 
 __all__ = [
@@ -19,7 +20,7 @@ __all__ = [
 ]
 
 
-_S = TypeVar('_S', str, FunctionType, Type, Hashable)
+_S = TypeVar('_S', bound=StaticIndentity)
         
 
 
@@ -67,8 +68,7 @@ def _ordered_id():
 @export()
 @Injectable.register
 @StaticIndentity.register
-@SupportsOrdering.register
-class symbol(Generic[_S]):
+class symbol(Orderable, Generic[_S]):
     """A constant symbol representing given object. 
         
     They are singletons. So, repeated calls of symbol(object) will all
@@ -107,8 +107,8 @@ class symbol(Generic[_S]):
     def __pop(cls, ash, wr = None) -> None:
         return cls.__instances.pop(ash, None)
 
-    def __new__(cls, obj: _S, name = None) -> 'symbol[_S]':
-        if isinstance(obj, symbol):
+    def __new__(cls, obj: _S, name = None):
+        if type(obj) is symbol:
             return obj
        
         ident = identity(obj) 
@@ -161,7 +161,9 @@ class symbol(Generic[_S]):
         return self.__kind
 
     def __eq__(self, x) -> bool:
-        if isinstance(x, symbol):
+        if x is self:
+            return True
+        elif isinstance(x, symbol):
             return self() == x()
         elif isinstance(x, SupportsIndentity):
             return self() == x
@@ -192,21 +194,8 @@ class symbol(Generic[_S]):
         return rv
         
     def __order__(self):
-        return (self.__pos, self())
-        
-    def __ge__(self, x) -> bool:
-        return self.__order__() >= x
-
-    def __gt__(self, x) -> bool:
-        return self.__order__() > x
-
-    def __le__(self, x) -> bool:
-        return self.__order__() <= x
-
-    def __lt__(self, x) -> bool:
-        return self.__order__() < x
-
-
+        return self.__pos, self()
+   
 
 
 class HashIdentity(NamedTuple):

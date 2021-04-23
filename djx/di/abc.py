@@ -1,52 +1,100 @@
+from djx.common.collections import PriorityStack
 import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import (
     Mapping, MutableSequence, ItemsView, ValuesView, MutableMapping, 
-    Sequence, Hashable, Container
+    Sequence, Hashable, Container, Callable
 )
 from collections import defaultdict
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, ExitStack
 from itertools import chain
 from types import FunctionType, GenericAlias, MethodType
-from typing import Any, Callable, ClassVar, Iterable, Literal, Optional, Protocol, Generic, TYPE_CHECKING, Type, TypeVar, Union, overload, runtime_checkable
-import typing
+from typing import (
+    Any, ClassVar, Iterable, Literal, Optional, Protocol,
+    Generic, TYPE_CHECKING, Type, TypeVar, Union, cast, overload, runtime_checkable, 
+)
 
 from flex.utils.decorators import export
+from flex.utils import text
+
+from djx.common.abc import Orderable
+
 
 
 __all__ = [
-    'ANY_SCOPE',
-    'MAIN_SCOPE',
+   
 ]
 
 
 logger = logging.getLogger(__name__)
 
 
-_T_Injected = TypeVar("_T_Injected")
-_T_Identity = TypeVar("_T_Identity")
-_T_Injected_Ctx = TypeVar("_T_Injected_Ctx")
-_T_Injected_CtxMan = TypeVar("_T_Injected_CtxMan", bound='InjectedContextManager')
+T = TypeVar("T")
+T_co = TypeVar('T_co', covariant=True)  # Any type covariant containers.
+T_Identity = TypeVar("T_Identity")
+T_Injected = TypeVar("T_Injected")
 
+T_Injector = TypeVar('T_Injector', bound='Injector', covariant=True)
+T_Injectable = TypeVar('T_Injectable', bound='Injectable', covariant=True)
+
+T_Injected_Ctx = TypeVar("T_Injected_Ctx", bound='InjectedContextManager')
+T_Injected_CtxMan = TypeVar("T_Injected_CtxMan", bound='InjectedContextManager')
+
+T_Context = TypeVar('T_Context', bound='InjectorContext')
 
 
 _T_Setup = TypeVar('_T_Setup')
 _T_Setup_R = TypeVar('_T_Setup_R')
-_T_Scope = TypeVar('_T_Scope', bound='Scope')
-_T_Conf = TypeVar('_T_Conf', bound='ScopeConfig')
-
-_T_Injector = TypeVar('_T_Injector', bound='Injector')
-_T_Provider = TypeVar('_T_Provider', bound='Provider')
-_T_Injectable = TypeVar('_T_Injectable', bound='Injectable')
+_T_Scope = TypeVar('_T_Scope', bound='Scope', covariant=True)
+_T_Conf = TypeVar('_T_Conf', bound='ScopeConfig', covariant=True)
 
 
-_T_Cache = MutableMapping['StaticIndentity', _T_Injected]
-_T_Providers = Mapping['StaticIndentity', Optional[_T_Provider]]
+T_Provider = TypeVar('T_Provider', bound='Provider', covariant=True)
+T_Resolver = TypeVar('T_Resolver', bound='Resolver', covariant=True)
+
+_T_Cache = MutableMapping['StaticIndentity', T_Injected]
+_T_Providers = Mapping['StaticIndentity', Optional[T_Provider]]
+
+_T_CacheFactory = Callable[..., _T_Cache]
+_T_ContextFactory = Callable[..., T_Context]
+_T_InjectorFactory = Callable[[_T_Scope, 'Injector'], T_Injector]
 
 
-ANY_SCOPE = '__any__'
-MAIN_SCOPE = '__main__'
+@export()
+class ResolverFactory(ABCMeta,Generic[T_Resolver]):
+    """ResolverFactory Object"""
+    __slots__ = ()
+
+    # def __class_getitem__(cls, params):
+    #     if isinstance(params, (list, type(...))):
+    #         return Callable.__class_getitem__(cls, (params, T_Resolver))
+    #     else:
+    #         return Callable.__class_getitem__(cls, params)
     
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls is ResolverFactory:
+            return hasattr(C, '__call__')
+        return NotImplemented
+
+
+
+@export()
+class Resolver(Callable[[T_Injector], T_Injected], Generic[T_Injectable, T_Injected, T_Injector], metaclass=ResolverFactory):
+    """Resolver Object"""
+    __slots__ = ()
+
+    @abstractmethod
+    def __call__(self, inj: T_Injector) -> T_Injected: ...
+    
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls is Resolver:
+            return hasattr(C, '__call__')
+        return NotImplemented
+
+
+
 
 
 @export()
@@ -70,7 +118,7 @@ class CanSetup(Generic[_T_Setup, _T_Setup_R], metaclass=ABCMeta):
     @classmethod
     def __subclasshook__(cls, C):
         if cls is CanSetup:
-            return _check_methods(C, 'setup')
+            return hasattr(C, 'setup')
         return NotImplemented
 
 
@@ -79,14 +127,17 @@ class CanTeardown(Generic[_T_Setup], metaclass=ABCMeta):
 
     __slots__ = ()
 
+    def setup(self, obj: _T_Setup):
+        return obj
+
     @abstractmethod
     def teardown(self, *obj: _T_Setup):
         pass
     
     @classmethod
     def __subclasshook__(cls, C):
-        if cls is CanSetup:
-            return _check_methods(C, 'teardown')
+        if cls is CanTeardown:
+            return hasattr(C, 'teardown')
         return NotImplemented
 
 
@@ -99,36 +150,10 @@ class CanSetupAndTeardown(CanSetup[_T_Setup, _T_Setup_R], CanTeardown[_T_Setup],
   
     @classmethod
     def __subclasshook__(cls, C):
-        if cls is CanSetup:
-            return _check_methods(C, 'setup', 'teardown')
+        if cls is CanSetupAndTeardown:
+            return hasattr(C, 'setup') and hasattr(C, 'teardown')
         return NotImplemented
 
-
-
-
-@export()
-class SupportsOrdering(metaclass=ABCMeta):
-    """SupportsOrdering Object"""
-
-    @abstractmethod
-    def __ge__(self, x) -> bool:
-        return NotImplemented
-
-    @abstractmethod
-    def __gt__(self, x) -> bool:
-        return NotImplemented
-
-    @abstractmethod
-    def __le__(self, x) -> bool:
-        return NotImplemented
-
-    @abstractmethod
-    def __lt__(self, x) -> bool:
-        return NotImplemented
-
-    @abstractmethod
-    def __eq__(self, x) -> bool:
-        return NotImplemented
 
 
 @export()
@@ -142,7 +167,7 @@ class SupportsIndentity(Hashable):
 
 
 @export()
-class StaticIndentity(SupportsIndentity, Generic[_T_Identity]):
+class StaticIndentity(Orderable, SupportsIndentity, Generic[T_Identity]):
 
     __slots__ = ()
 
@@ -160,26 +185,29 @@ StaticIndentity.register(frozenset)
 
 
 @export()
-class Injectable(SupportsIndentity, Generic[_T_Injected]):
+class Injectable(SupportsIndentity, Generic[T_Injected]):
 
     __slots__ = ()
 
 
+Injectable.register(str)
 Injectable.register(type)
+Injectable.register(tuple)
 Injectable.register(MethodType)
 Injectable.register(FunctionType)
+Injectable.register(GenericAlias)
 
 
 
 
 @export()
-class InjectedContextManager(Generic[_T_Injected_Ctx], metaclass=ABCMeta):
+class InjectedContextManager(Generic[T_Injected_Ctx], metaclass=ABCMeta):
     
     __slots__ = ()
 
     __class_getitem__ = classmethod(GenericAlias)
     
-    def __enter__(self: _T_Injected_Ctx) -> _T_Injected_Ctx:
+    def __enter__(self: T_Injected_Ctx) -> T_Injected_Ctx:
         """Return `self` upon entering the runtime context."""
         return self
 
@@ -192,64 +220,215 @@ class InjectedContextManager(Generic[_T_Injected_Ctx], metaclass=ABCMeta):
 
 
 @export()
-class InjectableContextManager(Injectable[_T_Injected_CtxMan], Generic[_T_Injected_Ctx, _T_Injected_CtxMan]):
+class InjectableContextManager(Injectable[T_Injected_CtxMan], Generic[T_Injected_Ctx, T_Injected_CtxMan]):
     __slots__ = ()
     
 
 
 
 @export()
-class ScopeConfig(Generic[_T_Injector], metaclass=ABCMeta):
+class ScopeConfig(Orderable, Generic[T_Injector, T_Context], metaclass=ABCMeta):
     
     name: ClassVar[str]
     priority: ClassVar[int]
-    injector_class: ClassVar[type[_T_Injector]]
-    cache_class: ClassVar[type[_T_Cache]]
+    is_abstract: ClassVar[bool]
     depends: ClassVar[Sequence[str]]
-    embed_only: ClassVar[bool]
-    implicit: ClassVar[bool]
+    embedded: ClassVar[bool]
 
+    cache_factory: ClassVar[_T_CacheFactory]
+    context_factory: ClassVar[_T_ContextFactory]
+    injector_factory: ClassVar[_T_InjectorFactory]
+   
 
 
 
 @export()
-class Scope(SupportsOrdering, CanSetupAndTeardown[_T_Injector], Container, Generic[_T_Injector, _T_Conf, _T_Provider]):
+@Injectable.register
+@StaticIndentity.register
+class ScopeAlias(GenericAlias):
+
+    __slots__ = ()
+
+    # def __init__(self, origin: 'ScopeType', args) -> None:
+    #     if type(args) is ScopeAlias:
+    #         args = args.__args__
+    #     GenericAlias.__init__(self, origin, args)
+
+    @property
+    def name(self):
+        return self.__args__[0]
+
+    def __call__(self):
+        return super().__call__(*self.__args__)
+
+    def __eq__(self, other):
+        if isinstance(other, GenericAlias):
+            return isinstance(other.__origin__, ScopeType) and self.__args__ == other.__args__
+
+    def __hash__(self):
+        return hash((ScopeType, self.__args__))
+
+
+@export()
+@Orderable.register
+class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf]):
+    """
+    Metaclass for Scope
+    """
+    __types: PriorityStack[str, _T_Scope] = PriorityStack()
+    config: _T_Conf
+
+    __class_getitem__ = classmethod(GenericAlias)
+    
+    @classmethod
+    def __prepare__(mcls, cls, bases, **kwds):
+        # check that previous enum members do not exist
+        return dict(__instance__=None)  
+
+    def __init__(cls: 'ScopeType[_T_Scope, _T_Conf]', name, bases, dct, **kwds):
+        super().__init__(name, bases, dct, **kwds)
+
+        assert cls.__instance__ is None, (
+            f'Scope class should not define __instance__ attribute'
+        )
+
+
+    def _get_scope_name(cls: 'ScopeType[_T_Scope, _T_Conf]', val):
+        return val.name if type(val) is ScopeAlias \
+            else val.config.name if isinstance(val, ScopeType) \
+            else text.snake(val) 
+
+    def _is_abstract(cls: 'ScopeType[_T_Scope, _T_Conf]', val=None):
+        return not hasattr(val or cls, 'config') or (val or cls).config.is_abstract
+
+    def _make_implicit_type(cls, name):
+        return cls.__class__(name, cls._implicit_bases(), dict())
+
+    def __call__(cls, name, *args,  **kwds):
+        if type(name) is cls:
+            return name
+        name = cls._get_scope_name(name)
+        if name in ScopeType.__types:
+            cls = ScopeType.__types[name]
+        else:
+            cls = cls._make_implicit_type(name)
+        
+        if cls.config.is_abstract:
+            raise TypeError(f'Cannot create abstract scope {cls}')
+        elif cls.__instance__ is not None:
+            return cls.__instance__
+
+        cls.__instance__ = type.__call__(cls, *args, **kwds)
+        return cls.__instance__
+  
+    def __getitem__(cls, params=...):
+        if type(params) is ScopeAlias:
+            params = params.__args__
+        elif isinstance(params, (ScopeType, str)):
+            params = cls._get_scope_name(params)
+        elif isinstance(params.__class__, ScopeType):
+            params = cls._get_scope_name(params.__class__)
+        elif params in (..., (...,), [...], Any, (Any,),[Any], (), []):
+            params = ANY_SCOPE        
+        return ScopeAlias(cls, params)
+
+    def register(cls, subclass: type[T]) -> type[T]:
+        super().register(subclass)
+        cls._register_scope_type(subclass)
+        return subclass
+
+    def _register_scope_type(cls, subclass: type[T] = None) -> type[T]:
+        if not cls._is_abstract(subclass):
+            ScopeType.__types[cls._get_scope_name(subclass or cls)] = subclass or cls
+        return cls
+
+    def __order__(cls, self=...):
+        return cls.config
+        
+    __gt__ = Orderable.__gt__
+    __ge__ = Orderable.__ge__
+    __lt__ = Orderable.__lt__
+    __le__ = Orderable.__le__
+
+
+
+ANY_SCOPE = 'any'
+MAIN_SCOPE = 'main'
+LOCAL_SCOPE = 'local'
+
+@export()
+class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=ScopeType):
     
     __slots__ = ()
 
-    conf: ClassVar[_T_Conf]
+    config: ClassVar[_T_Conf]
 
     name: str
     providers: _T_Providers
-    providerstack: 'PriorityStack[StaticIndentity, _T_Provider]'
+    providerstack: 'PriorityStack[StaticIndentity, T_Provider]'
     peers: list['Scope']
-    embed_only: bool
+    embedded: bool
+
     ANY: ClassVar[ANY_SCOPE] = ANY_SCOPE
     MAIN: ClassVar[MAIN_SCOPE] = MAIN_SCOPE
+    LOCAL: ClassVar[LOCAL_SCOPE] = LOCAL_SCOPE
+
+    context_factory: _T_ContextFactory
+
+    __class_getitem__ = classmethod(ScopeType.__getitem__)
+
+    def __init__(self) -> None:
+        assert self.__class__.__instance__ is None, (
+                f'Scope are singletons. {self.__instance__} already created.'
+            )
 
     def ready(self) -> None:
-        pass
+        ...
     
+    @classmethod
+    def __order__(cls, self=...):
+        return cls.config
+       
+    @classmethod
     @abstractmethod
-    def create(self, parent: _T_Injector) -> _T_Injector:
-        return self.conf.injector_class(self, parent)
+    def _implicit_bases(cls):
+        ...
+  
+    @abstractmethod
+    def create(self, parent: 'Injector') -> T_Injector:
+        ...
+
+    def __reduce__(self) -> None:
+        return self.__class__, self.name
+
+    def __eq__(self, x) -> bool:
+        if isinstance(x, ScopeType):
+            return x is self.__class__
+        elif isinstance(x, Scope):
+            return x.__class__ is self.__class__
+        else:
+            return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.__class__)
+
 
 @export()
-class CanSetupSope(CanSetup[_T_Scope]):
+class CanSetupScope(CanSetup[_T_Scope]):
     __slots__ = ()
 
 
 
 
 @export()
-class CanSetupAndTeardownSope(CanSetupSope[_T_Scope], CanTeardown[_T_Scope]):
+class CanSetupAndTeardownScope(CanSetupScope[_T_Scope], CanTeardown[_T_Scope]):
     __slots__ = ()
 
 
 
 
 @export()
-class Provider(SupportsOrdering, CanSetupAndTeardownSope[_T_Scope], Generic[_T_Injected, _T_Injectable, _T_Scope], metaclass=ABCMeta):
+class Provider(Resolver, Orderable, CanSetupAndTeardownScope[_T_Scope], Generic[T_Injected, T_Injectable, _T_Scope], metaclass=ABCMeta):
     
     __slots__ = (
         'abstract', 'concrete', 'scope', 'cache', 
@@ -258,16 +437,16 @@ class Provider(SupportsOrdering, CanSetupAndTeardownSope[_T_Scope], Generic[_T_I
     
     _default_scope: ClassVar[str] = Scope.MAIN
 
-    abstract: StaticIndentity[_T_Injectable]
+    abstract: StaticIndentity[T_Injectable]
 
     scope: str
     priority: int
-    concrete: _T_Injected
+    concrete: T_Injected
     cache: bool
     options: dict
 
     @abstractmethod
-    def provide(self, inj: 'Injector') -> _T_Injected:
+    def __call__(self, inj: 'Injector') -> T_Injected:
         return NotImplemented
 
     def setup(self, scope: _T_Scope):
@@ -282,191 +461,115 @@ class Provider(SupportsOrdering, CanSetupAndTeardownSope[_T_Scope], Generic[_T_I
         return f'{self.__class__.__name__}({self.abstract}, at="{self.scope}")'
 
 
+@export()
+class InjectorKeyError(KeyError):
+    pass
 
 @export()
-class Injector(InjectedContextManager, CanSetupAndTeardown, Mapping[Injectable[_T_Injected], _T_Injected], Generic[_T_Scope, _T_Injected, _T_Provider, _T_Injector]):
+class InjectorContext(Generic[T_Injector], metaclass=ABCMeta):
 
-    __slots__ = ('scope', 'parent', 'cache', 'providers', '_exits', '_lvl')
+    __slots__ = ('injector', '__issetup')
 
-    scope: _T_Scope
-    parent: _T_Injector
-    cache: _T_Cache[_T_Injected]
-    providers: _T_Providers[_T_Provider]
+    injector: T_Injector
+    __issetup: bool
 
-    _exits: int
-    _lvl: int
+    def __init__(self, injector: T_Injector):
+        self.injector = injector
+        self.__issetup = None
 
-    def __init__(self, scope: _T_Scope, parent: _T_Injector, providers: _T_Providers=None, cache: _T_Cache=None) -> None:
-        self.scope = scope
-        self.parent = parent
-        self._lvl = 0 if parent is None else parent._lvl + 1 
-        self._exits = 0
-        self.providers = providers
-        self.cache = cache
-
-    @property
-    def head(self):
-        return self
-
-    @property
-    def is_ready(self):
-        return self._exits > 0
-
-    def setup(self: _T_Injector) -> _T_Injector:
-        if self.is_ready:
-            raise RuntimeError(f'Injector {self} has already setup')
-        self.scope.setup(self)
-
-    def teardown(self):
-        if not self.is_ready:
-            raise RuntimeError(f'Injector {self} has not been setup')
-        self.scope.teardown(self)
-
-    def __str__(self) -> str:
-        lvl = self._lvl
-        return f'{self.__class__.__name__}({lvl=}, {self.scope})'
-
-    def __repr__(self) -> str:
-        return f'<{self} parent={self.parent!r}>'
-
-    def __contains__(self, x) -> bool:
-        if isinstance(x, Scope):
-            return x in self.scope or x in self.parent
-        elif self.is_ready:
-            return x in self.providers or x in self.parent
-        else:
-            return False
-
-    def __bool__(self) -> bool:
-        return self.is_ready and bool(self.providers)
-
-    def __len__(self) -> bool:
-        return len(self.providers)
-
-    def __iter__(self) -> bool:
-        return iter(self.providers)
-
-    def __enter__(self):
-        if self._exits == 0:
-            self.parent.__enter__()
-            self.setup()
-        self._exits += 1
-        return self
+    def __enter__(self) -> T_Injector:
+        if self.__issetup is None:
+            self.__issetup = bool(self.injector.setup())
+        return self.injector
 
     def __exit__(self, *exc):
-        if self._exits == 1:
-            self.teardown()
-            self.parent.__exit__(*exc)
-
-        self._exits -= 1
-        assert self._exits >= 0, f'Context exited more time than it was entered'
+        if self.__issetup is True:
+            self.__issetup = False
+            self.injector.exitstack.__exit__(*exc)
 
 
-
-
-
-
-
-_T_Stack_K = TypeVar('_T_Stack_K')
-_T_Stack_S = TypeVar('_T_Stack_S', bound=MutableSequence)
-_T_Stack_V = TypeVar('_T_Stack_V', bound=SupportsOrdering)
 
 
 @export()
-class PriorityStack(dict[_T_Stack_K, _T_Stack_S], Generic[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
+class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=ABCMeta):
+
+    __slots__ = ()
+
+    scope: _T_Scope
+    parent: T_Injector
+    level: int
+   
+    @property
+    @abstractmethod
+    def head(self) -> T_Injector:
+        return self
+
+    @property
+    def main(self) -> T_Injector:
+        """The injector for 
+        """
+        return self[Scope[Scope.MAIN]]
+
+    @property
+    def local(self) -> T_Injector:
+        return self[Scope[Scope.LOCAL]]
+
+    @property
+    @abstractmethod
+    def context(self) -> InjectorContext[T_Injector]:
+        return self
+
+    @abstractmethod
+    def setup(self: T_Injector) -> bool:
+        ...
     
-    __slots__= ('stackfactory',)
+    @abstractmethod
+    def close(self) -> bool:
+        ...
 
-    if TYPE_CHECKING:
-        stackfactory: Callable[..., _T_Stack_S] = list[_T_Stack_V]
+    @abstractmethod
+    def enter(self, cm: InjectedContextManager[T_Injected]) -> T_Injected:
+        """Enters the supplied context manager.
 
-    def __init__(self, _stackfactory: Callable[..., _T_Stack_S]=list, /, *args, **kwds) -> None:
-        self.stackfactory = _stackfactory or list
-        super().__init__(*args, **kwds)
+        If successful, also pushes its __exit__ method as an exit callback and
+        returns the result of the __enter__ method. 
+        
+        See also: `Injector.onexit()`
+        """
+        ...
 
-    @overload
-    def remove(self, k: _T_Stack_K, val: _T_Stack_V):
-        self[k:].remove(val)
+    @abstractmethod
+    def onexit(self, cb: Union[InjectedContextManager, Callable]):
+        """Registers an exit callback. Exit callbacks are called when the 
+        injector closes.
 
-    def setdefault(self, k: _T_Stack_V, val: _T_Stack_V) -> _T_Stack_V:
-        stack = super().setdefault(k, self.stackfactory())
-        stack or stack.append(val)
-        return stack[-1]
+        Callback can be a context manager or callable with the standard 
+        `ContextManager's` `__exit__` method signature.
+        """
+        ...
 
-    def copy(self):
-        return type(self)(self.stackfactory, ((k, self[k:][:]) for k in self))
+    @abstractmethod
+    def __contains__(self, x: T_Injectable) -> bool: 
+        ...
+
+    @abstractmethod
+    def __bool__(self) -> bool:
+        ...
+
+    @abstractmethod
+    def __len__(self) -> int: 
+        ...
+
+    @abstractmethod
+    def __getitem__(self, k: T_Injectable) -> T_Injected: 
+        ...
     
-    __copy__ = copy
+    @abstractmethod
+    def __setitem__(self, k: T_Injectable, val: T_Injected): 
+        ...
 
-    get_all = dict[_T_Stack_K, _T_Stack_S].get
-    def get(self, k: _T_Stack_K, default=None):
-        try:
-            return self[k]
-        except (KeyError, IndexError):
-            return default
+    @abstractmethod
+    def __delitem__(self, k: T_Injectable): 
+        ...
+   
 
-    all_items = dict[_T_Stack_K, _T_Stack_S].items
-    def items(self):
-        return ItemsView[tuple[_T_Stack_K, _T_Stack_V]](self)
-
-    def merge(self, __PriorityStack_arg=None, /, **kwds):
-        
-        if isinstance(__PriorityStack_arg, PriorityStack):
-            items = chain(__PriorityStack_arg.all_items(), kwds.items())
-        elif isinstance(__PriorityStack_arg, Mapping):
-            items = chain(__PriorityStack_arg.items(), kwds.items())
-        elif __PriorityStack_arg is not None:
-            items = chain(__PriorityStack_arg, kwds.items())
-        else:
-            items = kwds.items()
-
-        for k,v in items:
-            stack = super().setdefault(k, self.stackfactory())
-            stack.extend(v)
-            stack.sort()
-
-    replace = dict.update
-    def update(self, __PriorityStack_arg=None, /, **kwds):
-        if isinstance(__PriorityStack_arg, Mapping):
-            items = chain(__PriorityStack_arg.items(), kwds.items())
-        elif __PriorityStack_arg is not None:
-            items = chain(__PriorityStack_arg, kwds.items())
-        else:
-            items = kwds.items()
-
-        for k,v in items:
-            self[k] = v
-
-    all_values = dict[_T_Stack_K, _T_Stack_S].values
-    def values(self):
-        return ValuesView[_T_Stack_V](self)
-        
-    @overload
-    def __getitem__(self, k: _T_Stack_K) -> _T_Stack_V: ...
-    @overload
-    def __getitem__(self, k: slice) -> _T_Stack_S: ...
-    def __getitem__(self, k):
-        if isinstance(k, slice):
-            return super().__getitem__(k.start)
-        else:
-            return super().__getitem__(k)[-1]
-
-    def __setitem__(self, k: _T_Stack_K, val: _T_Stack_V):
-        stack = super().setdefault(k, self.stackfactory())
-        stack.append(val)
-        stack.sort()
-
-
-
-
-def _check_methods(C, *methods):
-    mro = C.__mro__
-    for method in methods:
-        for B in mro:
-            if method in B.__dict__:
-                if B.__dict__[method] is None:
-                    return NotImplemented
-                break
-        else:
-            return NotImplemented
-    return True

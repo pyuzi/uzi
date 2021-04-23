@@ -1,13 +1,14 @@
 import typing as t
 from dataclasses import dataclass
 
+from statistics import median, median_high, mean
 
 import pytest
 
 from ...providers import (
     alias, provide, injectable
 )
-from ... import symbol, Depends, Scope
+from ... import symbol, Depends, Scope, Inject, Injector
 from ...symbols import _ordered_id
 
 
@@ -28,6 +29,7 @@ class LocalScope(Scope):
 
     class Config:
         name = 'local'
+        embedded = True
 
         
 
@@ -41,18 +43,20 @@ class AbcScope(Scope):
 
         
 
-@injectable(cache=True, scope=Scope.ANY)
+@injectable(cache=True)
+@injectable(cache=False, scope=Scope.MAIN)
 class Foo:
     
-    def __init__(self, name: Depends[str, 'foo.name'], user: Depends[str, user_str]) -> None:
-        self.name = f'{name}  -> #{_ordered_id()}'
+    def __init__(self, name: Depends[str, 'foo.name'], user: Depends[str, user_str],inj: Injector) -> None:
+        self.name = f'{name} -> #{_ordered_id()}'
         self.user = user
+        self.inj = inj
     
     def __repr__(self):
-        return f'Foo({self.name!r} u={self.user!r})'
+        return f'Foo({self.name!r} u={self.user!r} inj={self.inj})'
     
     def __str__(self):
-        return f'Foo({self.name!r} u={self.user!r})'
+        return f'Foo({self.name!r} u={self.user!r} inj={self.inj!r})'
 
 
 provide('foo.name', value='My Name Is Foo!!')
@@ -62,16 +66,18 @@ def user_func_injectable(user: Depends[str, user_str]):
     return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
-@injectable(cache=False, scope=Scope.ANY)
+@injectable(cache=True)
 class Baz:
     pass
 
 
 
-@injectable(cache=False)
+@injectable(cache=False, scope='abcd')
 class Bar:
 
-    def __init__(self, foo: Foo, user: Depends[user_func_injectable], sym: Depends[str, user_symb], baz: Baz) -> None:
+    infoo = Inject(Foo, Scope.MAIN)
+
+    def __init__(self, foo: Foo, user: Depends[str, user_func_injectable], sym: Depends[str, user_symb], baz: Baz) -> None:
         self.foo = foo
         self.user = user
         self.sym = sym
@@ -97,6 +103,12 @@ def user_func_str():
     return f'user_func_str {user_str} -> #{_ordered_id()}'
     
 
+
+
+
+def ops_per_sec(n, *vals):
+    val = mean(vals)
+    return n * (1/val), val
 
 
 

@@ -4,7 +4,7 @@ import inspect as ins
 import pytest
 from typing import Optional, Union
 
-from ...inspect import  Depends, BoundArguments, signature, InjectableSignature, Parameter
+from ...inspect import  BoundArguments, signature, InjectableSignature, Parameter
 from ...symbols import symbol
 
 
@@ -41,30 +41,22 @@ class Baz(Bar):
 
 
 
-# def foo(a: xDepends(Foo, symbol(Foo)), 
-#         b: Optional['Bar'], 
-#         c: Union[Baz, tuple, list], 
-#         o: Optional[dict]=None, 
-#         d: xDepends(Union[Foo], symbol('raw.bar'), Bar) = None):
-#     pass
-
-
-
-def foo(a: Depends[Foo], 
+def foo(a: Foo, 
         b: Optional['Bar'], 
         c: Union[Baz, tuple, list], 
         o: Optional[dict]=None, 
-        d: Depends[list, Foo, symbol('raw.bar'), Bar] = None):
+        d: Bar = None):
     pass
+
 
 
 class SignatureTests:
 
     def test_basic(self):
         sig = signature(foo)
-        assert isinstance(sig, InjectableSignature)
-
         print(f'{sig=!r}')
+        assert isinstance(sig, InjectableSignature)
+        assert sig is signature(foo) is signature(foo)
 
         for n, p in sig.parameters.items():
             assert isinstance(p, Parameter)
@@ -73,8 +65,10 @@ class SignatureTests:
         args = sig.bind_partial()
         assert isinstance(args, BoundArguments)
 
+        assert isinstance(sig.bound(), BoundArguments)
 
-        assert signature(foo) is sig
+        assert isinstance(sig._bound, BoundArguments) 
+        assert sig._bound is sig._bound
 
         assert 1, '\n'
  

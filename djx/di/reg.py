@@ -28,18 +28,17 @@ class Registry:
 
     all_providers: defaultdict[str, abc.PriorityStack]
     scope_types: abc.PriorityStack[str, type[abc.Scope]]
-    scopes: _ScopeDefaultdict[_T_Scope]
+    # scopes: _ScopeDefaultdict[_T_Scope]
 
     def __init__(self):
         self.all_providers = defaultdict(abc.PriorityStack)
         self.scope_types = abc.PriorityStack()
-        self.scopes = _ScopeDefaultdict()
     
     def add_provider(self, provider: abc.Provider, scope: str = None):
         self.all_providers[scope or provider.scope][provider.abstract] = provider
     
     def add_scope(self, cls: type[abc.Scope]):
-        self.scope_types[cls.conf.name] = cls
+        self.scope_types[cls.config.name] = cls
 
     def get_scope(self, name: str) -> abc.Scope:
         return self.scopes[name]

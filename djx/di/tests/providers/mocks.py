@@ -43,8 +43,7 @@ class AbcScope(Scope):
 
         
 
-@injectable(cache=True)
-@injectable(cache=False, scope=Scope.MAIN)
+@injectable(cache=True, scope=Scope.MAIN)
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], user: Depends[str, user_str],inj: Injector) -> None:
@@ -66,7 +65,7 @@ def user_func_injectable(user: Depends[str, user_str]):
     return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
-@injectable(cache=True)
+@injectable(cache=False)
 class Baz:
     pass
 

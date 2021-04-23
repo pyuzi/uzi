@@ -66,17 +66,18 @@ class SymbolTests:
                     mkbar = lambda: Bar(mkfoo(), mkfunc(), user_func_symb(), mkbaz())
                     injfoo = lambda: injector[Foo]
                     injbar = lambda: inj[Bar]
+                    injbafoo = lambda: inj[Bar].infoo
                     injbaz = lambda: inj[Baz]
                     inj404 = lambda: inj['404']
 
 
-                    _n = int(5e4)
+                    _n = int(2.5e3)
                     self.run('Baz', mkbaz, injbaz, _n)
                     self.run('Foo', mkfoo, injfoo, _n)
                     self.run('Bar', mkbar, injbar, _n)
-                    self.run('404', mkbaz, inj404, _n)
 
-                    print(f'Bar --->\n  {injbar()}\n  {injbar()}\n  {injbar()}\n  {injbar()!r}')
+                    print(f'Bar --->\n  {injbafoo()}\n  {injbafoo()}\n  {injbar()}\n  {injbar()!r}')
+                    self.run('404', mkbaz, inj404, _n)
         assert 0
         return
 
@@ -92,7 +93,7 @@ class SymbolTests:
         # print('')
 
 
-    def run(self, lbl, mfn, ifn, n=int(1e4), rep=7, r=3):
+    def run(self, lbl, mfn, ifn, n=int(1e4), rep=3, r=3):
         mres, mt = ops_per_sec(n, *repeat(mfn, number=n, repeat=rep, globals=locals()))
         ires, it = ops_per_sec(n, *repeat(ifn, number=n, repeat=rep, globals=locals()))
         if mres > ires:

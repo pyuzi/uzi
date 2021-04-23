@@ -91,7 +91,7 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
 
     def _setup_exitstack(self):
         self.exitstack = self.scope.create_exitstack(self) 
-        self.exitstack.enter_context(self.parent.context)
+        self.exitstack.enter_context(self.parent.context())
         self.exitstack.callback(self.close)
 
     def __contains__(self, x) -> bool:
@@ -135,12 +135,19 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
             return rv
         elif k is self.__class__:
             return self
+        elif (t := type(k)) is tuple:
+            return [self.__getitem__(i) for i in k]
+        elif t is dict:
+            return {n : self.__getitem__(i) for n,i in k.items()}
         else:
-            try:
-                self.__skipself = True
-                return self.parent.__getitem__(k)
-            finally:
-                self.__skipself = False
+            return self.__missing__(k)
+            
+    def __missing__(self, k: T_Injectable) -> T_Injected:
+        try:
+            self.__skipself = True
+            return self.parent.__getitem__(k)
+        finally:
+            self.__skipself = False
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}#{self.level}({self.scope.name!r})'

@@ -252,8 +252,8 @@ class Depends:
         Depends[InjectableType]
         Depends[typ, Injectable] # type(injector[Injectable]) = typ
 
-        Depends[type, injectable, 'scope'] # type(injector[Scope('scope')][injectable]) == typ
-        Depends[typ, ..., 'scope'] ==  Depends[typ, typ, 'scope']  # type(injector[Scope('scope')][typ]) == typ 
+        Depends[type, Scope['scope'], injectable] # type(injector[Scope('scope')][injectable]) == typ
+        Depends[typ, Scope['scope']] ==  Depends[typ, typ, 'scope']  # type(injector[Scope('scope')][typ]) == typ 
     """
 
     __slots__ = ()
@@ -264,28 +264,25 @@ class Depends:
     def __class_getitem__(cls, params):
         scope = None
         if not isinstance(params, tuple):
-            tp = deps = params
-        elif(lp := len(params)) == 3:
-            tp, deps, scope = params
-        elif lp == 2:
+            deps = ((tp := params),)
+        elif(lp := len(params)) == 1:
+            tp = (deps := params)[0]
+        elif lp > 1:
             if isinstance(params[1], ScopeAlias):
-                tp, deps, scope = params[0], params[0], params[1]
+                tp, scope, *deps = params
             else:
-                tp, deps = params
-        elif lp == 1:
-            tp = deps = params[0]
-        else:
-            deps = None
+                tp, *deps = params
+        
 
-        deps is ... and (deps := tp)
+        deps or (deps := (tp,))
         isinstance(deps, list) and (deps := tuple(deps))
-
-        if (deps is None or not isinstance(deps, (list, Injectable, Dependency))) \
-            or (scope and not isinstance(scope, ScopeAlias)):
+        _dep_types = (list, dict, Injectable, Dependency)
+        if any(not isinstance(d, _dep_types) for d in deps):
             raise TypeError("Depends[...] should be used "
                             "with at least one type argument and "
-                            "an optional injection key (an Injectable) and "
-                            "an optional scope name (a str).")
+                            "an optional ScopeAlias (Scope['name'])."
+                            "and 1 or more Injectables if the type arg "
+                            "is not the injectable")
         
         return Annotated[tp, Dependency(deps, scope=scope)]
 
@@ -315,7 +312,8 @@ class Dependency(Resolver[T_Injectable, T_Injected], Generic[T_Injectable, T_Inj
         return super().__new__(cls)
 
     def __init__(self, deps: T_Injectable, scope: ScopeAlias=..., *, default: Union[T_Injected, FunctionType, MethodType]=...):
-        self._deps = tuple(deps) if isinstance(deps, list) else deps
+        self._deps = tuple(deps) if isinstance(deps, list) \
+            else deps if isinstance(deps, tuple) else (deps,)
         self._scope = Scope[(None if scope is ... else scope) or Scope.ANY]
         self._default = default
     
@@ -329,14 +327,16 @@ class Dependency(Resolver[T_Injectable, T_Injected], Generic[T_Injectable, T_Inj
 
     def __eq__(self, x) -> bool:
         if isinstance(x, Dependency):
-            return self.scope == x.scope and self.deps == x.deps
+            return self._scope == x._scope and self._deps == x._deps
         return NotImplemented
 
     def __hash__(self) -> bool:
         return hash(self.scope, self.deps)
 
     def __call__(self, inj) -> T_Injectable:
-        return inj[self._scope][self._deps]
+        # return inj[self._scope][self._deps]
+        inj = inj[self._scope]
+        return next((inj[d] for d in self._deps), self._default)
 
     def copy(self, **kwds) -> T_Injectable:
         kwds['scope'] = kwds.get('scope') or self._scope

@@ -2,7 +2,7 @@ from itertools import chain
 from typing import Generic, Optional, TYPE_CHECKING, TypeVar, Union, overload
 from collections.abc import (
     Hashable, Mapping, MutableSet, Iterable, Set, MutableSequence, 
-    Callable, ItemsView, ValuesView
+    Callable, ItemsView, ValuesView, Iterator
 )
 
 
@@ -269,3 +269,11 @@ class PriorityStack(dict[_T_Stack_K, _T_Stack_S], Generic[_T_Stack_K, _T_Stack_V
         stack.sort()
 
 
+
+
+@export()
+class LazyIterator(Iterator[TV]):
+    __slots__ = ('src')
+
+    def __init__(self, src) -> None:
+        self.src = iter()

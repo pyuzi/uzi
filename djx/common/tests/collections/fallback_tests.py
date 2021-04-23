@@ -4,7 +4,7 @@ import inspect as ins
 import pytest
 from typing import Optional, Union
 
-from ..collections import fa
+from ...collections import fallbackdict, fluentdict
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize

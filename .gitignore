@@ -115,5 +115,3 @@ depo*.csv
 *.txt
 
 build
-
-/contrib/

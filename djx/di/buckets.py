@@ -22,7 +22,7 @@ from .inspect import signature
 
 
 
-BucketManager = Callable[[], AbstractContextManager[Mapping[Any, Any]]]
+BucketManager = Callable[..., AbstractContextManager[Mapping[Any, Any]]]
 
 
 BucketManagerType = Union[BucketManager,Union[BucketManager, Generator[Mapping]]]]

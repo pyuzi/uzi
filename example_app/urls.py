@@ -16,14 +16,14 @@ Including another URLconf
 from django.urls import path, include
 from django.contrib import admin
 
-from . import views as v
+# from . import views as v
 
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("func/", v.func),
-    path("1/", v.Dj.as_view()),
-    path("2/", v.Djx.as_view()),
-    path("3/", v.Rest.as_view()),
+    # path("func/", v.func),
+    # path("1/", v.Dj.as_view()),
+    # path("2/", v.Djx.as_view()),
+    # path("3/", v.Rest.as_view()),
 ]

@@ -135,10 +135,6 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
             return rv
         elif k is self.__class__:
             return self
-        elif (t := type(k)) is tuple:
-            return [self.__getitem__(i) for i in k]
-        elif t is dict:
-            return {n : self.__getitem__(i) for n,i in k.items()}
         else:
             return self.__missing__(k)
             

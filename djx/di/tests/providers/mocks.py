@@ -46,7 +46,7 @@ class AbcScope(Scope):
 @injectable(cache=True, scope=Scope.MAIN)
 class Foo:
     
-    def __init__(self, name: Depends[str, 'foo.name'], user: Depends[str, user_str],inj: Injector) -> None:
+    def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
         self.name = f'{name} -> #{_ordered_id()}'
         self.user = user
         self.inj = inj
@@ -76,7 +76,7 @@ class Bar:
 
     infoo = Inject(Foo, Scope.MAIN)
 
-    def __init__(self, foo: Foo, user: Depends[str, user_func_injectable], sym: Depends[str, user_symb], baz: Baz) -> None:
+    def __init__(self, foo: Foo, user: Depends[str, user_func_injectable], *, sym: Depends[str, user_symb], baz: Baz) -> None:
         self.foo = foo
         self.user = user
         self.sym = sym
@@ -107,7 +107,7 @@ def user_func_str():
 
 def ops_per_sec(n, *vals):
     val = mean(vals)
-    return n * (1/val), val
+    return n * (1/val), val, sum(vals, 0)
 
 
 

@@ -1,6 +1,6 @@
 
 import inspect as ins
-from functools import partial
+from functools import partial, cache
 
 from cachetools.func import lru_cache
 from weakref import WeakSet
@@ -62,7 +62,7 @@ def annotated_deps(obj) -> Union[list, Any]:
     if is_injectable(obj):
         return obj
     elif isinstance(obj, Dependency):
-        return obj.deps
+        return obj.deps[0]
     elif get_origin(obj) in _expand_generics:
         for d in get_args(obj):
             if rv := annotated_deps(d):
@@ -80,7 +80,7 @@ def is_injectable(obj) -> bool:
 
 
 @export()
-@lru_cache(2**20)
+# @cache
 def signature(callable: Callable[..., Any], *, follow_wrapped=True) -> 'InjectableSignature':
     return InjectableSignature.from_callable(callable, follow_wrapped=follow_wrapped)
 

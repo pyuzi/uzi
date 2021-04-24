@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'mptt',
     "django_extensions",
     "djx.multisite",
+    "djx.ledger",
     "example_app",
 ]
 
@@ -57,9 +58,6 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "example_app.urls"
-
-MULTISITE_SITE_MODEL = 'example_app.MySite'
-MULTISITE_MEMBER_MODEL = 'example_app.MyMember'
 
 TEMPLATES = [
     {

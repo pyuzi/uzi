@@ -60,10 +60,10 @@ class SymbolTests:
                 #     nl = "\n    -- "
                 with scope('abcd') as inj:
                     null = lambda: None
-                    mkfoo = lambda: Foo('simple foo', user_func_str(), null())
+                    mkfoo = lambda: Foo('simple foo', user=user_func_str(), inj=null())
                     mkbaz = lambda: Baz()
                     mkfunc = lambda: user_func_injectable(user_func_str())
-                    mkbar = lambda: Bar(mkfoo(), mkfunc(), user_func_symb(), mkbaz())
+                    mkbar = lambda: Bar(mkfoo(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
                     injfoo = lambda: injector[Foo]
                     injbar = lambda: inj[Bar]
                     injbafoo = lambda: inj[Bar].infoo
@@ -71,13 +71,12 @@ class SymbolTests:
                     inj404 = lambda: inj['404']
 
 
-                    _n = int(2.5e3)
+                    _n = int(1e4)
                     self.run('Baz', mkbaz, injbaz, _n)
                     self.run('Foo', mkfoo, injfoo, _n)
                     self.run('Bar', mkbar, injbar, _n)
 
-                    print(f'Bar --->\n  {injbafoo()}\n  {injbafoo()}\n  {injbar()}\n  {injbar()!r}')
-                    self.run('404', mkbaz, inj404, _n)
+                    # print(f'Bar --->\n  {injbafoo()}\n  {injbafoo()}\n  {injbar()}\n  {injbar()!r}')
         assert 0
         return
 
@@ -94,13 +93,15 @@ class SymbolTests:
 
 
     def run(self, lbl, mfn, ifn, n=int(1e4), rep=3, r=3):
-        mres, mt = ops_per_sec(n, *repeat(mfn, number=n, repeat=rep, globals=locals()))
-        ires, it = ops_per_sec(n, *repeat(ifn, number=n, repeat=rep, globals=locals()))
+        mres, mt, mtt = ops_per_sec(n, *repeat(mfn, number=n, repeat=rep, globals=locals()))
+        ires, it, itt = ops_per_sec(n, *repeat(ifn, number=n, repeat=rep, globals=locals()))
         if mres > ires:
             d = f'M {round(mres/ires, r)}x faster'
         else:
             d = f'I {round(ires/mres, r)}x faster'
-        M, I = f'{round(mt, r)} secs'.ljust(16) + f'{round(mres, r)} ops/sec'.ljust(16+r), \
-            f'{round(it, r)} secs'.ljust(16) + f'{round(ires, r)} ops/sec'.ljust(16+r)
-        print(f' >> {lbl} {rep} x {n} ops {M=!s} <=> {I=!s} --> {d}')
+        M, I = f'{round(mtt, r)} secs'.ljust(12) + f' avg {round(mt, r)} secs'.ljust(16) \
+                    + f'{round(mres, r)} ops/sec'.ljust(16+r), \
+                f'{round(itt, r)} secs'.ljust(12) + f' avg {round(it, r)} secs'.ljust(16) \
+                    + f'{round(ires, r)} ops/sec'.ljust(16+r)
+        print(f' - {lbl} {rep} x {n} ops == {d}\n   - {M=!s}\n   - {I=!s}')
 

@@ -331,7 +331,7 @@ class Dependency(Resolver[T_Injectable, T_Injected], Generic[T_Injectable, T_Inj
         return NotImplemented
 
     def __hash__(self) -> bool:
-        return hash(self.scope, self.deps)
+        return hash((self.scope, self.deps))
 
     def __call__(self, inj) -> T_Injectable:
         # return inj[self._scope][self._deps]

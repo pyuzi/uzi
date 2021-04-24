@@ -79,9 +79,10 @@ def get(key: T_Injectable, default=None) -> T_Injected:
 def wrapped(func: Callable[..., T], /, args: tuple=(), keywords:dict={}) -> Callable[..., T]:
     params = signature(func).bind_partial(*args, **keywords)
     def wrapper(inj: Injector=None, /, *args, **kwds) -> T:
-        if inj is None: inj = __inj_ctxvar.get()
+        if inj is None: 
+            inj = __inj_ctxvar.get()
         # fallbackdict(params.arguments, kwds)
-        return func(*params.inject_args(inj, args, **kwds), **params.inject_kwargs(inj, **kwds))
+        return func(*params.inject_args(inj), **params.inject_kwargs(inj))
     
     update_wrapper(wrapper, func)
 

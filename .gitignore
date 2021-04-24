@@ -45,8 +45,6 @@ local_test_settings.py
 _local_test_settings.py
 */_local_test_settings.py
 
-migrations
-*/migrations
 
 */**/wsgi_venv.txt
 */**/wsgi_venv.py

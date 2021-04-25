@@ -1,5 +1,6 @@
 from __future__ import annotations
 from djx.common.collections import PriorityStack
+from djx.common.utils import Void
 import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import (
@@ -51,7 +52,7 @@ _T_Conf = TypeVar('_T_Conf', bound='ScopeConfig', covariant=True)
 
 
 T_Provider = TypeVar('T_Provider', bound='Provider', covariant=True)
-T_Resolver = TypeVar('T_Resolver', bound='Resolver', covariant=True)
+# T_Resolver = TypeVar('T_Resolver', bound='Resolver', covariant=True)
 
 _T_Cache = MutableMapping['StaticIndentity', T_Injected]
 _T_Providers = Mapping['Injectable', Optional[T_Provider]]
@@ -61,41 +62,22 @@ _T_ContextFactory = Callable[..., T_Context]
 _T_InjectorFactory = Callable[[_T_Scope, 'Injector'], T_Injector]
 
 
-@export()
-class ResolverFactory(ABCMeta,Generic[T_Resolver]):
-    """ResolverFactory Object"""
-    __slots__ = ()
-
-    # def __class_getitem__(cls, params):
-    #     if isinstance(params, (list, type(...))):
-    #         return Callable.__class_getitem__(cls, (params, T_Resolver))
-    #     else:
-    #         return Callable.__class_getitem__(cls, params)
-    
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is ResolverFactory:
-            return hasattr(C, '__call__')
-        return NotImplemented
 
 
 
 @export()
-class Resolver(Callable[[T_Injector], T_Injected], Generic[T_Injectable, T_Injected, T_Injector], metaclass=ResolverFactory):
+class Resolver(Generic[T_Injectable, T_Injected, T_Injector], metaclass=ABCMeta):
     """Resolver Object"""
     __slots__ = ()
 
+    abstract: T_Injectable
+    scope: ScopeAlias
+    value: Union[T_Injected, Void]
+
     @abstractmethod
-    def __call__(self, inj: T_Injector) -> T_Injected: ...
+    def __call__(self, inj: T_Injector) -> T_Injected: 
+        ...
     
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is Resolver:
-            return hasattr(C, '__call__')
-        return NotImplemented
-
-
-
 
 
 @export()
@@ -281,6 +263,8 @@ class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf, T_Provider]):
     
     config: _T_Conf
 
+    Config: type[ScopeConfig]
+
     __class_getitem__ = classmethod(GenericAlias)
     
     def __init__(cls: 'ScopeType[_T_Scope, _T_Conf]', name, bases, dct, **kwds):
@@ -410,7 +394,7 @@ class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=Sco
 
     @cached_class_property
     def key(cls):
-        return Scope[cls.config.name] if not cls._is_abstract() else cls
+        return cls[cls.config.name] if not cls._is_abstract() else cls
 
     def ready(self) -> None:
         ...
@@ -462,7 +446,7 @@ class CanSetupAndTeardownScope(CanSetupScope[_T_Scope], CanTeardown[_T_Scope]):
 
 
 @export()
-class Provider(Resolver, Orderable, CanSetupAndTeardownScope[_T_Scope], Generic[T_Injected, T_Injectable, _T_Scope], metaclass=ABCMeta):
+class Provider(Orderable, CanSetupAndTeardownScope[_T_Scope], Generic[T_Injected, T_Injectable, _T_Scope], metaclass=ABCMeta):
     
     __slots__ = ()
     

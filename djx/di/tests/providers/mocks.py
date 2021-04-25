@@ -25,23 +25,25 @@ class MainScope(Scope):
         
         
 
-class LocalScope(Scope):
+class CliScope(Scope):
 
     class Config:
-        name = 'local'
-        embedded = True
-
-        
-
-class AbcScope(Scope):
-
-    class Config:
-        name = 'abcd'
+        name = 'cli'
         depends = [
-            'local'
+            'console'
         ]
-
         
+
+class TestScope(Scope):
+
+    class Config:
+        name = 'test'
+        depends = [
+            # 'cli',
+            # 'request'
+        ]
+        
+
 
 @injectable(cache=True)
 class Foo:
@@ -79,12 +81,16 @@ class Baz:
 alias('bar', user_func_injectable)
 
 
-@injectable(cache=False, scope='abcd')
+@injectable(cache=False, scope=Scope.MAIN)
 class Bar:
 
     infoo = Inject(Foo, Scope.MAIN)
 
-    def __init__(self, foo: Foo, flw: Follow, sbar: Depends[str, 'bar'], user: Depends[str, user_func_injectable], *, sym: Depends[str, user_symb], baz: Baz) -> None:
+    def __init__(self, foo: Foo, 
+                    flw: Follow, 
+                    sbar: Depends[str, 'bar'], 
+                    user: Depends[str, user_func_injectable], *, 
+                    sym: Depends[str, user_symb], baz: Baz, kw1=None, kw2=...) -> None:
         self.foo = foo
         self.flw = flw
         self.sbar = sbar

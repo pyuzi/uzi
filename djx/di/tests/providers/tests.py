@@ -56,24 +56,41 @@ class SymbolTests:
             return f'{a} {b} {c} {d}'
 
         class Obj:
+            __slots__ = ()
 
             def __call__(self, a, b,*, c, d):
                 return f'{a} {b} {c} {d}'
                 
+        class Attr:
+            __slots__ = '__call__'
+
+            def __init__(self):
+                def __call__(a, b,*, c, d):
+                    return f'{a} {b} {c} {d}'
+                self.__call__ = __call__
+
         obj = Obj()
+        attr = Attr()
 
         cfunc = lambda: func(1,2,c=3,d=4)
         _pfunc = partial(func, 1,2,c=3,d=4)
         pfunc = lambda: _pfunc()
         
-        cobj = lambda: obj.__call__(1,2,c=3,d=4)
-        _pobj = partial(obj.__call__, 1,2,c=3,d=4)
+        cobj = lambda: obj(1,2,c=3,d=4)
+        _pobj = partial(obj, 1,2,c=3,d=4)
         pobj = lambda: _pobj()
 
-        self.run('Func vs Callable', cfunc, cobj, int(1e5))
-        self.run('Func vs Callable', pfunc, pobj, int(1e5))
+        cattr = lambda: attr(1,2,c=3,d=4)
+        _pattr = partial(attr, 1,2,c=3,d=4)
+        pattr = lambda: _pattr()
+ 
+        n = int(1e5)
 
-        assert 1
+        self.run(' func', cfunc, pfunc, n)
+        self.run(' obj ', cobj, pobj, n)
+        self.run(' attr', cattr, pattr, n)
+
+        assert 0
 
     def test_speed(self):
         # with scope('local'):
@@ -84,7 +101,7 @@ class SymbolTests:
             #     print('*'*16, inj,'*'*16)
             #     # with scope('abc') as _inj:
                 #     nl = "\n    -- "
-                with scope('abcd') as inj:
+                with scope('test') as inj:
                     # with inj:
                     null = lambda: None
                     mkfoo = lambda: Foo('simple foo', user=user_func_str(), inj=null())
@@ -99,7 +116,7 @@ class SymbolTests:
 
                     print(f' {injbafoo()}\n {injbar()}\n')
 
-                    _n = int(1e5)
+                    _n = int(2.5e4)
                     self.run('Baz', mkbaz, injbaz, _n)
                     self.run('Foo', mkfoo, injfoo, _n)
                     self.run('Bar', mkbar, injbar, _n)

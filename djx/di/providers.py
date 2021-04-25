@@ -19,14 +19,14 @@ from flex.utils.decorators import export
 from djx.common.utils import Void
 
 from .symbols import symbol, _ordered_id, identity
-from .reg import registry
 from . import abc
-from .abc import Injectable, Injector, Resolver, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, T
+from .abc import Injectable, Injector, Scope, ScopeAlias, Resolver, T_Injectable, T_Injected, T_Injector, T_Provider, T
 
 __all__ = [
 
 ]
 
+T_ScopeAlias = TypeVar('T_ScopeAlias', str, ScopeAlias)
 
 
 
@@ -100,58 +100,57 @@ def register_provider(provider: T_Provider, scope = None) -> T_Provider:
 
 
 
-class ResolveProto(Protocol[T, T_Injectable]):
-    provider: Provider[T, T_Injectable]
-    scope: ScopeAlias
-    value: T = Void
 
-    def __call__(self, inj: Injector) -> T:
-        ...
 
+@export()
+@abc.Resolver.register
+class ValueResolver(Generic[T_Injected]):
+    """BoundProvider Object"""
+
+    __slots__ = ('value',)
+
+    value: T_Injected
+
+    def __init__(self, value: T_Injected=Void):
+        self.value = value
+
+    def __call__(self, inj: Injector=None) -> T_Injected:
+        return self.value
+
+
+@export()
+@abc.Resolver.register
+class AliasResolver(Generic[T_Injected]):
+    """BoundProvider Object"""
+
+    __slots__ = ('alias',)
+
+    value: T_Injected = Void
+
+    def __init__(self, alias):
+        self.alias = alias
+      
+    def __call__(self, inj: Injector) -> T_Injected:
+        return inj[self.alias]
 
 
 
 @export()
-class BoundProvider(abc.Provider[T, T_Injectable]):
+@abc.Resolver.register
+class FactoryResolver(Generic[T_Injected]):
     """BoundProvider Object"""
 
-    __slots__ = ('origin', 'scope', 'value', '__call__')
+    __slots__ = ('__call__',)
 
-    abstract: T_Injectable
-    concrete: Any
-    scope: ScopeAlias
-    origin: Provider[T, T_Injectable]
+    value: T_Injected = Void
 
-    value: T
-
-    def __init__(self, origin: Provider, scope: Scope, *, value=Void, factory=None):
-        self.origin = origin
-        self.scope = scope.key
-        self.value = value
+    def __init__(self, factory):
         self.__call__ = factory
+    
 
-        # from .di import wrapped
-        # if isinstance(origin, ValueProvider):
-        #     self.value = origin.concrete
-        # elif isinstance(origin, FactoryProvider):
-        #     self.value = Void
-        #     fn = __call__ = wrapped(origin.concrete)
-        #     if origin.cache:
-        #         def __call__(inj: Injector):
-        #             rv = inj[self.abstract] = fn(inj)
-        #             return rv
-        # elif isinstance(origin, AliasProvider):
-        #     pass
-                
-        # self.value = origin.concrete if isinstance(origin, ValueProvider) else Void
 
-    def setup(self, scope: Scope):
-        if scope == self.scope:
-            return self
-        return self.__class__(self.origin. scope, value=self.value, factory=self.__call__)
 
-    def __getatrr__(self, name):
-        return getattr(self.origin, name)
+
 
 
 @export()
@@ -196,11 +195,8 @@ class Provider(abc.Provider[T, T_Injectable]):
         assert isinstance(self.abstract, Injectable), (
             f'`abstract` must be a `Injectable`. Got: {self.abstract!r}')
 
-    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, Resolver[T, T_Injectable]]]:
         yield self.abstract, self
-
-    def bind(self, scope) -> BoundProvider:
-        BoundProvider()
 
     def __call__(self, inj: abc.Injector) -> T:
         return self.concrete
@@ -229,8 +225,9 @@ class ValueProvider(Provider):
         if self.cache is None:
             self.cache = True 
     
-    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
-        yield self.abstract, BoundProvider(self, scope.key, value=self.concrete)
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, Resolver[T, T_Injectable]]]:
+        # res: 
+        yield self.abstract, ValueResolver(self.concrete)
 
 
 
@@ -245,13 +242,13 @@ class AliasProvider(Provider):
         assert is_provided(self.concrete), (
                 f'No provider for aliased `{self.concrete}` in `{self.abstract}`'
             )
-        assert not self.cache, f'AliasProvider cannot be cached'
+        # assert not self.cache, f'AliasProvider cannot be cached'
 
     def __call__(self, inj: abc.Injector) -> T:
         return inj[self.concrete]
 
-    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
-        yield self.abstract, BoundProvider(self, scope.key, factory=self.__call__)
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, Resolver[T, T_Injectable]]]:
+        yield self.abstract, AliasResolver(self.concrete)
 
 
 
@@ -293,14 +290,13 @@ class FactoryProvider(Provider):
         else:
             return self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
 
-    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, Resolver[T, T_Injectable]]]:
         params = self.params
-        bound: BoundProvider =None
 
         if params is None:
             if self.cache:
                 def factory(inj: Injector):
-                    inj[self.abstract] = BoundProvider(bound, bound.scope, value=self.concrete())
+                    inj[self.abstract] = ValueResolver(self.concrete())
                     return inj[self.abstract]
             else:
                 def factory(inj: Injector):
@@ -308,16 +304,14 @@ class FactoryProvider(Provider):
         else:
             if self.cache:
                 def factory(inj: Injector):
-                    rv = self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
-                    inj[self.abstract] = BoundProvider(bound, bound.scope, value=rv)
+                    inj[self.abstract] = ValueResolver(self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj)))
                     return inj[self.abstract]
             else:
                 def factory(inj: Injector):
                     return self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
 
-        bound = BoundProvider(self, scope.key, factory=factory)
+        yield self.abstract, FactoryResolver(factory)
 
-        yield self.abstract, bound
 
 
 
@@ -375,14 +369,16 @@ class Depends:
         raise TypeError(f"Cannot subclass {cls.__module__}.Depends")
 
 
-_ANY_SCOPE = Scope[Scope.ANY]
-T_ScopeName = TypeVar('T_ScopeName', bound=str)
+
+
+
+
 
 
 @export()
 @Injectable.register
-class Dependency(Resolver[T_Injectable, T_Injected], Generic[T_Injectable, T_Injected, T_ScopeName]):
-    """DependencyResolver Object"""
+class Dependency(Generic[T_Injectable, T_Injected, T_ScopeAlias]):
+    """Dependency Object"""
     __slots__ = '_deps', '_scope', '_default', '__weakref__'
 
     def __new__(cls, deps: T_Injectable, scope: ScopeAlias=..., *, default: Union[T_Injected, Callable[..., T_Injected]]=...):
@@ -407,7 +403,7 @@ class Dependency(Resolver[T_Injectable, T_Injected], Generic[T_Injectable, T_Inj
         return self._deps
 
     @property
-    def scope(self) -> Scope[T_ScopeName]:
+    def scope(self) -> Scope[T_ScopeAlias]:
         return self._scope
 
     def __eq__(self, x) -> bool:
@@ -434,7 +430,7 @@ class Dependency(Resolver[T_Injectable, T_Injected], Generic[T_Injectable, T_Inj
 
 
 @export()
-class Inject(Dependency[T_Injectable], Generic[T_Injectable, T_Injected]):
+class Inject(Dependency[T_Injectable, T_Injected, T_ScopeAlias]):
     
     __slots__ = ()
     

@@ -14,7 +14,7 @@ from flex.utils.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
-from .providers import BoundProvider, ValueProvider, provide
+from .providers import ValueResolver, provide
 from .symbols import _ordered_id
 from .injectors import Injector
 from .reg import registry
@@ -120,7 +120,7 @@ class ScopeType(abc.ScopeType):
 
 
 @export
-class Scope(abc.Scope, metaclass=ScopeType):
+class Scope(abc.Scope, metaclass=ScopeType[_T_Scope, _T_Conf, T_Provider]):
     """"""
 
     config: ClassVar[_T_Conf]
@@ -206,13 +206,15 @@ class Scope(abc.Scope, metaclass=ScopeType):
         return stack
     
     def _make_resolvers(self):
-        self._resolvers = fluentdict()
-        self._setup_resolvers()
+        def fallback(key):
+            if key in self.providers:
+                self._resolvers.update(self.providers[key].setup(self))
+            return self._resolvers.setdefault(key, None)
+
+        self._resolvers = fallbackdict(fallback)
+        # self._setup_resolvers()
         return self._resolvers
 
-    def _make_resolver(self, abstract):
-        if abstract in self.providers:
-            return self.providers[abstract].setup(self)
 
     def _setup_resolvers(self):
         for p in self.providers.values():
@@ -225,18 +227,16 @@ class Scope(abc.Scope, metaclass=ScopeType):
         self.prepare()
 
         self.setup_providers(inj)
-        self.setup_cache(inj)
 
         return inj
 
     def setup_providers(self, inj: T_Injector):
-        inj.providers = fallbackdict(self.resolvers)
-        inj.providers[type(inj)] = BoundProvider(None, self.key, value=inj)
+        def fallback(key):
+            inj.providers[key] = self.resolvers[key]        
+            return inj.providers[key]# or inj.parent.providers[key]
+        inj.providers = fallbackdict(fallback)
+        inj.providers[type(inj)] = ValueResolver(inj)
         
-
-    def setup_cache(self, inj: T_Injector):
-        inj.cache = self.cache_factory()
-        # inj.cache[Injector] = inj
 
     def teardown(self, inj: T_Injector):
         logger.debug(f'teardown({self}):  {inj}')
@@ -279,28 +279,23 @@ class Scope(abc.Scope, metaclass=ScopeType):
 
 
 
-class EmbeddedScope(Scope):
 
-    class Config:
-        abstract = True
-        embedded = True
-
-
-
-
-class ImplicitScope(EmbeddedScope):
+class ImplicitScope(Scope):
     class Config:
         abstract = True
         implicit = True
+        embedded = True
         priority = -1
+        
 
 
 
 
 
-class AnyScope(EmbeddedScope):
+class AnyScope(Scope):
     class Config:
         name = Scope.ANY
+        embedded = True
 
 
 
@@ -311,7 +306,6 @@ class MainScope(Scope):
 
     class Config:
         name = Scope.MAIN
-        priority = 9999
 
 
 
@@ -321,6 +315,32 @@ class LocalScope(Scope):
 
     class Config:
         name = Scope.LOCAL
+        embedded = True
+
+
+
+
+class ConsoleScope(Scope):
+
+    class Config:
+        name = 'console'
+        depends = [
+            Scope.LOCAL
+        ]
+        
+
+
+
+
+class RequestScope(Scope):
+
+    class Config:
+        name = 'request'
+        depends = [
+            Scope.LOCAL
+        ]
+        
+
 
 
 

@@ -1,7 +1,7 @@
 from itertools import chain
 from typing import Generic, Optional, TYPE_CHECKING, TypeVar, Union, overload
 from collections.abc import (
-    Hashable, Mapping, MutableSet, Iterable, Set, MutableSequence, 
+    Hashable, Mapping, MutableMapping, MutableSet, Iterable, Set, MutableSequence, 
     Callable, ItemsView, ValuesView, Iterator
 )
 
@@ -19,7 +19,7 @@ TM = TypeVar('TM', bound=Mapping)
 
 
 
-def _noop(*k):
+def _noop(k):
     return None
 
 
@@ -40,12 +40,13 @@ class fallbackdict(dict[TK, TV]):
     fallback: _FallbackType[TK, TV]
 
     def __init__(self, fallback: _FallbackType[TK, TV], *args, **kwds):
-        if isinstance(fallback, Callable):
-            self.fallback = self.__missing__ = fallback
-        elif isinstance(fallback, Mapping):
+        if isinstance(fallback, Mapping):
             self.fallback, self.__missing__ = fallback, fallback.__getitem__
+        elif isinstance(fallback, Callable):
+            self.fallback = self.__missing__ = fallback
         else:
             raise TypeError(f'Fallback must be a Mapping or Callable. Got: {type(fallback)}')
+
         super().__init__(*args, **kwds)
 
     def __reduce__(self):
@@ -185,7 +186,7 @@ _T_Stack_S = TypeVar('_T_Stack_S', bound=MutableSequence)
 _T_Stack_V = TypeVar('_T_Stack_V', bound=Orderable)
 
 
-class PriorityStack(dict[_T_Stack_K, _T_Stack_S], Generic[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
+class PriorityStack(dict[_T_Stack_K, _T_Stack_V], Generic[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
     
     __slots__= ('stackfactory',)
 
@@ -206,10 +207,13 @@ class PriorityStack(dict[_T_Stack_K, _T_Stack_S], Generic[_T_Stack_K, _T_Stack_V
         return stack[-1]
 
     def copy(self):
-        return type(self)(self.stackfactory, ((k, self[k:][:]) for k in self))
+        return self.__class__(self.stackfactory, ((k, self[k:][:]) for k in self))
     
     __copy__ = copy
 
+    def extend(self):
+        return self.__class__(self.stackfactory, self.all_items())
+    
     get_all = dict[_T_Stack_K, _T_Stack_S].get
     def get(self, k: _T_Stack_K, default=None):
         try:
@@ -272,8 +276,8 @@ class PriorityStack(dict[_T_Stack_K, _T_Stack_S], Generic[_T_Stack_K, _T_Stack_V
 
 
 @export()
-class LazyIterator(Iterator[TV]):
-    __slots__ = ('src')
-
-    def __init__(self, src) -> None:
-        self.src = iter()
+class FluentPriorityStack(PriorityStack[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
+    
+    def __missing__(self, k: _T_Stack_K) -> _T_Stack_S:
+        return (None,)
+    

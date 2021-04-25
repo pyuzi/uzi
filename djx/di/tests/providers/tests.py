@@ -1,5 +1,6 @@
 from contextlib import nullcontext
 import os
+from functools import partial, partialmethod
 # from django import setup
 
 # os.environ.setdefault("DJANGO_SETTINGS_MODULE", "example_app.test_settings")
@@ -49,6 +50,31 @@ class SymbolTests:
         assert not is_injectable(noop_symb)
         assert not is_injectable(user_func_symb)
 
+    def _test_calls(self):
+
+        def func(a, b,*, c, d):
+            return f'{a} {b} {c} {d}'
+
+        class Obj:
+
+            def __call__(self, a, b,*, c, d):
+                return f'{a} {b} {c} {d}'
+                
+        obj = Obj()
+
+        cfunc = lambda: func(1,2,c=3,d=4)
+        _pfunc = partial(func, 1,2,c=3,d=4)
+        pfunc = lambda: _pfunc()
+        
+        cobj = lambda: obj.__call__(1,2,c=3,d=4)
+        _pobj = partial(obj.__call__, 1,2,c=3,d=4)
+        pobj = lambda: _pobj()
+
+        self.run('Func vs Callable', cfunc, cobj, int(1e5))
+        self.run('Func vs Callable', pfunc, pobj, int(1e5))
+
+        assert 1
+
     def test_speed(self):
         # with scope('local'):
         with nullcontext():
@@ -59,37 +85,27 @@ class SymbolTests:
             #     # with scope('abc') as _inj:
                 #     nl = "\n    -- "
                 with scope('abcd') as inj:
+                    # with inj:
                     null = lambda: None
                     mkfoo = lambda: Foo('simple foo', user=user_func_str(), inj=null())
                     mkbaz = lambda: Baz()
-                    mkfunc = lambda: user_func_injectable(user_func_str())
-                    mkbar = lambda: Bar(mkfoo(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
+                    mkfunc = lambda: user_func_injectable(user_func_str(), mkfoo())
+                    mkbar = lambda: Bar(mkfoo(), mkfoo(), user_func_str(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
                     injfoo = lambda: injector[Foo]
                     injbar = lambda: inj[Bar]
                     injbafoo = lambda: inj[Bar].infoo
                     injbaz = lambda: inj[Baz]
                     inj404 = lambda: inj['404']
 
+                    print(f' {injbafoo()}\n {injbar()}\n')
 
-                    _n = int(1e4)
+                    _n = int(1e5)
                     self.run('Baz', mkbaz, injbaz, _n)
                     self.run('Foo', mkfoo, injfoo, _n)
                     self.run('Bar', mkbar, injbar, _n)
 
-                    # print(f'Bar --->\n  {injbafoo()}\n  {injbafoo()}\n  {injbar()}\n  {injbar()!r}')
         assert 0
         return
-
-        # print('')
-        # for n, st in registry.scope_types.all_items():
-        #     print(f'Scope Types: {n}', *map(repr, st), sep='\n   - ')
-        
-        # print('')
-        # print('Scopes:')
-        # for n, st in registry.scopes.items():
-        #     print(f' - {n}: {st}', *st.providers, sep="\n    - ")
-        
-        # print('')
 
 
     def run(self, lbl, mfn, ifn, n=int(1e4), rep=3, r=3):
@@ -103,5 +119,5 @@ class SymbolTests:
                     + f'{round(mres, r)} ops/sec'.ljust(16+r), \
                 f'{round(itt, r)} secs'.ljust(12) + f' avg {round(it, r)} secs'.ljust(16) \
                     + f'{round(ires, r)} ops/sec'.ljust(16+r)
-        print(f' - {lbl} {rep} x {n} ops == {d}\n   - {M=!s}\n   - {I=!s}')
+        print(f' - {lbl} {rep} x {n} ({rep * n}) ops == {d}\n   - {M=!s}\n   - {I=!s}')
 

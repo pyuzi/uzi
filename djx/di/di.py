@@ -1,7 +1,7 @@
 from djx.common.collections import fallbackdict, fluentdict
 import logging
 from functools import update_wrapper
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from contextvars import ContextVar
 from collections.abc import Callable
 
@@ -10,7 +10,7 @@ from flex.utils.proxy import Proxy
 from flex.utils.decorators import export
 
 
-from .injectors import Injector, NullInjector
+from .injectors import Injector, RootInjector
 from .scopes import Scope, ScopeType
 from .inspect import signature
 from .providers import alias, provide, injectable
@@ -25,14 +25,14 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-provide(abc.Injector, alias=Injector, priority=-1, scope=Scope.ANY)
+provide(abc.Injector, alias=Injector, priority=-1)
 
 
 __inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar')
 
-__null_inj = NullInjector()
+__root_inj = RootInjector()
 
-__inj_ctxvar.set(__null_inj)
+__inj_ctxvar.set(__root_inj)
 
 
 injector = Proxy(__inj_ctxvar.get)
@@ -43,25 +43,30 @@ def scope(name: str=None):
     cur = __inj_ctxvar.get()
 
     scope = Scope[name] if name else Scope[Scope.MAIN] \
-        if cur is __null_inj else None
+        if cur is __root_inj else None
 
     if scope is None or scope in cur:
         reset = None
+        yield cur
+
     elif scope not in cur:
         cur = scope().create(cur)
         reset = __inj_ctxvar.set(cur)
-    try:
-        with cur.context() as inj:
-            yield inj
-    finally:
-        reset is None or __inj_ctxvar.reset(reset)
-  
+        try:
+            with ExitStack() as stack:
+                stack.push(cur)
+                yield cur
+        finally:
+            reset is None or __inj_ctxvar.reset(reset)
 
 
 
-@export()
-def head():
-    return __inj_ctxvar.get()
+
+
+
+
+head = __inj_ctxvar.get
+
 
 @export()
 def final():

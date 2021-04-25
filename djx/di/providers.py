@@ -1,4 +1,6 @@
+from __future__ import annotations
 
+from functools import wraps
 from collections import defaultdict
 from collections.abc import Sequence, Mapping, Iterable, ItemsView, Callable
 from re import S
@@ -7,8 +9,8 @@ from weakref import WeakSet
 
 from types import FunctionType, MethodType
 from typing import (
-    Annotated, Any, ClassVar, 
-    Generic, NamedTuple, Optional, Type, TypeVar, Union, overload
+    Annotated, Any, ClassVar, Generator, 
+    Generic, NamedTuple, Optional, Protocol, Type, TypeVar, Union, overload
 )
 
 
@@ -16,10 +18,10 @@ from flex.utils.decorators import export
 
 from djx.common.utils import Void
 
-from .symbols import symbol, _ordered_id
+from .symbols import symbol, _ordered_id, identity
 from .reg import registry
 from . import abc
-from .abc import Injectable, Resolver, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, T
+from .abc import Injectable, Injector, Resolver, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, T
 
 __all__ = [
 
@@ -28,11 +30,10 @@ __all__ = [
 
 
 
-_provided = WeakSet()
+_provided = set()
 
 def is_provided(obj) -> bool:
-    return isinstance(obj, abc.SupportsIndentity) and symbol(obj) in _provided \
-        or (isinstance(obj, type) and issubclass(obj, abc.Injector))
+    return identity(obj) in _provided or (isinstance(obj, type) and issubclass(obj, abc.Injector))
 
 
 
@@ -41,7 +42,7 @@ def alias(abstract: T_Injectable,
         alias: abc.Injectable[T], 
         priority: int = 1, *, 
         scope: str = None, 
-        **opts) -> 'AliasProvider':
+        **opts) -> AliasProvider:
     """Registers an `AliasProvider`
     """
     return provide(abstract, priority=priority, alias=alias, scope=scope, **opts)
@@ -82,7 +83,7 @@ def provide(*abstracts: T_Injectable, priority: int = 1,
         if abstract in rv:
             continue
 
-        rv[abstract] = add_provider(
+        rv[abstract] = register_provider(
             cls(abstract, concrete, priority, cache=cache, scope=scope, **kwds)
         )
 
@@ -93,18 +94,73 @@ def provide(*abstracts: T_Injectable, priority: int = 1,
 
 
 @export()
-def add_provider(provider: T_Provider, scope = None) -> T_Provider:
-    registry.add_provider(provider, scope)
+def register_provider(provider: T_Provider, scope = None) -> T_Provider:
+    abc.Scope.register_provider(provider, scope)
     return provider
+
+
+
+class ResolveProto(Protocol[T, T_Injectable]):
+    provider: Provider[T, T_Injectable]
+    scope: ScopeAlias
+    value: T = Void
+
+    def __call__(self, inj: Injector) -> T:
+        ...
 
 
 
 
 @export()
+class BoundProvider(abc.Provider[T, T_Injectable]):
+    """BoundProvider Object"""
+
+    __slots__ = ('origin', 'scope', 'value', '__call__')
+
+    abstract: T_Injectable
+    concrete: Any
+    scope: ScopeAlias
+    origin: Provider[T, T_Injectable]
+
+    value: T
+
+    def __init__(self, origin: Provider, scope: Scope, *, value=Void, factory=None):
+        self.origin = origin
+        self.scope = scope.key
+        self.value = value
+        self.__call__ = factory
+
+        # from .di import wrapped
+        # if isinstance(origin, ValueProvider):
+        #     self.value = origin.concrete
+        # elif isinstance(origin, FactoryProvider):
+        #     self.value = Void
+        #     fn = __call__ = wrapped(origin.concrete)
+        #     if origin.cache:
+        #         def __call__(inj: Injector):
+        #             rv = inj[self.abstract] = fn(inj)
+        #             return rv
+        # elif isinstance(origin, AliasProvider):
+        #     pass
+                
+        # self.value = origin.concrete if isinstance(origin, ValueProvider) else Void
+
+    def setup(self, scope: Scope):
+        if scope == self.scope:
+            return self
+        return self.__class__(self.origin. scope, value=self.value, factory=self.__call__)
+
+    def __getatrr__(self, name):
+        return getattr(self.origin, name)
+
+
+@export()
 class Provider(abc.Provider[T, T_Injectable]):
 
-    __slots__ = ('__pos',)
-
+    __slots__ = (
+        'abstract', 'concrete', 'scope', 'cache', 
+        'priority', 'options', '__pos',
+    )
     
     abstract: symbol[T_Injectable]
 
@@ -124,48 +180,42 @@ class Provider(abc.Provider[T, T_Injectable]):
                 **options) -> None:
         global _provided
 
-        self.abstract = symbol(abstract)
+        self.abstract = abstract
         self.__pos = _ordered_id()
-        # self.scope = scope or self._default_scope
-        self.scope = (None if scope is ... else scope) or Scope.ANY
+        self.scope = scope or self._default_scope
         self.cache = cache
         self.priority = priority or 0
         self.options = options
         self.set_concrete(concrete)
-        _provided.add(self.abstract)
+        _provided.add(identity(self.abstract))
 
     def set_concrete(self, concrete) -> None:
         self.concrete = concrete
     
     def check(self):
-        assert isinstance(self.abstract, symbol), '`abstract` must be a `symbpl`'
+        assert isinstance(self.abstract, Injectable), (
+            f'`abstract` must be a `Injectable`. Got: {self.abstract!r}')
 
-    def setup(self, scope: abc.Scope) -> None:
-        pass
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
+        yield self.abstract, self
+
+    def bind(self, scope) -> BoundProvider:
+        BoundProvider()
 
     def __call__(self, inj: abc.Injector) -> T:
         return self.concrete
 
     def __order__(self):
-        return (self.priority, self.abstract, symbol(self.scope), self.__pos)
-        
-    def __ge__(self, x) -> bool:
-        return self.__order__() >= x
-
-    def __gt__(self, x) -> bool:
-        return self.__order__() > x
-
-    def __le__(self, x) -> bool:
-        return self.__order__() <= x
-
-    def __lt__(self, x) -> bool:
-        return self.__order__() < x
-
+        return (self.priority, self.abstract, self.__pos)
+  
     def __eq__(self, x) -> bool:
-        return self.__order__() == x
+        if isinstance(x, abc.Provider):
+            return x.abstract == self.abstract
+        
+        return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(self.__order__())
+        return hash(self.abstract)
     
 
 @export()
@@ -179,6 +229,10 @@ class ValueProvider(Provider):
         if self.cache is None:
             self.cache = True 
     
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
+        yield self.abstract, BoundProvider(self, scope.key, value=self.concrete)
+
+
 
 @export()
 class AliasProvider(Provider):
@@ -193,11 +247,13 @@ class AliasProvider(Provider):
             )
         assert not self.cache, f'AliasProvider cannot be cached'
 
-    # def set_concrete(self, concrete) -> None:
-    #     self.concrete = symbol(concrete)
-    
     def __call__(self, inj: abc.Injector) -> T:
         return inj[self.concrete]
+
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
+        yield self.abstract, BoundProvider(self, scope.key, factory=self.__call__)
+
+
 
 
 
@@ -236,6 +292,35 @@ class FactoryProvider(Provider):
             return self.concrete()
         else:
             return self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
+
+    def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, BoundProvider[T, T_Injectable]]]:
+        params = self.params
+        bound: BoundProvider =None
+
+        if params is None:
+            if self.cache:
+                def factory(inj: Injector):
+                    inj[self.abstract] = BoundProvider(bound, bound.scope, value=self.concrete())
+                    return inj[self.abstract]
+            else:
+                def factory(inj: Injector):
+                    return self.concrete()
+        else:
+            if self.cache:
+                def factory(inj: Injector):
+                    rv = self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
+                    inj[self.abstract] = BoundProvider(bound, bound.scope, value=rv)
+                    return inj[self.abstract]
+            else:
+                def factory(inj: Injector):
+                    return self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
+
+        bound = BoundProvider(self, scope.key, factory=factory)
+
+        yield self.abstract, bound
+
+
+
 
 
 

@@ -3,5 +3,5 @@
 
 
 ```
-pip install git+ssh://git@bitbucket.org/qwertie-ke/django-extended.git#egg=django_extended
+pip install -U git+ssh://git@bitbucket.org:djangox/djx.git#egg=django_extended
 ```

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from djx.common.collections import PriorityStack
 import logging
 from abc import ABCMeta, abstractmethod
@@ -14,7 +15,7 @@ from typing import (
     Generic, TYPE_CHECKING, Type, TypeVar, Union, cast, overload, runtime_checkable, 
 )
 
-from flex.utils.decorators import export
+from flex.utils.decorators import cached_class_property, class_property, export
 from flex.utils import text
 
 from djx.common.abc import Orderable
@@ -53,7 +54,7 @@ T_Provider = TypeVar('T_Provider', bound='Provider', covariant=True)
 T_Resolver = TypeVar('T_Resolver', bound='Resolver', covariant=True)
 
 _T_Cache = MutableMapping['StaticIndentity', T_Injected]
-_T_Providers = Mapping['StaticIndentity', Optional[T_Provider]]
+_T_Providers = Mapping['Injectable', Optional[T_Provider]]
 
 _T_CacheFactory = Callable[..., _T_Cache]
 _T_ContextFactory = Callable[..., T_Context]
@@ -271,32 +272,51 @@ class ScopeAlias(GenericAlias):
 
 @export()
 @Orderable.register
-class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf]):
+class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf, T_Provider]):
     """
     Metaclass for Scope
     """
     __types: PriorityStack[str, _T_Scope] = PriorityStack()
+    __registries: defaultdict[str, PriorityStack[Injectable, Provider]] = defaultdict(PriorityStack)
+    
     config: _T_Conf
 
     __class_getitem__ = classmethod(GenericAlias)
     
-    @classmethod
-    def __prepare__(mcls, cls, bases, **kwds):
-        # check that previous enum members do not exist
-        return dict(__instance__=None)  
-
     def __init__(cls: 'ScopeType[_T_Scope, _T_Conf]', name, bases, dct, **kwds):
         super().__init__(name, bases, dct, **kwds)
 
         assert cls.__instance__ is None, (
-            f'Scope class should not define __instance__ attribute'
+            f'Scope class should not define __instance__ attributes'
         )
 
+    @property
+    def _all_providers(cls):
+        return ScopeType.__registries
+
+    @property
+    def _providers(cls):
+        return cls._all_providers[cls.config.name]
+
+    @classmethod
+    def __prepare__(mcls, cls, bases, **kwds):
+        # check that previous enum members do not exist
+        return dict(
+            __instance__=None, 
+            __registry__=None,
+        )  
+
+    def register_provider(cls, provider: T_Provider, scope: Union[str, ScopeAlias]=None) -> T_Provider:
+        scope = cls._get_scope_name(scope or provider.scope or cls)
+        cls = cls._gettype(scope)
+        cls._providers[provider.abstract] = provider
+        return provider
 
     def _get_scope_name(cls: 'ScopeType[_T_Scope, _T_Conf]', val):
         return val.name if type(val) is ScopeAlias \
-            else val.config.name if isinstance(val, ScopeType) \
-            else text.snake(val) 
+            else text.snake(val) if isinstance(val, str)\
+            else None if not isinstance(val, ScopeType) or cls._is_abstract(val) \
+            else val.config.name
 
     def _is_abstract(cls: 'ScopeType[_T_Scope, _T_Conf]', val=None):
         return not hasattr(val or cls, 'config') or (val or cls).config.is_abstract
@@ -304,15 +324,20 @@ class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf]):
     def _make_implicit_type(cls, name):
         return cls.__class__(name, cls._implicit_bases(), dict())
 
-    def __call__(cls, name, *args,  **kwds):
-        if type(name) is cls:
-            return name
-        name = cls._get_scope_name(name)
+    def _gettype(cls, name, *, create_implicit=True):
         if name in ScopeType.__types:
-            cls = ScopeType.__types[name]
+            return ScopeType.__types[name]
+        elif name and create_implicit:
+            return cls._make_implicit_type(name)
         else:
-            cls = cls._make_implicit_type(name)
+            return cls
+
+    def __call__(cls, scope, *args,  **kwds):
+        if type(scope) is cls:
+            return scope
         
+        cls = cls._gettype(cls._get_scope_name(scope))
+
         if cls.config.is_abstract:
             raise TypeError(f'Cannot create abstract scope {cls}')
         elif cls.__instance__ is not None:
@@ -332,14 +357,17 @@ class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf]):
             params = ANY_SCOPE        
         return ScopeAlias(cls, params)
 
-    def register(cls, subclass: type[T]) -> type[T]:
+    def register(cls, subclass: ScopeType[T]) -> type[T]:
         super().register(subclass)
         cls._register_scope_type(subclass)
         return subclass
 
-    def _register_scope_type(cls, subclass: type[T] = None) -> type[T]:
-        if not cls._is_abstract(subclass):
-            ScopeType.__types[cls._get_scope_name(subclass or cls)] = subclass or cls
+    def _register_scope_type(cls, klass: type[T] = None) -> type[T]:
+        klass = klass or cls
+        if not cls._is_abstract(klass):
+            name = cls._get_scope_name(klass)
+            klass.__registry__ = ScopeType.__registries[name]
+            ScopeType.__types[name] = klass
         return cls
 
     def __order__(cls, self=...):
@@ -380,9 +408,17 @@ class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=Sco
                 f'Scope are singletons. {self.__instance__} already created.'
             )
 
+    @cached_class_property
+    def key(cls):
+        return Scope[cls.config.name] if not cls._is_abstract() else cls
+
     def ready(self) -> None:
         ...
     
+    @abstractmethod
+    def get_resolver(self, key):
+        ...
+
     @classmethod
     def __order__(cls, self=...):
         return cls.config
@@ -400,15 +436,15 @@ class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=Sco
         return self.__class__, self.name
 
     def __eq__(self, x) -> bool:
-        if isinstance(x, ScopeType):
-            return x is self.__class__
-        elif isinstance(x, Scope):
-            return x.__class__ is self.__class__
+        if isinstance(x, ScopeAlias):
+            return x == self.key
+        elif isinstance(x, (Scope, ScopeType)):
+            return x.key == self.key
         else:
             return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(self.__class__)
+        return hash(self.key)
 
 
 @export()
@@ -428,12 +464,9 @@ class CanSetupAndTeardownScope(CanSetupScope[_T_Scope], CanTeardown[_T_Scope]):
 @export()
 class Provider(Resolver, Orderable, CanSetupAndTeardownScope[_T_Scope], Generic[T_Injected, T_Injectable, _T_Scope], metaclass=ABCMeta):
     
-    __slots__ = (
-        'abstract', 'concrete', 'scope', 'cache', 
-        'priority', 'options', 
-    )
+    __slots__ = ()
     
-    _default_scope: ClassVar[str] = Scope.MAIN
+    _default_scope: ClassVar[str] = Scope.ANY
 
     abstract: StaticIndentity[T_Injectable]
 
@@ -477,7 +510,7 @@ class InjectorContext(Generic[T_Injector], metaclass=ABCMeta):
 
     def __enter__(self) -> T_Injector:
         if self.__issetup is None:
-            self.__issetup = bool(self.injector.setup())
+            self.__issetup = bool(self.injector.boot())
         return self.injector
 
     def __exit__(self, *exc):
@@ -519,11 +552,11 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=
         return self
 
     @abstractmethod
-    def setup(self: T_Injector) -> bool:
+    def boot(self: T_Injector) -> bool:
         ...
     
     @abstractmethod
-    def close(self) -> bool:
+    def destroy(self) -> bool:
         ...
 
     @abstractmethod

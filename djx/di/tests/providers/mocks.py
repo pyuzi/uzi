@@ -43,7 +43,7 @@ class AbcScope(Scope):
 
         
 
-@injectable(cache=True, scope=Scope.MAIN)
+@injectable(cache=True)
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
@@ -60,8 +60,13 @@ class Foo:
 
 provide('foo.name', value='My Name Is Foo!!')
 
+class Follow:
+    pass
+
+alias(Follow, Foo)
+
 @injectable(scope=Scope.ANY, cache=True)
-def user_func_injectable(user: Depends[str, user_str]):
+def user_func_injectable(user: Depends[str, user_str], d2: Follow):
     return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
@@ -71,13 +76,18 @@ class Baz:
 
 
 
+alias('bar', user_func_injectable)
+
+
 @injectable(cache=False, scope='abcd')
 class Bar:
 
     infoo = Inject(Foo, Scope.MAIN)
 
-    def __init__(self, foo: Foo, user: Depends[str, user_func_injectable], *, sym: Depends[str, user_symb], baz: Baz) -> None:
+    def __init__(self, foo: Foo, flw: Follow, sbar: Depends[str, 'bar'], user: Depends[str, user_func_injectable], *, sym: Depends[str, user_symb], baz: Baz) -> None:
         self.foo = foo
+        self.flw = flw
+        self.sbar = sbar
         self.user = user
         self.sym = sym
         self.baz = baz

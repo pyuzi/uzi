@@ -34,7 +34,7 @@ def identity(obj):
     if isinstance(obj, MethodType):
         obj = obj.__func__
 
-    return HashIdentity(id(obj)) 
+    return HashIdentity(id(obj), type(obj)) 
 
 
 
@@ -201,6 +201,7 @@ class symbol(Orderable, Generic[_S]):
 class HashIdentity(NamedTuple):
 
     hash: int
+    type: type
     hmark: Any = symbol
 
     def __reduce__(self):

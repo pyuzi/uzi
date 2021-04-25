@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "django_extensions",
     "djx.multisite",
     "djx.ledger",
+    "djx.tagtree",
     "example_app",
 ]
 

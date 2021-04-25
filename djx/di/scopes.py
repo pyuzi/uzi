@@ -6,7 +6,7 @@ from itertools import chain
 from threading import Lock
 from typing import ClassVar, Generic
 
-from djx.common.collections import fluentdict
+from djx.common.collections import fallbackdict, fluentdict, PriorityStack
 
 from flex.utils import text
 from flex.utils.decorators import export, lookup_property, cached_property
@@ -14,11 +14,11 @@ from flex.utils.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
-from .providers import ValueProvider, provide
+from .providers import BoundProvider, ValueProvider, provide
 from .symbols import _ordered_id
 from .injectors import Injector
 from .reg import registry
-from .abc import ScopeAlias, ScopeConfig, T_Context, T_Injector, T_Provider, _T_Providers, _T_Cache, _T_Conf, _T_Scope
+from .abc import ScopeAlias, ScopeConfig, T_Context, T_Injectable, T_Injector, T_Provider, _T_Providers, _T_Cache, _T_Conf, _T_Scope
 from . import abc
 
 
@@ -48,7 +48,7 @@ class Config(BaseMetadata[_T_Scope], ScopeConfig, Generic[_T_Scope, T_Injector, 
         
     @metafield[int](inherit=True)
     def priority(self, value, base=1) -> int:
-        return base or 0 if value is None else value
+        return base or 0 if value is None else value or 0
     
     @metafield[bool](inherit=True, default=None)
     def embedded(self, value, base=False):
@@ -73,10 +73,12 @@ class Config(BaseMetadata[_T_Scope], ScopeConfig, Generic[_T_Scope, T_Injector, 
     @metafield[list[str]](inherit=True)
     def depends(self, value: Collection[str], base=()) -> list[str]:
         _seen = set((self.name,))
-        self.embedded and _seen.update((abc.Scope.MAIN, abc.Scope.ANY))
+        tail = (abc.Scope.ANY, abc.Scope.MAIN)
+        self.embedded and _seen.update(tail)
+
         seen = lambda p: p in _seen or _seen.add(p)
         value = value if value is not None else base or ()
-        value = value if self.embedded else chain((abc.Scope.ANY, abc.Scope.MAIN), value)
+        value = value if self.embedded else chain((v for v in value if v not in tail), tail)
         return [p for p in value if not seen(p)]
 
     def __order__(self):
@@ -91,10 +93,10 @@ class ScopeType(abc.ScopeType):
     
     config: _T_Conf
     __instance__: _T_Scope
+    
 
     def __new__(mcls, name, bases, dct) -> 'ScopeType[_T_Scope]':
         raw_conf = dct.get('Config')
-        dct.update(__instance__=None)        
         
         meta_use_cls = raw_conf and getattr(raw_conf, '__use_class__', None)
         meta_use_cls and dct.update(__config_class__=meta_use_cls)
@@ -107,17 +109,6 @@ class ScopeType(abc.ScopeType):
         cls._is_abstract() or cls._register_scope_type()
         
         return cls
-
-    # def __call__(cls, name = None, **config):
-    #     if isinstance(name, cls):
-    #         return name
-    #     name = cls._get_scope_name(name or cls)
-    #     if not config and name in registry.scope_types:
-    #         cls = registry.scope_types[name]
-    #     else:
-    #         cls = cls.__class__(name, (ImplicitScope,), dict(Config=config))
-        
-    #     return type.__call__(cls, name)
     
     def __repr__(cls) -> str:
         return f'<ScopeType({cls.__name__}, {cls.config!r}>'
@@ -164,22 +155,34 @@ class Scope(abc.Scope, metaclass=ScopeType):
     def parents(self):
         return list(s for s in self.depends if not s.embedded)
 
-    @cached_property
-    def providers(self):
-        rv = fluentdict((p.abstract(), p) for p in self.providerstack.values())
-        self.prepare()
-        return rv
+    @property
+    def resolvers(self):
+        try:
+            return self._resolvers
+        except AttributeError:
+            return self._make_resolvers()
+        finally:
+            self.prepare()
+
+        # rv = fluentdict(p.setup(self) (p.abstract, p) for p in self.providerstack.values())
+        # rv = fluentdict(p.setup(self) for p in self.providers.values())
+        # self.prepare()
+        # return rv
 
     @cached_property
-    def providerstack(self):
-        rv = self._make_providerstack()
-        self.prepare()
+    def providers(self):
+        rv = self._make_providers()
         return rv
            
     @classmethod
     def _implicit_bases(cls):
         return ImplicitScope,
-  
+    
+    def get_resolver(self, key):
+        if key in self._resolvers:
+            return self._resolvers[key]
+        return self._resolvers.setdefault(key, self._make_resolver(key))
+
     def prepare(self: _T_Scope, *, strict=False) -> _T_Scope:
         if self.is_ready:
             if strict:
@@ -189,19 +192,33 @@ class Scope(abc.Scope, metaclass=ScopeType):
             self.__pos = _ordered_id()
             self.ready()
         return self
-
+    
     def _prepare(self):
         logger.debug(f'prepare({self})')
 
-    def _make_providerstack(self) -> _T_Providers:
-        stack = abc.PriorityStack()
+    def _make_providers(self) -> _T_Providers:
+        stack = PriorityStack()
         for embed in sorted(self.embeds):
             stack.update(embed.providers)
         
         provide(Scope[self.name], alias=Injector, scope=self.name, priority=-1)
-        stack.update(registry.all_providers[self.name])
+        stack.update(self.__class__._providers)
         return stack
     
+    def _make_resolvers(self):
+        self._resolvers = fluentdict()
+        self._setup_resolvers()
+        return self._resolvers
+
+    def _make_resolver(self, abstract):
+        if abstract in self.providers:
+            return self.providers[abstract].setup(self)
+
+    def _setup_resolvers(self):
+        for p in self.providers.values():
+            for k, r in p.setup(self):
+                self._resolvers[k] = r
+
     def setup(self, inj: T_Injector) -> T_Injector:
         logger.debug(f'setup({self}):  {inj}')
 
@@ -212,19 +229,20 @@ class Scope(abc.Scope, metaclass=ScopeType):
 
         return inj
 
-    def teardown(self, inj: T_Injector):
-        logger.debug(f'teardown({self}):  {inj}')
-
-        inj.cache = None
-        inj.providers = None
+    def setup_providers(self, inj: T_Injector):
+        inj.providers = fallbackdict(self.resolvers)
+        inj.providers[type(inj)] = BoundProvider(None, self.key, value=inj)
+        
 
     def setup_cache(self, inj: T_Injector):
         inj.cache = self.cache_factory()
         # inj.cache[Injector] = inj
 
-    def setup_providers(self, inj: T_Injector):
-        inj.providers = self.providers
+    def teardown(self, inj: T_Injector):
+        logger.debug(f'teardown({self}):  {inj}')
 
+        inj.cache = None
+        inj.providers = None
 
     def create(self, parent: T_Injector) -> T_Injector:
         if self in parent:
@@ -232,7 +250,7 @@ class Scope(abc.Scope, metaclass=ScopeType):
         
         logger.debug(f'create({self}): {parent=}')
         
-        for scope in sorted(self.parents):
+        for scope in self.parents:
             if scope not in parent:
                 parent = scope.create(parent)
     
@@ -249,9 +267,7 @@ class Scope(abc.Scope, metaclass=ScopeType):
             yield Scope(n)
 
     def __contains__(self, x) -> None:
-        if isinstance(x, Scope):
-            return x is self or any(True for s in self.depends if x in s)
-        return False
+        return x == self or any(True for s in self.depends if x in s)
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}#{self.config._pos}({self.config.name!r} #{self.is_ready and self.__pos or ""})'
@@ -276,6 +292,7 @@ class ImplicitScope(EmbeddedScope):
     class Config:
         abstract = True
         implicit = True
+        priority = -1
 
 
 
@@ -294,6 +311,16 @@ class MainScope(Scope):
 
     class Config:
         name = Scope.MAIN
+        priority = 9999
+
+
+
+
+
+class LocalScope(Scope):
+
+    class Config:
+        name = Scope.LOCAL
 
 
 

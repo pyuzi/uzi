@@ -1,7 +1,8 @@
-
+import logging
+from functools import partial
 from collections.abc import Mapping, MutableMapping
-from collections import defaultdict
-from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
+from collections import defaultdict, deque
+from contextlib import AbstractContextManager as ContextManager, ExitStack, contextmanager, nullcontext
 from types import FunctionType
 from contextvars import ContextVar
 from typing import Any, Callable, ClassVar, Generic, Optional, Sequence, Type, TypeVar, Union
@@ -12,10 +13,74 @@ from flex.utils.decorators import export
 from djx.common.utils import Void
 
 from .symbols import _ordered_id
+from .providers import ValueResolver
 from .abc import ( 
-    InjectedContextManager, InjectorContext, InjectorKeyError, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, _T_Scope, _T_Cache, _T_Providers
+    InjectorContext, InjectorKeyError, Resolver, Scope, ScopeAlias, T,
+    T_ContextStack, T_Injectable, T_Injected, T_Injector, T_Provider, _T_Scope, _T_Cache, _T_Providers
 )
 from . import abc
+
+
+logger = logging.getLogger(__name__)
+
+
+@export()
+@abc.InjectorContext[T_Injector].register
+class InjectorContext(ExitStack, Generic[T_Injector]):
+
+
+    injector: T_Injector
+    parent: 'InjectorContext'
+    _booted: bool = None
+
+    _entry_callbacks: deque
+    _exit_callbacks: deque
+
+    def __init__(self, injector: T_Injector=None):
+        super().__init__()
+        self.injector = injector
+        self._entry_callbacks = deque()
+    
+    def pop_all(self):
+        """Preserve the context stack by transferring it to a new instance."""
+        rv = super().pop_all()
+        rv.injector = self.injector
+        return rv
+
+    def onentry(self, cb, /, *args, **kwds):
+        """Registers an arbitrary callback and arguments to be called when the 
+        context is entered.
+        """
+        self._push_entry_callback(partial(cb, *args, **kwds))
+        return cb  # Allow use as a decorator
+
+    onexit = ExitStack.callback
+
+    def wrap(self, cm, exit=None):
+        entry = cm.__enter__ if isinstance(cm, ContextManager) else cm
+
+        callable(entry) and self._push_entry_callback(entry)
+
+        exit = exit if entry is cm else cm
+        return cm if exit is None else self.push(exit)
+
+    def _push_entry_callback(self, cb):
+        self._entry_callbacks.append(cb)
+
+    def __enter__(self) -> T_Injector:
+        try:
+            while self._entry_callbacks:
+              self._entry_callbacks.popleft()()
+        except Exception as e:
+            raise RuntimeError(f'Entering context: {self.injector!r}') from e
+       
+        return self.injector
+
+    def __call__(self):
+        return self
+    
+
+
 
 
 @export()
@@ -23,112 +88,109 @@ from . import abc
 class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
 
     __slots__ = (
-        'scope', 'parent', 'cache', 'providers', 'level', '__missing__',
-        'exitstack', '__hasbooted', '__skipself', '__weakref__',
+        'scope', 'parent', 'cache', 'content', 'level', '__ctx',
+        '__booted', '__skipself', '__weakref__', '__missing__',
     )
 
     scope: _T_Scope
     parent: T_Injector
-    cache: _T_Cache[T_Injected]
-    providers: _T_Providers[T_Provider]
+    content: _T_Providers[T_Provider]
     
-    context: InjectorContext[T_Injector]
+    __ctx: InjectorContext[T_Injector]
 
-    exitstack: ExitStack
 
     level: int
     __skipself: bool
-    __hasbooted: bool
+    __booted: bool
+    _context_cls = InjectorContext
 
-    def __init__(self, scope: _T_Scope, parent: T_Injector, providers: _T_Providers=None, cache: _T_Cache=None) -> None:
+    def __init__(self, scope: _T_Scope, parent: T_Injector, content: _T_Providers=None) -> None:
         self.scope = scope
         self.parent = parent
-        self.level = 0 if parent is None else parent.level + 1 
-        self.providers = providers
-        self.cache = cache
-        self.__hasbooted = False
+        self.level = parent.level + 1 
+        self.content = content
+        self.__booted = False
         self.__skipself = True
         self.__missing__ = self.__missing_boot__
+        self.__ctx = self._create_ctx()
+        self._setup_ctx(self.__ctx)
 
     @property
     def final(self):
         return self.parent.final if self.__skipself is True else self
 
+    @property
     def context(self):
-        return self.scope.create_context(self)
+        return self.__ctx
+
+    @property
+    def booted(self):
+        return self.__booted
 
     def boot(self: T_Injector) -> bool:
-        return self.__boot__()
+        return self._boot()
     
-    def destroy(self) -> bool:
-        return self.__destroy__()
-
-    def enter(self, cm: InjectedContextManager[T_Injected]) -> T_Injected:
-        """Enters the supplied context manager.
-
-        If successful, also pushes its __exit__ method as an exit callback and
-        returns the result of the __enter__ method. 
-        
-        See also: `Injector.onexit()`
-        """
-        return self.exitstack.enter_context(cm)
-
-    def onexit(self, cb: Union[InjectedContextManager, Callable]):
-        """Registers an exit callback. Exit callbacks are called when the 
-        injector closes.
-
-        Callback can be a context manager or callable with the standard 
-        `ContextManager's` `__exit__` method signature.
-        """
-        return self.exitstack.push(cb)
-
-    def _setup_exitstack(self):
-        self.exitstack = self.scope.create_exitstack(self) 
-        self.exitstack.enter_context(self.parent.context())
-        self.exitstack.callback(self.destroy)
-
-    def __boot__(self) -> bool:
-        if self.__hasbooted is False:
-            self._setup_exitstack()
-            self.scope.setup(self)
-            self.__hasbooted = True
-
+    def shutdown(self) -> bool:
+        return self._shutdown()
+    
+    def _boot(self) -> bool:
+        if self.__booted is False:
+            self.scope.bootstrap(self)
+            self.__booted = True
             self.__skipself = False
             self.__missing__ =  InjectorKeyError if self.parent is None else self.parent.__getitem__
-
             return True
         return False
     
-    def __destroy__(self) -> bool:
-        if self.__hasbooted:
-            self.scope.teardown(self)
-            self.__hasbooted = None
-            self.exitstack.close()
+    def _shutdown(self) -> bool:
+        if self.__booted is True:
+            self.__booted = None
+            self.scope.dispose(self)
+            # self.__skipself = True
             return True
         return False
 
+    def _create_ctx(self) -> T_ContextStack:
+        return self._context_cls(self)
+
+    def _setup_ctx(self, ctx: T_ContextStack):
+        ctx.wrap(self.parent.context)
+        ctx.wrap(self._bootmanager())
+
+    @contextmanager
+    def _bootmanager(self):
+        ind =f'#{self.level}' + '    '*(self.level+1)
+        logger.debug(f'{ind}+++{self} start boot context [{self.booted}]+++')
+        booted = self.boot()
+        logger.debug(f'{ind}+   {self} booted {booted}   +')
+        yield self
+        if booted and self.shutdown():
+            logger.debug(f'{ind}-   {self} destroyed   -')
+
+        logger.debug(f'{ind}---{self} end boot context---')
+        
     def __missing_boot__(self, key):
         self.boot()
         return self.__getitem__(key)
 
     def __contains__(self, x) -> bool:
-        if self.__hasbooted:
-            return x in self.providers.__contains__(x) or x in self.parent.__contains__(x)
+        if self.__booted:
+            return self.content.__contains__(x) or self.parent.__contains__(x)
         else:
             return self.scope.__contains__(x)
 
     def __bool__(self) -> bool:
-        return self.__hasbooted
+        return self.__booted
 
     def __len__(self) -> bool:
-        return len(self.providers) if self.__hasbooted else 0
+        return len(self.content) if self.__booted else 0
 
     def __setitem__(self, k: T_Injectable, val: T_Injected):
-        self.providers[k] = val
+        self.content[k] = val if isinstance(val, Resolver) else ValueResolver(val)
     
     def __delitem__(self, k: T_Injectable):
         try:
-            del self.providers[k]
+            del self.content[k]
         except KeyError:
             pass
    
@@ -136,9 +198,9 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
         if self.__skipself:
             return self.__missing__(k)
 
-        rec = self.providers.__getitem__(k)
+        rec = self.content.__getitem__(k)
         if rec is not None:
-            return rec(self) if rec.value is Void else rec.value
+            return rec.__call__() if rec.value is Void else rec.value
         else:
             try:
                 self.__skipself = True
@@ -152,38 +214,7 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
     def __repr__(self) -> str:
         return f'<{self} parent={self.parent!r}>'
 
-    def __enter__(self, scope: Union[str, ScopeAlias] = None):
-        self.boot()
-        return self
 
-    def __exit__(self, *exc):
-        self.destroy()
-   
-    @contextmanager
-    def __call__(self, name: Union[str, ScopeAlias] = None) -> AbstractContextManager[T_Injector]:
-        global _inj_ctxvar
-        if name is None:
-            return self
-        
-        cur = _inj_ctxvar.get()
-        if name is not None:
-            scope = Scope[name]
-
-            if scope is None or scope in cur:
-                reset = None
-
-            elif scope not in cur:
-                cur = scope().create(cur)
-                reset = _inj_ctxvar.set(cur)
-
-        try:
-            yield cur
-        finally:
-            if reset is not None:
-                cur.destroy()
-                _inj_ctxvar.reset(reset)
-
-_inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar')
 
 
 
@@ -192,22 +223,23 @@ _inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar')
 class RootInjector(Generic[T_Injector]):
     """NullInjector Object"""
 
-    __slots__ = ()
+    __slots__ = 'content', '__ctx',
 
     scope = None
     parent = None
     level = -1
     
-    def __init__(self) -> None:
-        global _inj_ctxvar
-        _inj_ctxvar.set(self)
+    def __init__(self):
+        self.__ctx = InjectorContext(self)
+        self.content = {}
 
     @property
     def final(self):
         return self
  
+    @property
     def context(self):
-        return nullcontext(self)
+        return self.__ctx
  
     def __contains__(self, x) -> bool:
         return False
@@ -234,25 +266,3 @@ class RootInjector(Generic[T_Injector]):
 
     def __repr__(self) -> str:
         return f'{self}'
-
-    @contextmanager
-    def __call__(self, name: Union[str, ScopeAlias] = None) -> AbstractContextManager[T_Injector]:
-        global _inj_ctxvar
-
-        cur = _inj_ctxvar.get()
-
-        scope = Scope[name] if name else Scope[Scope.MAIN] if cur is self else None
-
-        if scope is None or scope in cur:
-            reset = None
-
-        elif scope not in cur:
-            cur = scope().create(cur)
-            reset = _inj_ctxvar.set(cur)
-
-        try:
-            yield cur
-        finally:
-            if reset is not None:
-                cur.destroy()
-                _inj_ctxvar.reset(reset)

@@ -53,8 +53,8 @@ def scope(name: str=None):
         cur = scope().create(cur)
         reset = __inj_ctxvar.set(cur)
         try:
-            with ExitStack() as stack:
-                stack.push(cur)
+            # with ExitStack() as stack:
+                # stack.push(cur)
                 yield cur
         finally:
             reset is None or __inj_ctxvar.reset(reset)

@@ -25,6 +25,42 @@ class MainScope(Scope):
         
         
 
+class Level2Scope(Scope):
+
+    class Config:
+        name = 'level_2'
+        depends = [
+            'request'
+        ]
+        
+class Level3Scope(Scope):
+
+    class Config:
+        name = 'level_3'
+        depends = [
+            'level_2'
+        ]
+        
+
+class Level4Scope(Scope):
+
+    class Config:
+        name = 'level_4'
+        depends = [
+            'level_3'
+        ]
+        
+
+class Level5Scope(Scope):
+
+    class Config:
+        name = 'level_5'
+        depends = [
+            'level_4'
+        ]
+        
+
+
 class CliScope(Scope):
 
     class Config:
@@ -40,12 +76,12 @@ class TestScope(Scope):
         name = 'test'
         depends = [
             # 'cli',
-            # 'request'
+            'level_5'
         ]
         
 
 
-@injectable(cache=True)
+@injectable(cache=True, scope='any')
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
@@ -67,21 +103,25 @@ class Follow:
 
 alias(Follow, Foo)
 
-@injectable(scope=Scope.ANY, cache=True)
+@injectable(scope=Scope.ANY, cache=False)
 def user_func_injectable(user: Depends[str, user_str], d2: Follow):
     return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
 @injectable(cache=False)
 class Baz:
-    pass
+
+    def __init__(self):
+        self.abc = f'Baz -> #{_ordered_id()}'
+    
+
 
 
 
 alias('bar', user_func_injectable)
 
 
-@injectable(cache=False, scope=Scope.MAIN)
+@injectable(cache=True, scope=Scope.ANY)
 class Bar:
 
     infoo = Inject(Foo, Scope.MAIN)
@@ -113,7 +153,7 @@ def user_func_symb():
 provide(user_symb, factory=user_func_symb, cache=True)
 
 
-@injectable(abstract=user_str, cache=True)
+@injectable(abstract=user_str, cache=False)
 def user_func_str():
     return f'user_func_str {user_str} -> #{_ordered_id()}'
     

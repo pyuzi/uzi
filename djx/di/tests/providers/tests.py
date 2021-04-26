@@ -93,33 +93,34 @@ class SymbolTests:
         assert 0
 
     def test_speed(self):
-        # with scope('local'):
+        # with scope() as inj:
         with nullcontext():
             # with scope('local') as inj:
-            with nullcontext():
+            # with inj.context:
 
             #     print('*'*16, inj,'*'*16)
             #     # with scope('abc') as _inj:
                 #     nl = "\n    -- "
                 with scope('test') as inj:
-                    # with inj:
-                    null = lambda: None
-                    mkfoo = lambda: Foo('simple foo', user=user_func_str(), inj=null())
-                    mkbaz = lambda: Baz()
-                    mkfunc = lambda: user_func_injectable(user_func_str(), mkfoo())
-                    mkbar = lambda: Bar(mkfoo(), mkfoo(), user_func_str(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
-                    injfoo = lambda: injector[Foo]
-                    injbar = lambda: inj[Bar]
-                    injbafoo = lambda: inj[Bar].infoo
-                    injbaz = lambda: inj[Baz]
-                    inj404 = lambda: inj['404']
+                    with inj.context:
+                        null = lambda: None
+                        mkfoo = lambda: Foo(user_func_symb(), user=user_func_str(), inj=null())
+                        # mkfoo = lambda: Foo('a very simple value here', user=user_func_str(), inj=null())
+                        mkbaz = lambda: null() or Baz() 
+                        mkfunc = lambda: user_func_injectable(user_func_str(), mkfoo())
+                        mkbar = lambda: Bar(mkfoo(), mkfoo(), user_func_str(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
+                        injfoo = lambda: injector[Foo]
+                        injbar = lambda: inj[Bar]
+                        injbafoo = lambda: inj[Bar].infoo
+                        injbaz = lambda: inj[Baz]
+                        inj404 = lambda: inj['404']
 
-                    print(f' {injbafoo()}\n {injbar()}\n')
+                        print(f'{injfoo()}\n {injbar()}\n')
 
-                    _n = int(2.5e4)
-                    self.run('Baz', mkbaz, injbaz, _n)
-                    self.run('Foo', mkfoo, injfoo, _n)
-                    self.run('Bar', mkbar, injbar, _n)
+                        _n = int(1e5)
+                        self.run('Baz', mkbaz, injbaz, _n)
+                        self.run('Foo', mkfoo, injfoo, _n)
+                        self.run('Bar', mkbar, injbar, _n)
 
         assert 0
         return

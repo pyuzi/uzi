@@ -7,7 +7,7 @@ from collections.abc import (
     Mapping, MutableSequence, ItemsView, ValuesView, MutableMapping, 
     Sequence, Hashable, Container, Callable
 )
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import AbstractContextManager, ExitStack
 from itertools import chain
 from types import FunctionType, GenericAlias, MethodType
@@ -39,10 +39,8 @@ T_Injected = TypeVar("T_Injected")
 T_Injector = TypeVar('T_Injector', bound='Injector', covariant=True)
 T_Injectable = TypeVar('T_Injectable', bound='Injectable', covariant=True)
 
-T_Injected_Ctx = TypeVar("T_Injected_Ctx", bound='InjectedContextManager')
-T_Injected_CtxMan = TypeVar("T_Injected_CtxMan", bound='InjectedContextManager')
 
-T_Context = TypeVar('T_Context', bound='InjectorContext')
+T_ContextStack = TypeVar('T_ContextStack', bound='InjectorContext', covariant=True)
 
 
 _T_Setup = TypeVar('_T_Setup')
@@ -52,13 +50,13 @@ _T_Conf = TypeVar('_T_Conf', bound='ScopeConfig', covariant=True)
 
 
 T_Provider = TypeVar('T_Provider', bound='Provider', covariant=True)
-# T_Resolver = TypeVar('T_Resolver', bound='Resolver', covariant=True)
+T_Resolver = TypeVar('T_Resolver', bound='Resolver', covariant=True)
 
 _T_Cache = MutableMapping['StaticIndentity', T_Injected]
 _T_Providers = Mapping['Injectable', Optional[T_Provider]]
 
 _T_CacheFactory = Callable[..., _T_Cache]
-_T_ContextFactory = Callable[..., T_Context]
+_T_ContextFactory = Callable[..., T_ContextStack]
 _T_InjectorFactory = Callable[[_T_Scope, 'Injector'], T_Injector]
 
 
@@ -70,72 +68,19 @@ class Resolver(Generic[T_Injectable, T_Injected, T_Injector], metaclass=ABCMeta)
     """Resolver Object"""
     __slots__ = ()
 
-    abstract: T_Injectable
-    scope: ScopeAlias
+    bound: Union[T_Injector, None]
     value: Union[T_Injected, Void]
 
     @abstractmethod
-    def __call__(self, inj: T_Injector) -> T_Injected: 
+    def bind(self, inj: T_Injector) -> T_Resolver:
+        ...
+
+    @abstractmethod
+    def __call__(self, *args, **kwds) -> T_Injected: 
         ...
     
 
 
-@export()
-class CanSetup(Generic[_T_Setup, _T_Setup_R], metaclass=ABCMeta):
-
-    __slots__ = ()
-
-    def __class_getitem__(cls, params):
-        if not isinstance(params, tuple):
-            params = (params,)
-        if len(params) == 1:
-            return GenericAlias(cls, params + params)
-        else:
-            return GenericAlias(cls, params)
-
-
-    @abstractmethod
-    def setup(self, *obj: _T_Setup) -> _T_Setup_R:
-        pass
-
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is CanSetup:
-            return hasattr(C, 'setup')
-        return NotImplemented
-
-
-@export()
-class CanTeardown(Generic[_T_Setup], metaclass=ABCMeta):
-
-    __slots__ = ()
-
-    def setup(self, obj: _T_Setup):
-        return obj
-
-    @abstractmethod
-    def teardown(self, *obj: _T_Setup):
-        pass
-    
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is CanTeardown:
-            return hasattr(C, 'teardown')
-        return NotImplemented
-
-
-
-
-@export()
-class CanSetupAndTeardown(CanSetup[_T_Setup, _T_Setup_R], CanTeardown[_T_Setup], Generic[_T_Setup, _T_Setup_R]):
-
-    __slots__ = ()
-  
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is CanSetupAndTeardown:
-            return hasattr(C, 'setup') and hasattr(C, 'teardown')
-        return NotImplemented
 
 
 
@@ -184,33 +129,7 @@ Injectable.register(GenericAlias)
 
 
 @export()
-class InjectedContextManager(Generic[T_Injected_Ctx], metaclass=ABCMeta):
-    
-    __slots__ = ()
-
-    __class_getitem__ = classmethod(GenericAlias)
-    
-    def __enter__(self: T_Injected_Ctx) -> T_Injected_Ctx:
-        """Return `self` upon entering the runtime context."""
-        return self
-
-    @abstractmethod
-    def __exit__(self, exc_type, exc_value, traceback):
-        """Raise any exception triggered within the runtime context."""
-        return None
-
-
-
-
-@export()
-class InjectableContextManager(Injectable[T_Injected_CtxMan], Generic[T_Injected_Ctx, T_Injected_CtxMan]):
-    __slots__ = ()
-    
-
-
-
-@export()
-class ScopeConfig(Orderable, Generic[T_Injector, T_Context], metaclass=ABCMeta):
+class ScopeConfig(Orderable, Generic[T_Injector, T_ContextStack], metaclass=ABCMeta):
     
     name: ClassVar[str]
     priority: ClassVar[int]
@@ -231,11 +150,6 @@ class ScopeConfig(Orderable, Generic[T_Injector, T_Context], metaclass=ABCMeta):
 class ScopeAlias(GenericAlias):
 
     __slots__ = ()
-
-    # def __init__(self, origin: 'ScopeType', args) -> None:
-    #     if type(args) is ScopeAlias:
-    #         args = args.__args__
-    #     GenericAlias.__init__(self, origin, args)
 
     @property
     def name(self):
@@ -284,7 +198,6 @@ class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf, T_Provider]):
 
     @classmethod
     def __prepare__(mcls, cls, bases, **kwds):
-        # check that previous enum members do not exist
         return dict(
             __instance__=None, 
             __registry__=None,
@@ -369,15 +282,14 @@ MAIN_SCOPE = 'main'
 LOCAL_SCOPE = 'local'
 
 @export()
-class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=ScopeType):
+class Scope(Orderable, Container, metaclass=ScopeType):
     
     __slots__ = ()
 
     config: ClassVar[_T_Conf]
 
     name: str
-    providers: _T_Providers
-    providerstack: 'PriorityStack[StaticIndentity, T_Provider]'
+    providers: 'PriorityStack[StaticIndentity, T_Provider]'
     peers: list['Scope']
     embedded: bool
 
@@ -399,9 +311,9 @@ class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=Sco
     def ready(self) -> None:
         ...
     
-    @abstractmethod
-    def get_resolver(self, key):
-        ...
+    # @abstractmethod
+    # def get_resolver(self, key):
+    #     ...
 
     @classmethod
     def __order__(cls, self=...):
@@ -414,6 +326,14 @@ class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=Sco
   
     @abstractmethod
     def create(self, parent: 'Injector') -> T_Injector:
+        ...
+
+    @abstractmethod
+    def bootstrap(self, inj: T_Injector) -> T_Injector:
+        ...
+
+    @abstractmethod
+    def dispose(self, inj: T_Injector) -> T_Injector:
         ...
 
     def __reduce__(self) -> None:
@@ -431,22 +351,10 @@ class Scope(Orderable, CanSetupAndTeardown[T_Injector], Container, metaclass=Sco
         return hash(self.key)
 
 
-@export()
-class CanSetupScope(CanSetup[_T_Scope]):
-    __slots__ = ()
-
-
 
 
 @export()
-class CanSetupAndTeardownScope(CanSetupScope[_T_Scope], CanTeardown[_T_Scope]):
-    __slots__ = ()
-
-
-
-
-@export()
-class Provider(Orderable, CanSetupAndTeardownScope[_T_Scope], Generic[T_Injected, T_Injectable, _T_Scope], metaclass=ABCMeta):
+class Provider(Orderable, Generic[T_Injected, T_Injectable], metaclass=ABCMeta):
     
     __slots__ = ()
     
@@ -464,13 +372,10 @@ class Provider(Orderable, CanSetupAndTeardownScope[_T_Scope], Generic[T_Injected
     def __call__(self, inj: 'Injector') -> T_Injected:
         return NotImplemented
 
-    def setup(self, scope: _T_Scope):
-        """Setup provider in given scope.
+    def bind(self, inj: T_Injector):
+        """Bind provider to given injector.
         """
-        pass
-
-    def teardown(self, scope: _T_Scope):
-        pass
+        ...
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}({self.abstract}, at="{self.scope}")'
@@ -480,27 +385,35 @@ class Provider(Orderable, CanSetupAndTeardownScope[_T_Scope], Generic[T_Injected
 class InjectorKeyError(KeyError):
     pass
 
-@export()
-class InjectorContext(Generic[T_Injector], metaclass=ABCMeta):
 
-    __slots__ = ('injector', '__issetup')
+
+
+@export()
+class InjectorContext(ExitStack, Callable[..., T_ContextStack], Generic[T_Injector, T_ContextStack]):
 
     injector: T_Injector
-    __issetup: bool
+    parent: T_ContextStack
+    
+    @abstractmethod
+    def new_child(self, inj: T_Injector) -> T_ContextStack:
+        ...
+  
+    @abstractmethod
+    def wrap(self, cm, exit=None):
+        ...
 
-    def __init__(self, injector: T_Injector):
-        self.injector = injector
-        self.__issetup = None
+    @abstractmethod
+    def on_entry(self, cb, /, *arg, **kwds):
+        ...
 
+    @abstractmethod
     def __enter__(self) -> T_Injector:
-        if self.__issetup is None:
-            self.__issetup = bool(self.injector.boot())
-        return self.injector
+        ...
 
+    @abstractmethod
     def __exit__(self, *exc):
-        if self.__issetup is True:
-            self.__issetup = False
-            self.injector.exitstack.__exit__(*exc)
+        ...
+
 
 
 
@@ -513,7 +426,9 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=
     scope: _T_Scope
     parent: T_Injector
     level: int
-   
+
+    content: Mapping[T_Injectable, Resolver] 
+
     @property
     @abstractmethod
     def final(self) -> T_Injector:
@@ -529,11 +444,12 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=
     def local(self) -> T_Injector:
         return self[Scope[Scope.LOCAL]]
 
+    @property
     @abstractmethod
     def context(self) -> InjectorContext[T_Injector]:
         """Get a reusable contextmanager for this injector.
         """
-        return self
+        ...
 
     @abstractmethod
     def boot(self: T_Injector) -> bool:

@@ -18,7 +18,7 @@ from .providers import ValueResolver, provide
 from .symbols import _ordered_id
 from .injectors import Injector
 from .reg import registry
-from .abc import ScopeAlias, ScopeConfig, T_Context, T_Injectable, T_Injector, T_Provider, _T_Providers, _T_Cache, _T_Conf, _T_Scope
+from .abc import ScopeAlias, ScopeConfig, T_ContextStack, T_Injectable, T_Injector, T_Provider, _T_Providers, _T_Cache, _T_Conf, _T_Scope
 from . import abc
 
 
@@ -31,7 +31,7 @@ _config_lookup = partial(lookup_property, lookup='config', read_only=True)
 
 
 @export()
-class Config(BaseMetadata[_T_Scope], ScopeConfig, Generic[_T_Scope, T_Injector, T_Context]):
+class Config(BaseMetadata[_T_Scope], ScopeConfig, Generic[_T_Scope, T_Injector, T_ContextStack]):
 
     is_abstract = metafield[bool]('abstract', default=False)
 
@@ -62,7 +62,7 @@ class Config(BaseMetadata[_T_Scope], ScopeConfig, Generic[_T_Scope, T_Injector, 
     def cache_factory(self, value, base=None) -> type[_T_Cache]:
         return value or base or dict
     
-    @metafield[type[T_Context]](inherit=True)
+    @metafield[type[T_ContextStack]](inherit=True)
     def context_factory(self, value, base=None) -> type[_T_Cache]:
         return value or base or abc.InjectorContext
     
@@ -132,7 +132,7 @@ class Scope(abc.Scope, metaclass=ScopeType[_T_Scope, _T_Conf, T_Provider]):
     embedded: bool = _config_lookup()
     priority: int = _config_lookup()
     cache_factory: type[_T_Cache] = _config_lookup()
-    context_factory: type[T_Context] = _config_lookup()
+    context_factory: type[T_ContextStack] = _config_lookup()
     injector_factory: type[T_Injector] = _config_lookup()
     
     def __init__(self):
@@ -178,10 +178,10 @@ class Scope(abc.Scope, metaclass=ScopeType[_T_Scope, _T_Conf, T_Provider]):
     def _implicit_bases(cls):
         return ImplicitScope,
     
-    def get_resolver(self, key):
-        if key in self._resolvers:
-            return self._resolvers[key]
-        return self._resolvers.setdefault(key, self._make_resolver(key))
+    # def get_resolver(self, key):
+    #     if key in self._resolvers:
+    #         return self._resolvers[key]
+    #     return self._resolvers.setdefault(key, self._make_resolver(key))
 
     def prepare(self: _T_Scope, *, strict=False) -> _T_Scope:
         if self.is_ready:
@@ -208,55 +208,58 @@ class Scope(abc.Scope, metaclass=ScopeType[_T_Scope, _T_Conf, T_Provider]):
     def _make_resolvers(self):
         def fallback(key):
             if key in self.providers:
-                self._resolvers.update(self.providers[key].setup(self))
+                self._resolvers[key] = self.providers[key].bind( None )
             return self._resolvers.setdefault(key, None)
 
         self._resolvers = fallbackdict(fallback)
         # self._setup_resolvers()
         return self._resolvers
 
-
-    def _setup_resolvers(self):
-        for p in self.providers.values():
-            for k, r in p.setup(self):
-                self._resolvers[k] = r
-
-    def setup(self, inj: T_Injector) -> T_Injector:
-        logger.debug(f'setup({self}):  {inj}')
+    def bootstrap(self, inj: T_Injector) -> T_Injector:
+        logger.debug(f' + bootstrap({self}):  {inj}')
 
         self.prepare()
 
-        self.setup_providers(inj)
+        self.setup_resolvers(inj)
 
         return inj
 
-    def setup_providers(self, inj: T_Injector):
+    def setup_resolvers(self, inj: T_Injector):
+        content: fallbackdict
+        parent = inj.parent.content
+
         def fallback(key):
-            inj.providers[key] = self.resolvers[key]        
-            return inj.providers[key]# or inj.parent.providers[key]
-        inj.providers = fallbackdict(fallback)
-        inj.providers[type(inj)] = ValueResolver(inj)
+            res = self.resolvers[key]
+            # if res is None:
+                # content[key] = parent[key]
+                # return parent[key]
+            # else:
+                # content[key] = res and res.bind(inj)   
+            content[key] = res and res.bind(inj)   
+            return content[key]  # or inj.parent.providers[key]
+
+        content = fallbackdict(fallback)
+        content[type(inj)] = ValueResolver(type(inj), inj, bound=inj)
+        inj.content = content
         
 
-    def teardown(self, inj: T_Injector):
-        logger.debug(f'teardown({self}):  {inj}')
-
-        inj.cache = None
-        inj.providers = None
+    def dispose(self, inj: T_Injector):
+        logger.debug(f' x dispose({self}):  {inj}')
+        inj.content = None
 
     def create(self, parent: T_Injector) -> T_Injector:
         if self in parent:
             return parent
-        
-        logger.debug(f'create({self}): {parent=}')
-        
+            
         for scope in self.parents:
             if scope not in parent:
                 parent = scope.create(parent)
     
+        logger.debug(f'create({self}): {parent=}')
+    
         return self.injector_factory(self, parent)
     
-    def create_context(self, inj: T_Injector) -> T_Context:
+    def create_context(self, inj: T_Injector) -> T_ContextStack:
         return self.config.context_factory(inj)
 
     def create_exitstack(self, inj: T_Injector) -> ExitStack:

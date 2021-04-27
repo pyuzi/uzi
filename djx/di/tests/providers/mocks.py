@@ -76,7 +76,7 @@ class TestScope(Scope):
         name = 'test'
         depends = [
             # 'cli',
-            'level_5'
+            'level_2'
         ]
         
 
@@ -101,14 +101,14 @@ provide('foo.name', value='My Name Is Foo!!')
 class Follow:
     pass
 
-alias(Follow, Foo)
+alias(Follow, Foo, cache=True)
 
-@injectable(scope=Scope.ANY, cache=False)
+@injectable(scope=Scope.ANY, cache=True)
 def user_func_injectable(user: Depends[str, user_str], d2: Follow):
     return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
-@injectable(cache=False)
+@injectable(cache=True)
 class Baz:
 
     def __init__(self):
@@ -121,7 +121,7 @@ class Baz:
 alias('bar', user_func_injectable)
 
 
-@injectable(cache=True, scope=Scope.ANY)
+@injectable(cache=False, scope=Scope.ANY)
 class Bar:
 
     infoo = Inject(Foo, Scope.MAIN)
@@ -153,7 +153,7 @@ def user_func_symb():
 provide(user_symb, factory=user_func_symb, cache=True)
 
 
-@injectable(abstract=user_str, cache=False)
+@injectable(abstract=user_str, cache=True)
 def user_func_str():
     return f'user_func_str {user_str} -> #{_ordered_id()}'
     

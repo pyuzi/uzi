@@ -220,7 +220,7 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector]):
 
 @export()
 @abc.Injector.register
-class RootInjector(Generic[T_Injector]):
+class NullInjector(Generic[T_Injector]):
     """NullInjector Object"""
 
     __slots__ = 'content', '__ctx',

@@ -43,10 +43,11 @@ def alias(abstract: T_Injectable,
         alias: abc.Injectable[T], 
         priority: int = 1, *, 
         scope: str = None, 
+        cache:bool=None, 
         **opts) -> AliasProvider:
     """Registers an `AliasProvider`
     """
-    return provide(abstract, priority=priority, alias=alias, scope=scope, **opts)
+    return provide(abstract, priority=priority, alias=alias, scope=scope, cache=cache, **opts)
         
 
 
@@ -158,54 +159,28 @@ class ValueResolver(Resolver[T, T, T_Injectable, T_Injector]):
             )
 
 
-    # @classmethod
-    # def none(cls, abstract: T_Injectable, *, bound: T_Injector=None): #-> ValueResolver[Literal[None], T_Injectable, T_Injector]:
-    #     return cls(abstract, None, bound=bound)
 
 
 
                                                                                                                                                                  
 @export()
 class AliasResolver(Resolver[T, T_Injectable, T_Injectable, T_Injector]):
-    """BoundProvider Object"""
+    """Resolver Object"""
 
-    __slots__ = ()
+    __slots__ = 'cache', '__call__',
 
-    def __call__(self, inj: Injector=...) -> T:
-        return self.bound[self.concrete]
-
-
-
-
-
-@export()
-class FuncResolver(Resolver[T, Callable, T_Injectable, T_Injector]):
-    """BoundProvider Object"""
-
-    __slots__ = 'cache', '__call__'
 
     def __init__(self, abstract, concrete, *, bound=None, cache=False, **kwds):
         super().__init__(abstract, concrete, bound=bound, **kwds)
         self.cache = cache
         if cache:
             def __call__() -> T:
-                self.value = concrete()
+                self.value = bound[concrete]
                 return self.value
-            self.__call__ = __call__
         else:
-            self.__call__ = concrete
-    
-    def __calls__(self) -> T:
-        inj = self.bound
-        if p := self.params:
-            rv = self.concrete(*p.inject_args(inj), **p.inject_kwargs(inj))
-        else:
-            rv = self.concrete()
-        
-        if self.cache:
-            self.value = rv
-        
-        return rv
+            def __call__() -> T:
+                return bound[concrete]
+        self.__call__ = __call__
 
     def clone(self, abstract=..., bound=...):
         return self.__class__(
@@ -214,6 +189,35 @@ class FuncResolver(Resolver[T, Callable, T_Injectable, T_Injector]):
                 bound=self.bound if bound is ... else bound, 
                 cache=self.cache,
             )
+
+
+@export()
+class FuncResolver(Resolver[T, Callable, T_Injectable, T_Injector]):
+    """Resolver Object"""
+
+    __slots__ = 'cache', '__call__'
+
+    def __init__(self, abstract, concrete, *, bound=None, cache=False, **kwds):
+        super().__init__(abstract, concrete, bound=bound, **kwds)
+        self.cache = cache
+        if cache:
+            def __call__() -> T:
+                self.value = concrete.__call__()
+                return self.value
+            self.__call__ = __call__
+        else:
+            self.__call__ = concrete.__call__
+
+    def clone(self, abstract=..., bound=...):
+        return self.__class__(
+                self.abstract if abstract is ... else abstract, 
+                self.concrete,
+                bound=self.bound if bound is ... else bound, 
+                cache=self.cache,
+            )
+
+
+
 
 
 @export()
@@ -229,11 +233,11 @@ class FuncParamsResolver(FuncResolver):
 
         if cache:
             def __call__() -> T:
-                self.value = concrete(*params.inject_args(bound), **params.inject_kwargs(bound))
+                self.value = concrete.__call__(*params.inject_args(bound), **params.inject_kwargs(bound))
                 return self.value
         else:
             def __call__() -> T:
-                return concrete(*params.inject_args(bound), **params.inject_kwargs(bound))
+                return concrete.__call__(*params.inject_args(bound), **params.inject_kwargs(bound))
                 
         self.__call__ = __call__
     
@@ -323,6 +327,7 @@ class Provider(abc.Provider[T, T_Injectable]):
         return hash(self.abstract)
     
 
+
 @export()
 class ValueProvider(Provider):
 
@@ -340,10 +345,6 @@ class ValueProvider(Provider):
         return ValueResolver(self.abstract, self.concrete, bound=inj)
 
 
-    # def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, Resolver[T, T_Injectable]]]:
-    #     # res: 
-    #     yield self.abstract, ValueResolver(self.abstract, self.concrete)
-
 
 
 @export()
@@ -357,7 +358,6 @@ class AliasProvider(Provider):
         assert is_provided(self.concrete), (
                 f'No provider for aliased `{self.concrete}` in `{self.abstract}`'
             )
-        # assert not self.cache, f'AliasProvider cannot be cached'
 
     def __call__(self, inj: abc.Injector) -> T:
         return inj[self.concrete]
@@ -365,10 +365,7 @@ class AliasProvider(Provider):
     def bind(self, inj: T_Injector):
         """Bind provider to given injector.
         """
-        return AliasResolver(self.abstract, self.concrete, bound=inj)
-
-    # def setup(self, scope: abc.Scope) -> Generator[tuple[T_Injectable, Resolver[T, T_Injectable]]]:
-    #     yield self.abstract, AliasResolver(self.concrete)
+        return AliasResolver(self.abstract, self.concrete, bound=inj, cache=self.cache)
 
 
 
@@ -415,31 +412,6 @@ class FactoryProvider(Provider):
         if not params:
             return FuncResolver(self.abstract, self.concrete, bound=inj, cache=self.cache)
         return FuncParamsResolver(self.abstract, self.concrete, bound=inj, cache=self.cache, params=self.params)
-        res: FactoryResolver
-        if params is None:
-            if self.cache:
-                def factory(inj: Injector=None):
-                    res.value = self.concrete()
-                    return res.value
-
-                    # inj[self.abstract] = ValueResolver(self.abstract, self.concrete())
-                    # return inj[self.abstract]
-            else:
-                def factory(inj: Injector):
-                    return self.concrete()
-        else:
-            if self.cache:
-                def factory(inj: Injector):
-                    res.value = self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
-                    return inj[self.abstract]
-            else:
-                def factory(inj: Injector):
-                    return self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
-
-        res = FactoryResolver(self.abstract, factory, bound=inj, cache=self.cache, params=params)
-        return res
-
-
 
 
 

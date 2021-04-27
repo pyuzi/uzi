@@ -10,7 +10,7 @@ from flex.utils.proxy import Proxy
 from flex.utils.decorators import export
 
 
-from .injectors import Injector, RootInjector
+from .injectors import Injector, NullInjector
 from .scopes import Scope, ScopeType
 from .inspect import signature
 from .providers import alias, provide, injectable
@@ -30,9 +30,9 @@ provide(abc.Injector, alias=Injector, priority=-1)
 
 __inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar')
 
-__root_inj = RootInjector()
+__null_inj = NullInjector()
 
-__inj_ctxvar.set(__root_inj)
+__inj_ctxvar.set(__null_inj)
 
 
 injector = Proxy(__inj_ctxvar.get)
@@ -43,7 +43,7 @@ def scope(name: str=None):
     cur = __inj_ctxvar.get()
 
     scope = Scope[name] if name else Scope[Scope.MAIN] \
-        if cur is __root_inj else None
+        if cur is __null_inj else None
 
     if scope is None or scope in cur:
         reset = None

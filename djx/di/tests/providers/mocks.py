@@ -98,8 +98,12 @@ class Foo:
 
 provide('foo.name', value='My Name Is Foo!!')
 
+
+
 class Follow:
     pass
+
+
 
 alias(Follow, Foo, cache=True)
 
@@ -118,7 +122,7 @@ class Baz:
 
 
 
-alias('bar', user_func_injectable)
+alias('bar', user_func_injectable, cache=True)
 
 
 @injectable(cache=False, scope=Scope.ANY)

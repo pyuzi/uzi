@@ -17,7 +17,6 @@ from flex.utils.metadata import metafield, BaseMetadata, get_metadata_class
 from .providers import ValueResolver, provide
 from .symbols import _ordered_id
 from .injectors import Injector
-from .reg import registry
 from .abc import ScopeAlias, ScopeConfig, T_ContextStack, T_Injectable, T_Injector, T_Provider, _T_Providers, _T_Cache, _T_Conf, _T_Scope
 from . import abc
 

@@ -1,81 +1,76 @@
-from djx.common.collections import fallbackdict, fluentdict
 import logging
+
+from threading import Lock
+
 from functools import update_wrapper
-from contextlib import contextmanager, ExitStack
 from contextvars import ContextVar
 from collections.abc import Callable
+from contextlib import AbstractContextManager, contextmanager
+from typing import Literal, Union
 
 
-from flex.utils.proxy import Proxy
+from flex.utils.proxy import CachedProxy, Proxy
 from flex.utils.decorators import export
 
 
 from .injectors import Injector, NullInjector
-from .scopes import Scope, ScopeType
+from .scopes import Scope, MainScope
 from .inspect import signature
 from .providers import alias, provide, injectable
 from . import abc
-from .abc import T, T_Injected, T_Injector, T_Injectable
+from .abc import ScopeAlias, T, T_Injected, T_Injector, T_Injectable
 
 __all__ = [
+    'head',
     'injector',
-
 ]
 
 logger = logging.getLogger(__name__)
 
 
-provide(abc.Injector, alias=Injector, priority=-1)
 
-
-__inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar')
 
 __null_inj = NullInjector()
 
-__inj_ctxvar.set(__null_inj)
-
-
-injector = Proxy(__inj_ctxvar.get)
-
-@export()
-@contextmanager
-def scope(name: str=None):
-    cur = __inj_ctxvar.get()
-
-    scope = Scope[name] if name else Scope[Scope.MAIN] \
-        if cur is __null_inj else None
-
-    if scope is None or scope in cur:
-        reset = None
-        yield cur
-
-    elif scope not in cur:
-        cur = scope().create(cur)
-        reset = __inj_ctxvar.set(cur)
-        try:
-            # with ExitStack() as stack:
-                # stack.push(cur)
-                yield cur
-        finally:
-            reset is None or __inj_ctxvar.reset(reset)
+__main_inj = CachedProxy(lambda:  MainScope().create())
+__inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar', default=__main_inj)
 
 
 
+head: Callable[[], T_Injector] = __inj_ctxvar.get
+injector = Proxy(head)
 
-
-
-
-head = __inj_ctxvar.get
 
 
 @export()
 def final():
-    return __inj_ctxvar.get().final
+    return head().final
 
 
 @export()
-def get(key: T_Injectable, default=None) -> T_Injected:
-    return __inj_ctxvar.get().get(key, default)
+def get(key: T_Injectable, default: T = None):
+    return head().get(key, default)
+
+
+
+@export()
+@contextmanager
+def scope(name: Union[str, ScopeAlias] = Scope.MAIN) -> AbstractContextManager[T_Injector]:
+    cur = head()
+
+    scope = Scope[name]
+    token = None
+    
+    if scope not in cur:
+        cur = scope().create(cur)
+        token = __inj_ctxvar.set(cur)
+
+    try:
+        yield cur
+    finally:
+        token is None or __inj_ctxvar.reset(token)
+
+
 
 
 

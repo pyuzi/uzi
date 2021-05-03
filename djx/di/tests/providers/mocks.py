@@ -17,14 +17,6 @@ user_symb = symbol('test-import')
 noop_symb = symbol('noop-symbol')
 
 
-class MainScope(Scope):
-
-    class Config:
-        name = Scope.MAIN
-        
-        
-        
-
 class Level2Scope(Scope):
 
     class Config:
@@ -70,18 +62,18 @@ class CliScope(Scope):
         ]
         
 
-class TestScope(Scope):
+class _TestScope(Scope):
 
     class Config:
         name = 'test'
         depends = [
             # 'cli',
-            'level_2'
+            'level_5'
         ]
         
 
 
-@injectable(cache=True, scope='any')
+@injectable(cache=False, scope='main')
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
@@ -105,14 +97,14 @@ class Follow:
 
 
 
-alias(Follow, Foo, cache=True)
+alias(Follow, Foo, cache=False)
 
 @injectable(scope=Scope.ANY, cache=True)
 def user_func_injectable(user: Depends[str, user_str], d2: Follow):
     return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
 
 
-@injectable(cache=True)
+@injectable(cache=False)
 class Baz:
 
     def __init__(self):
@@ -122,7 +114,7 @@ class Baz:
 
 
 
-alias('bar', user_func_injectable, cache=True)
+alias('bar', user_func_injectable, cache=False)
 
 
 @injectable(cache=False, scope=Scope.ANY)
@@ -134,19 +126,20 @@ class Bar:
                     flw: Follow, 
                     sbar: Depends[str, 'bar'], 
                     user: Depends[str, user_func_injectable], *, 
-                    sym: Depends[str, user_symb], baz: Baz, kw1=None, kw2=...) -> None:
+                    sym: Depends[str, user_symb], baz: Baz, kw2=...) -> None:
         self.foo = foo
         self.flw = flw
         self.sbar = sbar
         self.user = user
         self.sym = sym
         self.baz = baz
+        self.pk = _ordered_id()
  
     def __repr__(self):
-        return f'Bar(foo={self.foo!r}, user={self.user!r})'
+        return f'{self}'
     
     def __str__(self):
-        return f'Bar(foo={self.foo!r}, user={self.user!r})'
+        return f'Bar#{self.pk}(foo={self.foo!r}, user={self.user!r})'
     
 
 
@@ -154,10 +147,10 @@ def user_func_symb():
     return f'user_func_symb {user_symb} -> #{_ordered_id()}'
     
 
-provide(user_symb, factory=user_func_symb, cache=True)
+provide(user_symb, factory=user_func_symb, cache=False)
 
 
-@injectable(abstract=user_str, cache=True)
+@injectable(abstract=user_str, cache=False)
 def user_func_str():
     return f'user_func_str {user_str} -> #{_ordered_id()}'
     

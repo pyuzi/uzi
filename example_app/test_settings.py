@@ -27,12 +27,11 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
-            "format": "[{asctime}] [{levelname}] ({module}): {message}",
+            "format": "[{asctime}] [{levelname}]: {message} ({module})",
             "style": "{",
         },
         "simple": {
-            # 'format': '[{asctime}] {levelname}: {module}: {message}',
-            "format": "[{asctime}] [{levelname}] ({module}): {message}",
+            "format": "[{asctime}] [{levelname}]: {message} ({module})",
             "style": "{",
         },
     },

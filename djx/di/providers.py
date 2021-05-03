@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import abstractmethod
 
 from functools import cache, wraps
 from collections import defaultdict
@@ -20,14 +21,13 @@ from djx.common.utils import Void
 
 from .symbols import symbol, _ordered_id, identity
 from . import abc
-from .abc import Injectable, Injector, Scope, ScopeAlias, Resolver, T_Injectable, T_Injected, T_Injector, T_Provider, T
+from .abc import Injectable, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, T, T_Scope, T_Resolver
 
 __all__ = [
 
 ]
 
 T_ScopeAlias = TypeVar('T_ScopeAlias', str, ScopeAlias)
-T_Resolver = TypeVar('T_Resolver', bound='Resolver')
 
 
 
@@ -105,58 +105,40 @@ def register_provider(provider: T_Provider, scope = None) -> T_Provider:
 
 
 
-T_R = TypeVar('T_R')
 
 
 @export()
-@abc.Resolver.register
-class Resolver(Generic[T, T_R, T_Injectable, T_Injector]):
+class ConcreteResolver(abc.Resolver[T], Generic[T, T_Injectable]):
 
-    __slots__ = ('abstract', 'bound', 'concrete', 'value')
+    __slots__ = 'concrete',
 
-    abstract: T_Injectable
-    concrete: T_R
-    value: T
-    bound: T_Injector
+    concrete: T_Injectable
 
-    def __init__(self, abstract: T_Injectable, concrete: T_R=None, *, bound: T_Injector=None, value: T=Void) -> None:
-        self.abstract = abstract
+    def __init__(self, concrete: T_Injectable=None, value: T=Void, *, bound: T_Injector=None) -> None:
+        super().__init__(value, bound=bound)
         self.concrete = concrete
-        self.bound = bound
-        self.value = value
 
-    def bind(self: T_Resolver, inj: T_Injector) -> T_Resolver:
-        if inj is not self.bound:
-            return self.clone(bound=inj)
-        return self
-    
-    def clone(self, abstract=..., bound=...):
-        rv = self.__class__(
-                self.abstract if abstract is ... else abstract, 
-                self.concrete,
-                bound=self.bound if bound is ... else bound, 
-            )
-        # rv.value = self.value
-        return rv
+    def clone(self, *args, **kwds):
+        return super().clone(self.concrete, *args, **kwds)
+
+
 
 
 @export()
-class ValueResolver(Resolver[T, T, T_Injectable, T_Injector]):
+class ValueResolver(abc.Resolver[T]):
 
     __slots__ = ()
 
-    def __init__(self, abstract, value=None, *, bound=None):
-        super().__init__(abstract, bound=bound, value=value)
-      
-    def __call__(self, inj: T_Injector=...) -> T:
-        return self.value
 
-    def clone(self, abstract=..., bound=...):
-        return self.__class__(
-                self.abstract if abstract is ... else abstract, 
-                self.value,
-                bound=self.bound if bound is ... else bound, 
-            )
+
+
+@export()
+class InjectorResolver(abc.Resolver[T_Injector]):
+
+    __slots__ = ()
+
+    def __init__(self, value=Void, bound=None):
+        self.value = self.bound = bound
 
 
 
@@ -164,41 +146,36 @@ class ValueResolver(Resolver[T, T, T_Injectable, T_Injector]):
 
                                                                                                                                                                  
 @export()
-class AliasResolver(Resolver[T, T_Injectable, T_Injectable, T_Injector]):
+class AliasResolver(ConcreteResolver[T, T_Injectable]):
     """Resolver Object"""
 
     __slots__ = 'cache', '__call__',
 
-
-    def __init__(self, abstract, concrete, *, bound=None, cache=False, **kwds):
-        super().__init__(abstract, concrete, bound=bound, **kwds)
+    def __init__(self, concrete, *, cache=False, **kwds):
+        super().__init__(concrete, **kwds)
         self.cache = cache
         if cache:
             def __call__() -> T:
-                self.value = bound[concrete]
+                self.value = self.bound[concrete]
                 return self.value
         else:
             def __call__() -> T:
-                return bound[concrete]
+                return self.bound[concrete]
         self.__call__ = __call__
 
-    def clone(self, abstract=..., bound=...):
-        return self.__class__(
-                self.abstract if abstract is ... else abstract, 
-                self.concrete,
-                bound=self.bound if bound is ... else bound, 
-                cache=self.cache,
-            )
+    def clone(self, *args, **kwds):
+        kwds.setdefault('cache', self.cache)
+        return super().clone(*args, **kwds)
 
 
 @export()
-class FuncResolver(Resolver[T, Callable, T_Injectable, T_Injector]):
+class FuncResolver(ConcreteResolver[T, Callable[..., T]]):
     """Resolver Object"""
 
     __slots__ = 'cache', '__call__'
 
-    def __init__(self, abstract, concrete, *, bound=None, cache=False, **kwds):
-        super().__init__(abstract, concrete, bound=bound, **kwds)
+    def __init__(self, concrete, *, cache=False, **kwds):
+        super().__init__(concrete, **kwds)
         self.cache = cache
         if cache:
             def __call__() -> T:
@@ -208,13 +185,9 @@ class FuncResolver(Resolver[T, Callable, T_Injectable, T_Injector]):
         else:
             self.__call__ = concrete.__call__
 
-    def clone(self, abstract=..., bound=...):
-        return self.__class__(
-                self.abstract if abstract is ... else abstract, 
-                self.concrete,
-                bound=self.bound if bound is ... else bound, 
-                cache=self.cache,
-            )
+    def clone(self, *args, **kwds):
+        kwds.setdefault('cache', self.cache)
+        return super().clone(*args, **kwds)
 
 
 
@@ -226,59 +199,38 @@ class FuncParamsResolver(FuncResolver):
 
     __slots__ = 'params',
 
-    def __init__(self, abstract, concrete, *, bound=None, cache=False, params=None, **kwds):
-        Resolver.__init__(self, abstract, concrete, bound=bound, **kwds)
-        self.cache = cache
-        self.params = params
+    def __init__(self, concrete, *, params=None, **kwds):
+        super().__init__(concrete, **kwds)
 
-        if cache:
+        self.params = params
+        if self.cache:
             def __call__() -> T:
+                bound = self.bound
                 self.value = concrete.__call__(*params.inject_args(bound), **params.inject_kwargs(bound))
                 return self.value
         else:
             def __call__() -> T:
+                bound = self.bound
                 return concrete.__call__(*params.inject_args(bound), **params.inject_kwargs(bound))
                 
         self.__call__ = __call__
     
-    def __calls__(self) -> T:
-        inj = self.bound
-        if p := self.params:
-            rv = self.concrete(*p.inject_args(inj), **p.inject_kwargs(inj))
-        else:
-            rv = self.concrete()
-        
-        if self.cache:
-            self.value = rv
-        
-        return rv
+    def clone(self, *args, **kwds):
+        kwds.setdefault('params', self.params)
+        return super().clone(*args, **kwds)
 
-    def clone(self, abstract=..., bound=...):
-        return self.__class__(
-                self.abstract if abstract is ... else abstract, 
-                self.concrete,
-                bound=self.bound if bound is ... else bound, 
-                cache=self.cache,
-                params=self.params
-            )
 
 
 
 @export()
-class Provider(abc.Provider[T, T_Injectable]):
+class Provider(abc.Provider[T, T_Injectable, T_Resolver, T_Scope]):
 
     __slots__ = (
         'abstract', 'concrete', 'scope', 'cache', 
-        'priority', 'options', '__pos',
+        'priority', 'options', '__pos', '_resolver',
     )
     
     abstract: symbol[T_Injectable]
-
-    # scope: str
-    # priority: int
-    # concrete: Any
-    # cache: bool
-    # options: dict
     __pos: int
 
     def __init__(self, 
@@ -306,13 +258,16 @@ class Provider(abc.Provider[T, T_Injectable]):
         assert isinstance(self.abstract, Injectable), (
             f'`abstract` must be a `Injectable`. Got: {self.abstract!r}')
 
-    def bind(self, inj: T_Injector):
-        """Bind provider to given injector.
+    def resolver(self, scope: T_Scope) -> T_Resolver:
+        """Get a resolver for the provider based on scope.
         """
-        return self
+        if not hasattr(self, '_resolver'):
+            self._resolver = self.make_resolver(scope)
+        return self._resolver
 
-    def __call__(self, inj: abc.Injector) -> T:
-        return self.concrete
+    @abstractmethod
+    def make_resolver(self, scope: T_Scope):
+        ...
 
     def __order__(self):
         return (self.priority, self.abstract, self.__pos)
@@ -329,26 +284,20 @@ class Provider(abc.Provider[T, T_Injectable]):
 
 
 @export()
-class ValueProvider(Provider):
+class ValueProvider(Provider[T, T_Injectable, ValueResolver[T], T_Scope]):
 
     __slots__ = ()
     concrete: T
 
-    def set_concrete(self, concrete) -> None:
-        self.concrete = concrete
-        if self.cache is None:
-            self.cache = True 
-    
-    def bind(self, inj: T_Injector):
-        """Bind provider to given injector.
-        """
-        return ValueResolver(self.abstract, self.concrete, bound=inj)
+    def make_resolver(self, scope: T_Scope):
+        return ValueResolver(self.concrete)
+
 
 
 
 
 @export()
-class AliasProvider(Provider):
+class AliasProvider(Provider[T, T_Injectable, AliasResolver[T, T_Injectable], T_Scope]):
 
     __slots__ = ()
     concrete: symbol[T]
@@ -359,21 +308,14 @@ class AliasProvider(Provider):
                 f'No provider for aliased `{self.concrete}` in `{self.abstract}`'
             )
 
-    def __call__(self, inj: abc.Injector) -> T:
-        return inj[self.concrete]
-
-    def bind(self, inj: T_Injector):
-        """Bind provider to given injector.
-        """
-        return AliasResolver(self.abstract, self.concrete, bound=inj, cache=self.cache)
-
-
+    def make_resolver(self, scope: T_Scope):
+        return AliasResolver(self.concrete, cache=self.cache)
 
 
 
 
 @export()
-class FactoryProvider(Provider):
+class FactoryProvider(Provider[T, T_Injectable, FuncResolver[T], T_Scope]):
 
     __slots__ = ('_sig', '_params')
     concrete: symbol[Callable[..., T]]
@@ -407,14 +349,21 @@ class FactoryProvider(Provider):
         else:
             return self.concrete(*params.inject_args(inj), **params.inject_kwargs(inj))
 
-    def bind(self, inj: T_Injector) -> Generator[tuple[T_Injectable, Resolver[T, T_Injectable]]]:
+    def make_resolver(self, scope: T_Scope):
         params = self.params
         if not params:
-            return FuncResolver(self.abstract, self.concrete, bound=inj, cache=self.cache)
-        return FuncParamsResolver(self.abstract, self.concrete, bound=inj, cache=self.cache, params=self.params)
+            return FuncResolver(self.concrete, cache=self.cache)
+        return FuncParamsResolver(self.concrete, cache=self.cache, params=params)
 
 
 
+
+
+class InjectorProvider(ValueProvider):
+    __slots__ = ()
+
+    def make_resolver(self, scope: T_Scope):
+        return InjectorResolver()
 
 
 

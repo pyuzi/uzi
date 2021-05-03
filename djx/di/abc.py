@@ -45,7 +45,7 @@ T_ContextStack = TypeVar('T_ContextStack', bound='InjectorContext', covariant=Tr
 
 _T_Setup = TypeVar('_T_Setup')
 _T_Setup_R = TypeVar('_T_Setup_R')
-_T_Scope = TypeVar('_T_Scope', bound='Scope', covariant=True)
+T_Scope = TypeVar('T_Scope', bound='Scope', covariant=True)
 _T_Conf = TypeVar('_T_Conf', bound='ScopeConfig', covariant=True)
 
 
@@ -57,27 +57,35 @@ _T_Providers = Mapping['Injectable', Optional[T_Provider]]
 
 _T_CacheFactory = Callable[..., _T_Cache]
 _T_ContextFactory = Callable[..., T_ContextStack]
-_T_InjectorFactory = Callable[[_T_Scope, 'Injector'], T_Injector]
+_T_InjectorFactory = Callable[[T_Scope, 'Injector'], T_Injector]
 
 
 
 
 
 @export()
-class Resolver(Generic[T_Injectable, T_Injected, T_Injector], metaclass=ABCMeta):
+class Resolver(Generic[T_Injected], metaclass=ABCMeta):
     """Resolver Object"""
-    __slots__ = ()
+
+    __slots__ = ('bound', 'value', '__weakref__')
 
     bound: Union[T_Injector, None]
     value: Union[T_Injected, Void]
 
-    @abstractmethod
-    def bind(self, inj: T_Injector) -> T_Resolver:
-        ...
+    def __init__(self, value=Void, bound=None):
+        self.value = value
+        self.bound = bound
 
-    @abstractmethod
+    def bind(self: T_Resolver, inj: T_Injector) -> T_Resolver:
+        return self if inj is self.bound else self.clone(bound=inj)
+
+    def clone(self: T_Resolver, *args, **kwds) -> T_Resolver: 
+        kwds.setdefault('value', self.value)
+        kwds.setdefault('bound', self.bound)
+        return self.__class__(*args, **kwds)
+    
     def __call__(self, *args, **kwds) -> T_Injected: 
-        ...
+        return self.value
     
 
 
@@ -168,11 +176,11 @@ class ScopeAlias(GenericAlias):
 
 @export()
 @Orderable.register
-class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf, T_Provider]):
+class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
     """
     Metaclass for Scope
     """
-    __types: PriorityStack[str, _T_Scope] = PriorityStack()
+    __types: PriorityStack[str, T_Scope] = PriorityStack()
     __registries: defaultdict[str, PriorityStack[Injectable, Provider]] = defaultdict(PriorityStack)
     
     config: _T_Conf
@@ -180,21 +188,6 @@ class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf, T_Provider]):
     Config: type[ScopeConfig]
 
     __class_getitem__ = classmethod(GenericAlias)
-    
-    def __init__(cls: 'ScopeType[_T_Scope, _T_Conf]', name, bases, dct, **kwds):
-        super().__init__(name, bases, dct, **kwds)
-
-        assert cls.__instance__ is None, (
-            f'Scope class should not define __instance__ attributes'
-        )
-
-    @property
-    def _all_providers(cls):
-        return ScopeType.__registries
-
-    @property
-    def _providers(cls):
-        return cls._all_providers[cls.config.name]
 
     @classmethod
     def __prepare__(mcls, cls, bases, **kwds):
@@ -202,20 +195,36 @@ class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf, T_Provider]):
             __instance__=None, 
             __registry__=None,
         )  
+            
+    def __init__(cls: 'ScopeType[T_Scope, _T_Conf]', name, bases, dct, **kwds):
+        super().__init__(name, bases, dct, **kwds)
+
+        assert cls.__instance__ is None, (
+            f'Scope class should not define __instance__ attributes'
+        )
+
+    @class_property
+    def all_providers(cls):
+        return ScopeType.__registries
+
+    @property
+    def own_providers(cls):
+        return cls.all_providers[cls.config.name]
 
     def register_provider(cls, provider: T_Provider, scope: Union[str, ScopeAlias]=None) -> T_Provider:
         scope = cls._get_scope_name(scope or provider.scope or cls)
         cls = cls._gettype(scope)
-        cls._providers[provider.abstract] = provider
+        cls.own_providers[provider.abstract] = provider
+        cls.__instance__ and cls.__instance__.flush(provider.abstract)
         return provider
 
-    def _get_scope_name(cls: 'ScopeType[_T_Scope, _T_Conf]', val):
+    def _get_scope_name(cls: 'ScopeType[T_Scope, _T_Conf]', val):
         return val.name if type(val) is ScopeAlias \
             else text.snake(val) if isinstance(val, str)\
             else None if not isinstance(val, ScopeType) or cls._is_abstract(val) \
             else val.config.name
 
-    def _is_abstract(cls: 'ScopeType[_T_Scope, _T_Conf]', val=None):
+    def _is_abstract(cls: 'ScopeType[T_Scope, _T_Conf]', val=None):
         return not hasattr(val or cls, 'config') or (val or cls).config.is_abstract
 
     def _make_implicit_type(cls, name):
@@ -229,11 +238,11 @@ class ScopeType(ABCMeta, Generic[_T_Scope, _T_Conf, T_Provider]):
         else:
             return cls
 
-    def __call__(cls, scope, *args,  **kwds):
+    def __call__(cls, scope=None, *args,  **kwds):
         if type(scope) is cls:
             return scope
         
-        cls = cls._gettype(cls._get_scope_name(scope))
+        cls = cls._gettype(cls._get_scope_name(scope or cls))
 
         if cls.config.is_abstract:
             raise TypeError(f'Cannot create abstract scope {cls}')
@@ -311,9 +320,6 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     def ready(self) -> None:
         ...
     
-    # @abstractmethod
-    # def get_resolver(self, key):
-    #     ...
 
     @classmethod
     def __order__(cls, self=...):
@@ -323,7 +329,15 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     @abstractmethod
     def _implicit_bases(cls):
         ...
-  
+      
+    @abstractmethod
+    def flush(self, *keys: Injectable, all=False):
+        ...
+
+    @abstractmethod
+    def prepare(self):
+        ...
+
     @abstractmethod
     def create(self, parent: 'Injector') -> T_Injector:
         ...
@@ -336,7 +350,15 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     def dispose(self, inj: T_Injector) -> T_Injector:
         ...
 
-    def __reduce__(self) -> None:
+    @abstractmethod
+    def create_context(self, inj: T_Injector) -> T_ContextStack:
+        ...
+
+    @abstractmethod
+    def add_dependant(self, scope: Scope):
+        ...
+
+    def __reduce__(self):
         return self.__class__, self.name
 
     def __eq__(self, x) -> bool:
@@ -354,7 +376,7 @@ class Scope(Orderable, Container, metaclass=ScopeType):
 
 
 @export()
-class Provider(Orderable, Generic[T_Injected, T_Injectable], metaclass=ABCMeta):
+class Provider(Orderable, Generic[T_Injected, T_Injectable, T_Resolver, T_Scope], metaclass=ABCMeta):
     
     __slots__ = ()
     
@@ -369,10 +391,7 @@ class Provider(Orderable, Generic[T_Injected, T_Injectable], metaclass=ABCMeta):
     options: dict
 
     @abstractmethod
-    def __call__(self, inj: 'Injector') -> T_Injected:
-        return NotImplemented
-
-    def bind(self, inj: T_Injector):
+    def resolver(self, scope: T_Scope) -> T_Resolver:
         """Bind provider to given injector.
         """
         ...
@@ -419,11 +438,11 @@ class InjectorContext(ExitStack, Callable[..., T_ContextStack], Generic[T_Inject
 
 
 @export()
-class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=ABCMeta):
+class Injector(AbstractContextManager[T_Injector], Generic[T_Scope, T_Injected, T_Provider, T_Injector], metaclass=ABCMeta):
 
     __slots__ = ()
 
-    scope: _T_Scope
+    scope: T_Scope
     parent: T_Injector
     level: int
 
@@ -460,26 +479,9 @@ class Injector(Generic[_T_Scope, T_Injected, T_Provider, T_Injector], metaclass=
         ...
 
     @abstractmethod
-    def enter(self, cm: InjectedContextManager[T_Injected]) -> T_Injected:
-        """Enters the supplied context manager.
-
-        If successful, also pushes its __exit__ method as an exit callback and
-        returns the result of the __enter__ method. 
-        
-        See also: `Injector.onexit()`
-        """
+    def get(self, k: T_Injectable, default: T=None) -> Union[T_Injected, T]: 
         ...
-
-    @abstractmethod
-    def onexit(self, cb: Union[InjectedContextManager, Callable]):
-        """Registers an exit callback. Exit callbacks are called when the 
-        injector closes.
-
-        Callback can be a context manager or callable with the standard 
-        `ContextManager's` `__exit__` method signature.
-        """
-        ...
-
+    
     @abstractmethod
     def __contains__(self, x: T_Injectable) -> bool: 
         ...

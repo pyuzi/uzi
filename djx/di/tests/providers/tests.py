@@ -18,7 +18,7 @@ import pytest
 
 
 
-from ... import is_injectable, scope, injector
+from ... import is_injectable, scope, injector, INJECTOR_TOKEN
 
 
 
@@ -50,48 +50,40 @@ class SymbolTests:
         assert not is_injectable(noop_symb)
         assert not is_injectable(user_func_symb)
 
-    def _test_calls(self):
+    def test_late_provider(self):
+        @injectable(scope='main')
+        class Early:
+            
 
-        def func(a, b,*, c, d):
-            return f'{a} {b} {c} {d}'
-
-        class Obj:
-            __slots__ = ()
-
-            def __call__(self, a, b,*, c, d):
-                return f'{a} {b} {c} {d}'
-                
-        class Attr:
-            __slots__ = '__call__'
-
-            def __init__(self):
-                def __call__(a, b,*, c, d):
-                    return f'{a} {b} {c} {d}'
-                self.__call__ = __call__
-
-        obj = Obj()
-        attr = Attr()
-
-        cfunc = lambda: func(1,2,c=3,d=4)
-        _pfunc = partial(func, 1,2,c=3,d=4)
-        pfunc = lambda: _pfunc()
+            def __str__(self) -> str:
+                return ''
         
-        cobj = lambda: obj(1,2,c=3,d=4)
-        _pobj = partial(obj, 1,2,c=3,d=4)
-        pobj = lambda: _pobj()
+        @injectable(scope='main')
+        class Late:
+            pass
 
-        cattr = lambda: attr(1,2,c=3,d=4)
-        _pattr = partial(attr, 1,2,c=3,d=4)
-        pattr = lambda: _pattr()
- 
-        n = int(1e5)
+        with scope('test') as inj:
+            with inj.context:
+                key = 'late'
+                val ='This was injected late'
+                assert inj.get(key) is None
 
-        self.run(' func', cfunc, pfunc, n)
-        self.run(' obj ', cobj, pobj, n)
-        self.run(' attr', cattr, pattr, n)
+                provide(key, value=val)
 
-        assert 0
+                print('', *inj.scope.providers.maps, end='\n\n', sep='\n -')
+                print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))
 
+                assert inj[key] == val
+
+                assert isinstance(inj[Early], Early)
+                assert not isinstance(inj[Early], Late)
+
+                alias(Early, Late, scope='main')
+
+                assert not isinstance(inj[Early], Early)
+                assert isinstance(inj[Early], Late)
+        # assert 0
+                
     def test_speed(self):
         # with scope() as inj:
         with nullcontext():
@@ -104,25 +96,32 @@ class SymbolTests:
                 with scope('test') as inj:
                     with inj.context:
                         null = lambda: None
-                        mkfoo = lambda: Foo(user_func_symb(), user=user_func_str(), inj=null())
+                        mkinj = lambda: injector()
+                        mkfoo = lambda: Foo(user_func_symb(), user=user_func_str(), inj=mkinj())
                         # mkfoo = lambda: Foo('a very simple value here', user=user_func_str(), inj=null())
                         mkbaz = lambda: null() or Baz() 
                         mkfunc = lambda: user_func_injectable(user_func_str(), mkfoo())
                         mkbar = lambda: Bar(mkfoo(), mkfoo(), user_func_str(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
-                        injfoo = lambda: injector[Foo]
+                        injfoo = lambda: inj[Foo]
                         injbar = lambda: inj[Bar]
                         injbafoo = lambda: inj[Bar].infoo
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        print(f'{injfoo()}\n {injbar()}\n')
 
-                        _n = int(1e5)
+                        _n = int(2.5e4)
                         self.run('Baz', mkbaz, injbaz, _n)
                         self.run('Foo', mkfoo, injfoo, _n)
                         self.run('Bar', mkbar, injbar, _n)
+        
+                        print(f'\n => {injector[Foo]=}\n => {injector[Bar]=}\n => {injector[Bar]=}\n => {injector[Baz]=}\n => {injector[Scope["main"]]=}\n => {injector[INJECTOR_TOKEN]=}\n')
 
-        assert 0
+                        print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))
+
+                        assert injector[Bar] is not injector[Bar]
+
+
+        # assert 0
         return
 
 
@@ -138,4 +137,3 @@ class SymbolTests:
                 f'{round(itt, r)} secs'.ljust(12) + f' avg {round(it, r)} secs'.ljust(16) \
                     + f'{round(ires, r)} ops/sec'.ljust(16+r)
         print(f' - {lbl} {rep} x {n} ({rep * n}) ops == {d}\n   - {M=!s}\n   - {I=!s}')
-

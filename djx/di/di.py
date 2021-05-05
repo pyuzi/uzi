@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager, contextmanager
 from typing import Literal, Union
 
 
-from flex.utils.proxy import CachedProxy, Proxy
+from djx.common.proxy import proxy
 from flex.utils.decorators import export
 
 
@@ -32,13 +32,13 @@ logger = logging.getLogger(__name__)
 
 __null_inj = NullInjector()
 
-__main_inj = CachedProxy(lambda:  MainScope().create())
+__main_inj = proxy(lambda:  MainScope().create(), cache=True, callable=True)
 __inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar', default=__main_inj)
 
 
 
 head: Callable[[], T_Injector] = __inj_ctxvar.get
-injector = Proxy(head)
+injector = proxy(head, callable=True)
 
 
 

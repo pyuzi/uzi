@@ -109,7 +109,7 @@ class SymbolTests:
                         inj404 = lambda: inj['404']
 
 
-                        _n = int(2.5e4)
+                        _n = int(.5e4)
                         self.run('Baz', mkbaz, injbaz, _n)
                         self.run('Foo', mkfoo, injfoo, _n)
                         self.run('Bar', mkbar, injbar, _n)
@@ -121,9 +121,9 @@ class SymbolTests:
                         assert injector[Bar] is not injector[Bar]
 
 
-        assert 0
+        assert 1
 
-    def run(self, lbl, mfn, ifn, n=int(1e4), rep=3, r=3):
+    def run(self, lbl, mfn, ifn, n=int(1e4), rep=2, r=3):
         mres, mt, mtt = ops_per_sec(n, *repeat(mfn, number=n, repeat=rep, globals=locals()))
         ires, it, itt = ops_per_sec(n, *repeat(ifn, number=n, repeat=rep, globals=locals()))
         if mres > ires:

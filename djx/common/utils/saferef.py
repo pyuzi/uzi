@@ -76,6 +76,8 @@ StrongReferent.register(datetime.timezone)
 class ReferenceType(t.Generic[_T], metaclass=ABCMeta):
     __slots__ = ()
     
+    __callback__: t.Callable[..., t.Any]
+    
     @abstractmethod
     def __hash__(self) -> int:
         ...
@@ -90,7 +92,6 @@ class ReferenceType(t.Generic[_T], metaclass=ABCMeta):
 
 
 ReferenceType.register(WeakReferenceType)
-
 
 
 
@@ -115,7 +116,8 @@ class strong_ref:
             raise TypeError(f'ReferenceType: {val.__class__} cannot be referenced')
         elif callback is not None:
             ref = super().__new__(cls)
-            finalize(ref, callback, weakref(ref))
+            cb = lambda wf, wr: None if (fn := wf()) is None else fn(wr)
+            finalize(ref, cb, safe_ref(callback), weakref(ref))
             return ref
 
         refs = strong_ref.__refs

@@ -1,7 +1,6 @@
 import pytest
-import gc
 
-from ..utils.saferef import StrongReferent, safe_ref, strong_ref, weakref, ReferenceType
+from ..utils.saferef import safe_ref, strong_ref, weakref, ReferenceType
 
 
 
@@ -56,6 +55,7 @@ class RefTests:
         assert isinstance(r1, ReferenceType)
         assert t1 is r1()
         assert r1 == safe_ref(t1)
+        assert r1.__callback__ is cb1
         
 
         del t1
@@ -77,9 +77,11 @@ class RefTests:
         assert isinstance(r2, ReferenceType)
         assert t2 is r2()
         assert r2 == safe_ref(t2)
+        assert r2.__callback__ is cb2
 
         del r2
         assert Dct._finalized is True
 
+        # assert 1
 
         

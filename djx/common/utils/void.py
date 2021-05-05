@@ -36,4 +36,4 @@ class VoidType(type):
 
 
 
-Void = VoidType('ada', (), {})
+Void = VoidType('Void', (), {})

@@ -8,6 +8,9 @@ from flex.utils.module_loading import (
 )
 
 from .void import Void
+from .saferef import safe_ref, strong_ref
+
+
 
 __all__ = [
     'export',
@@ -21,8 +24,8 @@ __all__ = [
     'import_strings',
     'import_if_string',
     'Void',
+    'ref',
+    'safe_ref',
+    'strong_ref',
 ]
-
-
-
 

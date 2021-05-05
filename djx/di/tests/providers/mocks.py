@@ -73,7 +73,7 @@ class _TestScope(Scope):
         
 
 
-@injectable(cache=False, scope='main')
+@injectable(cache=True, scope='main')
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:

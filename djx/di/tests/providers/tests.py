@@ -121,9 +121,7 @@ class SymbolTests:
                         assert injector[Bar] is not injector[Bar]
 
 
-        # assert 0
-        return
-
+        assert 0
 
     def run(self, lbl, mfn, ifn, n=int(1e4), rep=3, r=3):
         mres, mt, mtt = ops_per_sec(n, *repeat(mfn, number=n, repeat=rep, globals=locals()))

@@ -25,6 +25,7 @@ pytest.ini
 
 .vscode/
 
+
 .local/*
 !.local/git-keep
 

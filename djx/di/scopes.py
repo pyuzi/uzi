@@ -220,10 +220,11 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     
     def setup_content(self, inj: T_Injector):
         def fallback(key):
-            res = self.resolvers[key]
+            res = self.providers.get(key)
+            # res = self.resolvers[key]
             if res is None:
                 return content.setdefault(key, inj.parent.content[key])
-            return content.setdefault(key, res.bind(inj))
+            return content.setdefault(key, res.resolver(self).bind(inj))
 
         inj.content = content = fallbackdict(fallback)
         return inj    
@@ -243,9 +244,9 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         if hasattr(self, '_resolvers'):
             if key in self._resolvers:
                 del self._resolvers[key]
-                for inj in self.injectors:
-                    if inj := inj():
-                        del inj[key]
+        for inj in self.injectors:
+            if inj := inj():
+                del inj[key]
 
         for d in self.dependants: 
             d.flush(key, skip=skip)
@@ -273,6 +274,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         logger.debug(f'prepare({self})')
 
     def _make_resolvers(self):
+        print('\n\n', '***'*12, 'make resolvers {self}', '***'*12, '\n\n')
         def fallback(key):
             pr = self.providers.get(key) 
             return self._resolvers.setdefault(key, pr and pr.resolver( self ))

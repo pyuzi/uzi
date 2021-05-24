@@ -18,7 +18,7 @@ import pytest
 
 
 
-from ... import is_injectable, scope, injector, INJECTOR_TOKEN
+from ... import is_injectable, scope, injector, INJECTOR_TOKEN, di
 
 
 
@@ -114,14 +114,18 @@ class SymbolTests:
                         self.run('Foo', mkfoo, injfoo, _n)
                         self.run('Bar', mkbar, injbar, _n)
         
-                        print(f'\n => {injector[Foo]=}\n => {injector[Bar]=}\n => {injector[Bar]=}\n => {injector[Baz]=}\n => {injector[Scope["main"]]=}\n => {injector[INJECTOR_TOKEN]=}\n')
+                        pro = di.proxy(Bar, callable=True)
+
+                        print(f'\n---> {Bar.infoo!r}\n   --> {injbafoo()!r}')
+                        
+                        # print(f'\n => {injector[Foo]=}\n => {injector[Bar]=}\n => {injector[Bar]=}\n => {injector[Baz]=}\n => {injector[Scope["main"]]=}\n => {injector[INJECTOR_TOKEN]=}\n\n {pro()=}\n')
 
                         print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))
 
                         assert injector[Bar] is not injector[Bar]
 
 
-        assert 1
+        assert 0
 
     def run(self, lbl, mfn, ifn, n=int(1e4), rep=2, r=3):
         mres, mt, mtt = ops_per_sec(n, *repeat(mfn, number=n, repeat=rep, globals=locals()))

@@ -2,6 +2,8 @@
 import os
 import sys
 
+from djx import di
+
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "example_app.settings")
     try:
@@ -19,5 +21,5 @@ if __name__ == "__main__":
                 "forget to activate a virtual environment?"
             )
         raise
-    execute_from_command_line(sys.argv)
-    print('END END')
+    with di.scope('main'):
+        execute_from_command_line(sys.argv)

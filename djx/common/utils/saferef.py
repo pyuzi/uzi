@@ -14,6 +14,7 @@ from . import export
 
 _T = t.TypeVar('_T')
 
+
 __all__ = [
     'ref',
 ]
@@ -95,7 +96,7 @@ ReferenceType.register(WeakReferenceType)
 
 
 
-
+@export()
 @ReferenceType.register
 class strong_ref:
     

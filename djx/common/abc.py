@@ -60,6 +60,9 @@ class Orderable(metaclass=ABCMeta):
             return it == (orderby or self.__class__.__order__)(self)
         return NotImplemented
 
+    def __ne__(self, it, orderby=None) -> bool:
+        return not self.__eq__(it, orderby)
+
     def __gt__(self, it, orderby=None) -> bool:
         if isinstance(it, Orderable):
             return (orderby or self.__class__.__order__)(self) > it

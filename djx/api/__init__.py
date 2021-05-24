@@ -1,7 +1,7 @@
 from typing import Any, Callable
 from ninja import *
 
-from djx.schemas import Schema, ModelSchema, GenericSchema, GenericModelSchema
+# from djx.schemas import Schema, GenericSchema
 
 
 

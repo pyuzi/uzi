@@ -42,9 +42,11 @@ INSTALLED_APPS = [
     'polymorphic',
     'mptt',
     "django_extensions",
-    "djx.multisite",
-    "djx.ledger",
-    "djx.tagtree",
+    "djx.spaces",
+    "djx.ledgers",
+    "djx.xtags",
+    "djx.schemas",
+    "djx.keydb",
     "example_app",
 ]
 

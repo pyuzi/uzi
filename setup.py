@@ -13,10 +13,12 @@ setup(
     classifiers=[],
     packages=find_namespace_packages(include=['djx.*']),
     include_package_data=True,
-    python_requires="~=3.8",
+    python_requires="~=3.9",
     install_requires=[
-        'django~=3.1.7',       
         'cachetools~=4.2.1',
-        # 'django-mptt~=0.12.0',
+        'orjson>=3.5.2',
     ],
+    extras_require={
+        'django': ['django~=3.1.7',],
+    }
 )

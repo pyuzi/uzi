@@ -182,11 +182,11 @@ class OrderedSet(_dictset[_T_Ordered], MutableSet[_T_Ordered], Generic[_T_Ordere
 
 
 _T_Stack_K = TypeVar('_T_Stack_K')
-_T_Stack_S = TypeVar('_T_Stack_S', bound=MutableSequence)
+_T_Stack_S = TypeVar('_T_Stack_S', bound=MutableSequence, covariant=True)
 _T_Stack_V = TypeVar('_T_Stack_V', bound=Orderable)
 
 
-class PriorityStack(dict[_T_Stack_K, _T_Stack_V], Generic[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
+class PriorityStack(dict[_T_Stack_K, list[_T_Stack_V]], Generic[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
     
     __slots__= ('stackfactory',)
 
@@ -214,14 +214,26 @@ class PriorityStack(dict[_T_Stack_K, _T_Stack_V], Generic[_T_Stack_K, _T_Stack_V
     def extend(self):
         return self.__class__(self.stackfactory, self.all_items())
     
-    get_all = dict[_T_Stack_K, _T_Stack_S].get
+    def index(self, k: _T_Stack_K, val: _T_Stack_V, start: int=0, stop: int=None) -> int:
+        return super().__getitem__(k).index(val, start, stop)
+    
+    def insert(self, k: _T_Stack_K, index: Optional[int], val: _T_Stack_V, *, sort=True):
+        stack = super().setdefault(k, self.stackfactory())
+        index = len(stack) if index is None else index % len(stack) 
+        stack.insert(index, val)
+        sort and stack.sort()
+    
+    def append(self, k: _T_Stack_K, val: _T_Stack_V, *, sort=True):
+        self.insert(k, None, val, sort=sort)
+    
+    get_all = dict[_T_Stack_K, list[_T_Stack_V]].get
     def get(self, k: _T_Stack_K, default=None):
         try:
             return self[k]
         except (KeyError, IndexError):
             return default
 
-    all_items = dict[_T_Stack_K, _T_Stack_S].items
+    all_items: Callable[[], ItemsView[_T_Stack_K, list[_T_Stack_V]]] = dict.items
     def items(self):
         return ItemsView[tuple[_T_Stack_K, _T_Stack_V]](self)
 
@@ -253,7 +265,7 @@ class PriorityStack(dict[_T_Stack_K, _T_Stack_V], Generic[_T_Stack_K, _T_Stack_V
         for k,v in items:
             self[k] = v
 
-    all_values = dict[_T_Stack_K, _T_Stack_S].values
+    all_values = dict[_T_Stack_K, list[_T_Stack_V]].values
     def values(self):
         return ValuesView[_T_Stack_V](self)
         
@@ -268,16 +280,15 @@ class PriorityStack(dict[_T_Stack_K, _T_Stack_V], Generic[_T_Stack_K, _T_Stack_V
             return super().__getitem__(k)[-1]
 
     def __setitem__(self, k: _T_Stack_K, val: _T_Stack_V):
-        stack = super().setdefault(k, self.stackfactory())
-        stack.append(val)
-        stack.sort()
+        self.insert(k, None, val, sort=True)
 
 
 
+_none_stack = (None,)
 
 @export()
 class FluentPriorityStack(PriorityStack[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
     
     def __missing__(self, k: _T_Stack_K) -> _T_Stack_S:
-        return (None,)
+        return _none_stack
     

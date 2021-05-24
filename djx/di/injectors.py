@@ -229,7 +229,9 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         return len(self.content)# if self.__booted else 0
 
     def __setitem__(self, k: T_Injectable, val: T_Injected):
-        self.content[k] = val if isinstance(val, Resolver) else ValueResolver(val)
+        if isinstance(val, Resolver):
+            val = ValueResolver(val, bound=self)
+        self.content[k] = val
     
     def __delitem__(self, k: T_Injectable):
         try:

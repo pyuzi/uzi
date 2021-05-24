@@ -163,6 +163,9 @@ class ScopeAlias(GenericAlias):
     def name(self):
         return self.__args__[0]
 
+    # def __str__(self):
+    #     return self.__args__[0]
+
     def __call__(self):
         return super().__call__(*self.__args__)
 

@@ -8,7 +8,7 @@ import pytest
 from ...providers import (
     alias, provide, injectable
 )
-from ... import symbol, Depends, Scope, Inject, Injector
+from ... import symbol, Depends, Scope, InjectedClassVar, InjectedProperty, Injector
 from ...symbols import _ordered_id
 
 
@@ -73,7 +73,7 @@ class _TestScope(Scope):
         
 
 
-@injectable(cache=True, scope='main')
+@injectable(cache=True, scope='any')
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
@@ -120,7 +120,7 @@ alias('bar', user_func_injectable, cache=False)
 @injectable(cache=False, scope=Scope.ANY)
 class Bar:
 
-    infoo = Inject(Foo, Scope.MAIN)
+    infoo = InjectedProperty(Foo)
 
     def __init__(self, foo: Foo, 
                     flw: Follow, 

@@ -23,9 +23,7 @@ from .symbols import symbol, _ordered_id, identity
 from . import abc
 from .abc import Injectable, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, T, T_Scope, T_Resolver
 
-__all__ = [
 
-]
 
 T_ScopeAlias = TypeVar('T_ScopeAlias', str, ScopeAlias)
 
@@ -34,7 +32,7 @@ T_ScopeAlias = TypeVar('T_ScopeAlias', str, ScopeAlias)
 _provided = set()
 
 def is_provided(obj) -> bool:
-    return identity(obj) in _provided or (isinstance(obj, type) and issubclass(obj, abc.Injector))
+    return identity(obj) in _provided # or (isinstance(obj, type) and issubclass(obj, abc.Injector))
 
 
 
@@ -52,9 +50,16 @@ def alias(abstract: T_Injectable,
 
 
 @export()
-def injectable(priority: int = 1, scope: str = None, *, cache:bool=None, abstract: T_Injectable = None, **opts):
+def injectable(scope: str = None, priority: int = 1, *, cache:bool=None, with_context:bool=None, abstract: T_Injectable = None, **opts):
     def register(factory: Callable[..., T]):
-        provide(abstract or factory, priority=priority, factory=factory, scope=scope, cache=cache, **opts)
+        provide(
+            abstract or factory, 
+            priority=priority, 
+            factory=factory, 
+            scope=scope, 
+            cache=cache, 
+            with_context=with_context,
+            **opts)
         return factory
 
     return register
@@ -69,12 +74,12 @@ _kwd_cls_map = dict[str, Callable[..., type[T_Provider]]](
 )
 
 @overload
-def provide(*abstracts: T_Injectable, priority: int = 1, value: T, scope: str = None, **opts) -> 'ValueProvider': ...
+def provide(*abstracts: T_Injectable, priority: int = 1, value: T, scope: str = None, with_context:bool=None, **opts) -> 'ValueProvider': ...
 @overload
 def provide(*abstracts: T_Injectable, priority: int = 1, alias: abc.Injectable[T], scope: str = None, **opts) -> 'AliasProvider': ...
 @overload
 def provide(*abstracts: T_Injectable, priority: int = 1, factory: Callable[..., T],
-            scope: str = None, cache: bool = None, **opts) -> 'FactoryProvider': ...
+            scope: str = None, cache: bool = None, with_context:bool=None, **opts) -> 'FactoryProvider': ...
 @export()
 def provide(*abstracts: T_Injectable, priority: int = 1, 
             scope: str = None, cache: bool = None, **kwds) -> T_Provider:
@@ -179,7 +184,7 @@ class FuncResolver(ConcreteResolver[T, Callable[..., T]]):
         self.cache = cache
         if cache:
             def __call__() -> T:
-                self.value = concrete.__call__()
+                self.value = concrete()
                 return self.value
             self.__call__ = __call__
         else:
@@ -206,12 +211,12 @@ class FuncParamsResolver(FuncResolver):
         if self.cache:
             def __call__() -> T:
                 bound = self.bound
-                self.value = concrete.__call__(*params.inject_args(bound), **params.inject_kwargs(bound))
+                self.value = concrete(*params.inject_args(bound), **params.inject_kwargs(bound))
                 return self.value
         else:
             def __call__() -> T:
                 bound = self.bound
-                return concrete.__call__(*params.inject_args(bound), **params.inject_kwargs(bound))
+                return concrete(*params.inject_args(bound), **params.inject_kwargs(bound))
                 
         self.__call__ = __call__
     
@@ -474,14 +479,3 @@ class Dependency(Generic[T_Injectable, T_Injected, T_ScopeAlias]):
     __copy__ = copy
     
 
-
-
-
-@export()
-class Inject(Dependency[T_Injectable, T_Injected, T_ScopeAlias]):
-    
-    __slots__ = ()
-    
-    def __get__(self, typ, obj=None) -> T_Injected:
-        from .di import final
-        return self(final())

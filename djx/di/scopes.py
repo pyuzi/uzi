@@ -187,11 +187,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         return ImplicitScope,
 
     def bootstrap(self, inj: T_Injector):
-        logger.debug('    '*(inj.level+1) + f'  >>> bootstrap({self}):  {inj}')
-
-        self.injectors.append(inj)
-        self.setup_content(inj)
-
+        logger.error('    '*(inj.level+1) + f'  >>> bootstrap({self}):  {inj}')
         return
 
     def create(self, parent: T_Injector) -> T_Injector:
@@ -202,8 +198,9 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
             if not parent or scope not in parent:
                 parent = scope.create(parent)
     
-        logger.debug('    '*(parent and parent.level+1 or 1) + f' +++ create({self}): {parent=} +++')
+        # logger.debug('    '*(parent and parent.level+1 or 1) + f' +++ create({self}): {parent=} +++')
         self.prepare()
+        
         rv = self.injector_class(self, parent)
         self.setup_content(rv)
         self.injectors.append(ref(rv, self.injectors.remove))
@@ -214,8 +211,8 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         return self.context_class(inj)
 
     def dispose(self, inj: T_Injector):
-        logger.debug('    '*(inj.level+1) + f'  <<< dispose({self}):  {inj}')
-        self.injectors.remove(inj)
+        # logger.debug('    '*(inj.level+1) + f'  <<< dispose({self}):  {inj}')
+        self.injectors.remove(ref(inj))
         inj.content = None
     
     def setup_content(self, inj: T_Injector):
@@ -274,7 +271,6 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         logger.debug(f'prepare({self})')
 
     def _make_resolvers(self):
-        print('\n\n', '***'*12, 'make resolvers {self}', '***'*12, '\n\n')
         def fallback(key):
             pr = self.providers.get(key) 
             return self._resolvers.setdefault(key, pr and pr.resolver( self ))

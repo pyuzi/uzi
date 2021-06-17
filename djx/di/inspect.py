@@ -1,6 +1,7 @@
 
 import inspect as ins
 from functools import partial, cache
+from itertools import islice
 
 from cachetools.func import lru_cache
 from weakref import WeakSet
@@ -12,7 +13,7 @@ from typing import (
 )
 from collections.abc import Iterator, Mapping
 
-from flex.utils.decorators import export
+from djx.common.utils import export
 from flex.utils.proxy import Proxy, ValueProxy
 
 
@@ -28,6 +29,7 @@ _expand_generics = {Annotated}
 
 _VAR_KEYWORD = ins.Parameter.VAR_KEYWORD
 _VAR_POSITIONAL = ins.Parameter.VAR_POSITIONAL
+_POSITIONAL_OR_KEYWORD = ins.Parameter.POSITIONAL_OR_KEYWORD
 
 _KEYWORD_ONLY = ins.Parameter.KEYWORD_ONLY
 
@@ -114,6 +116,10 @@ class Parameter(ins.Parameter):
     def depends(self):
         return self._depends
 
+    @property
+    def is_dependency(self):
+        return self._depends is not None
+
     def __repr__(self):
         deps = f', <Depends: {self.depends}>' if self.depends else ''
         return f'<{self.__class__.__name__} {self}{deps}>'
@@ -165,43 +171,204 @@ class BoundArguments(ins.BoundArguments):
         self.arguments = dict(new_arguments)
 
 
-    def inject_args(self, inj: Injector=None):
-        blank = len(self.arguments) == 0
-        for param_name, param in self._signature.positional_parameters.items():
-            if not blank and param_name in self.arguments:
-                arg = self.arguments[param_name]
-            elif param.depends is not None:
-                try:
-                    arg = inj[param.depends]
-                except KeyError:
-                    break    
-            else:
-                break
+    def inject_args(self, inj: Injector, values: dict = None):
+        deps = bool(self._signature.positional_dependencies)
 
-            if param.kind == _VAR_POSITIONAL:
-                yield from arg # *args
-            else:
-                yield arg # plain positional argument
-
-    def inject_kwargs(self, inj: Injector):
-        kwargs = {}
-        blank = len(self.arguments) == 0
-        for param_name, param in self._signature.keyword_parameters.items():
-           
-            if not blank and param_name in self.arguments:
-                arg = self.arguments[param_name]
-            elif param.depends is not None:
-                try:
-                    arg = inj[param.depends]
-                except KeyError:
-                    continue    
-            else:
-                continue
+        if deps and values and self.arguments:
+            for param_name, param in self._signature.positional_parameters.items():
+                if param_name in values:
+                    arg = values[param_name]
+                elif param_name in self.arguments:
+                    arg = self.arguments[param_name]
+                elif param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        break
+                else:
+                    break
             
-            if param.kind == _VAR_KEYWORD:
-                kwargs.update(arg) # **kwargs
-            else:
-                kwargs[param_name] = arg # plain keyword argument
+                if param.kind == _VAR_POSITIONAL:
+                    yield from arg # *args
+                else:
+                    yield arg # plain positional argument
+
+        elif deps and values and not self.arguments:
+
+            for param_name, param in self._signature.positional_parameters.items():
+                if param_name in values:
+                    arg = values[param_name]
+                elif param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        break
+                else:
+                    break
+            
+                if param.kind == _VAR_POSITIONAL:
+                    yield from arg # *args
+                else:
+                    yield arg # plain positional argument
+
+        elif deps and not values and self.arguments:
+
+            for param_name, param in self._signature.positional_parameters.items():
+                if param_name in self.arguments:
+                    arg = self.arguments[param_name]
+                elif param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        break
+                else:
+                    break
+            
+                if param.kind == _VAR_POSITIONAL:
+                    yield from arg # *args
+                else:
+                    yield arg # plain positional argument
+
+        elif deps and not values and not self.arguments:
+
+            for param_name, param in self._signature.positional_parameters.items():
+                if param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        break
+                else:
+                    break
+            
+                if param.kind == _VAR_POSITIONAL:
+                    yield from arg # *args
+                else:
+                    yield arg # plain positional argument
+
+        elif not deps and not values and self.arguments:
+            for param_name, param in self._signature.positional_parameters.items():
+                if param_name in self.arguments:
+                    arg = self.arguments[param_name]
+                else:
+                    break
+            
+                if param.kind == _VAR_POSITIONAL:
+                    yield from arg # *args
+                else:
+                    yield arg # plain positional argument
+
+
+    
+    def inject_kwargs(self, inj: Injector, values: dict=None):
+        kwargs = dict()
+        deps = bool(self._signature.keyword_dependencies)
+        
+        if deps and self.arguments and values:
+            for param_name, param in self._signature.keyword_parameters.items():
+                if param_name in values:
+                    arg = values[param_name]
+                elif param_name in self.arguments:
+                    arg = self.arguments[param_name]
+                elif param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        continue    
+                else:
+                    continue
+                
+                if param.kind == _VAR_KEYWORD:
+                    kwargs.update(arg) # **kwargs
+                else:
+                    kwargs[param_name] = arg # plain keyword argument
+
+        elif deps and not self.arguments and values:
+            for param_name, param in self._signature.keyword_parameters.items():
+                if param_name in values:
+                    arg = values[param_name]
+                elif param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        continue    
+                else:
+                    continue
+                
+                if param.kind == _VAR_KEYWORD:
+                    kwargs.update(arg) # **kwargs
+                else:
+                    kwargs[param_name] = arg # plain keyword argument
+
+        elif deps and self.arguments and not values:
+            for param_name, param in self._signature.keyword_parameters.items():
+                if param_name in self.arguments:
+                    arg = self.arguments[param_name]
+                elif param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        continue    
+                else:
+                    continue
+                
+                if param.kind == _VAR_KEYWORD:
+                    kwargs.update(arg) # **kwargs
+                else:
+                    kwargs[param_name] = arg # plain keyword argument
+
+        elif deps and not self.arguments and not values:
+            for param_name, param in self._signature.keyword_parameters.items():
+                if param.depends is not None:
+                    try:
+                        arg = inj.make(param.depends)
+                    except KeyError:
+                        continue    
+                else:
+                    continue
+                
+                if param.kind == _VAR_KEYWORD:
+                    kwargs.update(arg) # **kwargs
+                else:
+                    kwargs[param_name] = arg # plain keyword argument
+
+        elif not deps and self.arguments and values:
+            for param_name, param in self._signature.keyword_parameters.items():
+                if param_name in values:
+                    arg = values[param_name]
+                elif param_name in self.arguments:
+                    arg = self.arguments[param_name]
+                else:
+                    continue
+                
+                if param.kind == _VAR_KEYWORD:
+                    kwargs.update(arg) # **kwargs
+                else:
+                    kwargs[param_name] = arg # plain keyword argument
+
+        elif not deps and self.arguments and not values:
+            for param_name, param in self._signature.keyword_parameters.items():
+                if param_name in self.arguments:
+                    arg = self.arguments[param_name]
+                else:
+                    continue
+                
+                if param.kind == _VAR_KEYWORD:
+                    kwargs.update(arg) # **kwargs
+                else:
+                    kwargs[param_name] = arg # plain keyword argument
+
+        elif not deps and not self.arguments and values:
+            for param_name, param in self._signature.keyword_parameters.items():
+                if param_name in values:
+                    arg = values[param_name]
+                else:
+                    continue
+                
+                if param.kind == _VAR_KEYWORD:
+                    kwargs.update(arg) # **kwargs
+                else:
+                    kwargs[param_name] = arg # plain keyword argument
+
         return kwargs
     
     def copy(self):
@@ -217,7 +384,7 @@ class BoundArguments(ins.BoundArguments):
 
 @export()
 class InjectableSignature(ins.Signature):
-    __slots__ = ('_pos_params', '_kw_params', '_bound')
+    __slots__ = ('_pos_params', '_pos_deps', '_kw_params', '_kw_deps', '_bound')
 
     _parameter_cls: ClassVar[type[Parameter]] = Parameter
     _bound_arguments_cls: ClassVar[type[BoundArguments]] = BoundArguments
@@ -237,6 +404,17 @@ class InjectableSignature(ins.Signature):
             return self._pos_params
 
     @property
+    def positional_dependencies(self):
+        try:
+            return self._pos_deps
+        except AttributeError:
+            self._pos_deps = { n : p 
+                    for n,p in self.positional_parameters.items() 
+                        if p.is_dependency
+                }
+            return self._pos_deps
+
+    @property
     def keyword_parameters(self):
         try:
             return self._kw_params
@@ -246,6 +424,17 @@ class InjectableSignature(ins.Signature):
                         if p.kind in (_VAR_KEYWORD, _KEYWORD_ONLY)
                 }
             return self._kw_params
+
+    @property
+    def keyword_dependencies(self):
+        try:
+            return self._kw_deps
+        except AttributeError:
+            self._kw_deps = { n : p 
+                    for n,p in self.keyword_parameters.items() 
+                        if p.is_dependency
+                }
+            return self._kw_deps
 
     def inject(self, _injector: Injector, *args: Any, **kwargs: Any) -> BoundArguments:
         rv = self.bind_partial(*args, **kwargs)

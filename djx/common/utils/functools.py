@@ -39,13 +39,16 @@ class class_only_method(classmethod):
 
 class class_property(property, t.Generic[T]):
     """A decorator that converts a function into a lazy class property."""
-    
+    # __slots__ = ()    
     def __get__(self, obj, cls) -> T:
         return super().__get__(cls, cls)
 
 
 class cached_class_property(class_property[T]):
     """A decorator that converts a function into a lazy class property."""
+
+    # if t.TYPE_CHECKING:
+    #     fget = cache(lambda v: v)
 
     def __init__(self, func: t.Callable[..., T]):
         super().__init__(cache(func))
@@ -492,14 +495,8 @@ class dict_lookup_property(object):
 
 T = t.TypeVar('T')
 
-@t.overload
-def export(obj: T, /, *, name: t.Optional[str] = None, exports: t.Optional[t.List[str]] = None, module: t.Optional[str] = None) -> T: 
-	...
-@t.overload
-def export(*, name: t.Optional[str] = None, exports: t.Optional[t.List[str]] = None, module: t.Optional[str] = None) -> t.Callable[[T], T]: 
-	...
-def export(obj: T =..., /, *, name=None, exports=None, module=None) -> t.Union[T, t.Callable[[T], T]]:
-    def add_to_all(_obj: T) -> T:
+def export(obj =..., /, *, name=None, exports=None, module=None):
+    def add_to_all(_obj):
         _module = sys.modules[module or _obj.__module__]
         _exports = exports or getattr(_module, '__all__', None)
         if _exports is None:
@@ -511,27 +508,45 @@ def export(obj: T =..., /, *, name=None, exports=None, module=None) -> t.Union[T
 
 
 
-def deprecated(alt=None, version=None, *, message=None, onload=False) -> t.Callable[[t.Callable[..., T]], t.Callable[..., T]]:
+def deprecated(alt=None, version=None, *, message=None, onload=False, once=False):
     """Issues a deprecated warning on module load or when the decorated function is invoked.
     """
-    def decorator(func: t.Callable[..., T]) -> t.Callable[..., T]:
+    def decorator(func: T) -> T:
         name = f'{func.__module__}.{func.__qualname__}()'
         altname = alt if alt is None or isinstance(alt, str)\
                     else f'{alt.__module__}.{alt.__qualname__}()'
-        
-        message = (message or ''.join((
+        msg = (message or ''.join((
                 '{name} is deprecated and will be removed in ',
                 'version "{version}".' if version else 'upcoming versions.',
                 ' Use {altname} instead.' if altname else '',
             ))).format(name=name, altname=altname, version=version)
 
         if onload:
-            warn(message, DeprecationWarning, 2)
+            warn(msg, DeprecationWarning, 2)
         
-        @wraps(func)
-        def wrapper(*a, **kw) -> T:
-            warn(f'{message}', DeprecationWarning, 2)
-            return func(*a, **kw)
+        if isinstance(func, type):
+            class wrapper(func):
+                __slots__ = ()
+                
+                __wrapped__ = func
+
+                def __new__(cls, *args, **kwds):
+                    # if not hasattr(decorator, '_deprecated_warned'):
+                    #     if once:
+                    #         decorator._deprecated_warned = True
+                    warn(f'{msg}', stacklevel=2)
+                    return super().__new__(cls, *args, **kwds)
+
+            wrapper.__name__ = func.__name__
+            wrapper.__doc__ = func.__doc__
+        else:
+            @wraps(func)
+            def wrapper(*a, **kw):
+                # if not hasattr(decorator, '_deprecated_warned'):
+                #     if once:
+                #         decorator._deprecated_warned = True
+                warn(f'{msg}', stacklevel=2)
+                return func(*a, **kw)
 
         return wrapper
 

@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 import logging
 from threading import RLock
 from weakref import ref
@@ -7,26 +8,26 @@ from typing import Callable, ClassVar, Generic
 from collections import ChainMap
 from collections.abc import Collection
 
-from djx.common.collections import OrderedSet, fallbackdict, fluentdict, PriorityStack
+from djx.common.collections import OrderedSet, fallbackdict
 
-from flex.utils import text
-from flex.utils.decorators import export, lookup_property, cached_property
+
+from djx.common.utils import export, lookup_property, cached_property
 from flex.utils.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
-from .providers import AliasProvider, InjectorProvider, ValueProvider, ValueResolver, provide
+from .providers import AliasProvider, InjectorProvider
 from .symbols import _ordered_id
 from .injectors import Injector, InjectorContext, NullInjector, INJECTOR_TOKEN
-from .abc import Injectable, ScopeConfig, T_ContextStack, T_Injector, T_Provider, _T_Conf, T_Scope
+from .abc import (
+    ANY_SCOPE, COMMAND_SCOPE, LOCAL_SCOPE, MAIN_SCOPE, REQUEST_SCOPE,
+    Injectable, ScopeConfig, 
+    T_ContextStack, T_Injector, T_Provider, _T_Conf, T_Scope,
+)
+
 from . import abc
 
 logger = logging.getLogger(__name__)
-
-__all__ = [
-
-]
-
 
 
 
@@ -34,7 +35,7 @@ _config_lookup = partial(lookup_property, lookup='config', read_only=True)
 
 
 
-_INTERNAL_SCOPE_NAMES = fluentdict(main=None, any=None)
+_INTERNAL_SCOPE_NAMES = fallbackdict(main=None, any=None)
 
 @export()
 class Config(BaseMetadata[T_Scope], ScopeConfig, Generic[T_Scope, T_Injector, T_ContextStack]):
@@ -190,18 +191,20 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         logger.error('    '*(inj.level+1) + f'  >>> bootstrap({self}):  {inj}')
         return
 
-    def create(self, parent: T_Injector) -> T_Injector:
+    def create(self, parent: Injector) -> T_Injector:
         if parent and self in parent:
             return parent
             
         for scope in self.parents:
             if not parent or scope not in parent:
                 parent = scope.create(parent)
-    
-        # logger.debug('    '*(parent and parent.level+1 or 1) + f' +++ create({self}): {parent=} +++')
+
+
         self.prepare()
         
         rv = self.injector_class(self, parent)
+        __debug__ and logger.debug(f'created({self}): {rv!r}')
+
         self.setup_content(rv)
         self.injectors.append(ref(rv, self.injectors.remove))
 
@@ -211,17 +214,16 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         return self.context_class(inj)
 
     def dispose(self, inj: T_Injector):
-        # logger.debug('    '*(inj.level+1) + f'  <<< dispose({self}):  {inj}')
         self.injectors.remove(ref(inj))
         inj.content = None
     
     def setup_content(self, inj: T_Injector):
         def fallback(key):
             res = self.providers.get(key)
-            # res = self.resolvers[key]
             if res is None:
                 return content.setdefault(key, inj.parent.content[key])
-            return content.setdefault(key, res.resolver(self).bind(inj))
+            else:
+                return content.setdefault(key, res.resolver(self).bind(inj))
 
         inj.content = content = fallbackdict(fallback)
         return inj    
@@ -229,6 +231,11 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     def add_dependant(self, scope: T_Scope):
         self.prepare()
         self.dependants.add(scope)
+    
+    def has_descendant(self, scope: T_Scope):
+        self.prepare()
+        return scope in self.dependants \
+            or any(s.has_descendant(scope) for s in self.dependants)
     
     def flush(self, key: Injectable, *, skip=None):
         if skip is None:
@@ -259,16 +266,15 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         self.ready()
     
     def _prepare(self):
-        self.depends
         self.__pos = self.__pos or _ordered_id()
 
         mkprov = partial(AliasProvider, scope=self.name, priority=-1)
-        for abstract in (Injector, abc.Injector, self.injector_class, INJECTOR_TOKEN):
+        for abstract in (None, Injector, abc.Injector, self.injector_class, INJECTOR_TOKEN):
             self.__class__.register_provider(mkprov(abstract, self))
         
         self.__class__.register_provider(InjectorProvider(self, None, -1, scope=self.name))
 
-        logger.debug(f'prepare({self})')
+        __debug__ and logger.debug(f'prepare({self!r})')
 
     def _make_resolvers(self):
         def fallback(key):
@@ -291,7 +297,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}#{self.config._pos}({self.config.name!r}, '\
-            f'#{self.is_ready and self.__pos or ""}, {self.config!r})'
+            f'#{self.is_ready and self.__pos or ""})'
 
 
 
@@ -312,33 +318,35 @@ class ImplicitScope(Scope):
 
 class AnyScope(Scope):
     class Config:
-        name = Scope.ANY
+        name = ANY_SCOPE
         embedded = True
 
 
 
 class MainScope(Scope):
 
+    __main_inj: T_Injector = None
     class Config:
-        name = Scope.MAIN
+        name = MAIN_SCOPE
 
     def create(self, parent: None=None) -> T_Injector:
-        with self._lock:
-            try:
-                rv = self.injectors[-1]()
-            except IndexError:
-                rv = None
-            finally:
-                if rv is None:
-                    return super().create(None)
-                return rv
-            
+        try:
+            rv = self.injectors[-1]()
+        except IndexError:
+            rv = None
+        finally:
+            if rv is None:
+                return super().create(None)
+            return rv
+
+
+    
 
 
 class LocalScope(Scope):
 
     class Config:
-        name = Scope.LOCAL
+        name = LOCAL_SCOPE
         embedded = True
 
 
@@ -347,23 +355,21 @@ class LocalScope(Scope):
 class CommandScope(Scope):
 
     class Config:
-        name = 'command'
+        name = COMMAND_SCOPE
         depends = [
-            Scope.MAIN,
-            Scope.LOCAL
+            MAIN_SCOPE,
+            LOCAL_SCOPE,
         ]
         
 
 
 
-
 class RequestScope(Scope):
-
     class Config:
-        name = 'request'
+        name = REQUEST_SCOPE
         depends = [
-            Scope.MAIN,
-            Scope.LOCAL
+            MAIN_SCOPE,
+            LOCAL_SCOPE,
         ]
         
 

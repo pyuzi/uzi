@@ -5,7 +5,7 @@ import operator
 import typing as t
 from functools import cache, partial
 
-from .utils import safe_ref
+from .utils import saferef
 
 
 TP = t.TypeVar('TP', covariant=True)
@@ -13,7 +13,7 @@ T_Fget = t.Callable[[], TP]
 
 
 _notset = object()
-_notset_ref = safe_ref(None)
+_notset_ref = saferef(None)
 
 
 
@@ -148,7 +148,7 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
 
     __proxy_target_func__: T_Fget[TP]
 
-    def __new__(cls, fget: T_Fget[TP], /, *, cache: bool=None, weak: bool=None, callable: bool=None, **kwds) -> Proxy[TP]:
+    def __new__(cls, fget: T_Fget[TP], /, *, cache: bool=None, weak: bool=None, callable: bool=None, **kwds) -> TP:
         if cls is Proxy:
             if not(cache is callable is weak is None):
                 if weak is True and cache is not True:
@@ -310,8 +310,6 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
 ###
 
 
-
-
 class CachedProxy(Proxy):
 
     __slots__ = ()
@@ -353,7 +351,7 @@ class WeakProxy(CachedProxy):
         """
         rv = self.__proxy_target_val__()
         if rv is None:
-            _set_own_attr(self, '__proxy_target_val__', safe_ref(self.__proxy_target_func__()))
+            _set_own_attr(self, '__proxy_target_val__', saferef(self.__proxy_target_func__()))
             return self.__proxy_target_val__()
     
         return rv
@@ -401,22 +399,22 @@ if t.TYPE_CHECKING:
     _Proxy = Proxy
     
     @t.overload
-    def proxy(fget: T_Fget[TP]) -> _Proxy[TP]: 
+    def proxy(fget: T_Fget[TP]) -> TP: 
         ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: False = None, callable: False = None) -> _Proxy[TP]: ...
+    def proxy(fget: T_Fget[TP], /, *, cache: False = None, callable: False = None) -> TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: False = None, callable: False = None) -> CachedProxy[TP]: ...
+    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: False = None, callable: False = None) -> TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: True, callable: False = None) -> WeakProxy[TP]: ...
+    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: True, callable: False = None) -> TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, callable: True, cache: False = None) -> CallableProxy[TP]: ...
+    def proxy(fget: T_Fget[TP], /, *, callable: True, cache: False = None) -> TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, callable: True) -> CachedCallableProxy[TP]: ...
+    def proxy(fget: T_Fget[TP], /, *, cache: True, callable: True) -> TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: True, callable: True) -> WeakCallableProxy[TP]:
+    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: True, callable: True) -> TP:
         ...
-    def proxy(fget: T_Fget[TP], /, *, cache: bool=False, callable: bool=False) -> _Proxy[TP]:
+    def proxy(fget: T_Fget[TP], /, *, cache: bool=False, callable: bool=False) -> TP:
         ...
 
     Proxy = proxy

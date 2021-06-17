@@ -22,7 +22,7 @@ __all__ = [
 
 
 @export()
-def safe_ref(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, checkstatic:bool=True) -> ReferenceType[_T]:
+def saferef(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, checkstatic:bool=True) -> ReferenceType[_T]:
     if isinstance(obj, ReferenceType):
         return obj
     elif checkstatic and isinstance(obj, StrongReferent):
@@ -44,7 +44,7 @@ def safe_ref(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, chec
             return obj
         
 
-ref = safe_ref
+ref = saferef
 
 
 
@@ -118,7 +118,7 @@ class strong_ref:
         elif callback is not None:
             ref = super().__new__(cls)
             cb = lambda wf, wr: None if (fn := wf()) is None else fn(wr)
-            finalize(ref, cb, safe_ref(callback), weakref(ref))
+            finalize(ref, cb, saferef(callback), weakref(ref))
             return ref
 
         refs = strong_ref.__refs

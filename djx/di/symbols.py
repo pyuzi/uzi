@@ -8,7 +8,7 @@ from typing import (
 )
 
 from flex.datastructures.enum import IntEnum, auto, unique 
-from flex.utils.decorators import export
+from djx.common.utils import export
 
 from djx.common.abc import Orderable
 

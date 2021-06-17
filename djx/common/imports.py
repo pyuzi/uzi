@@ -267,6 +267,8 @@ class ImportPathError(ImportError):
 
 
 
+
+
 class ImportPath(ImportName, t.Generic[IT]):
 
     __slots__ = ()
@@ -289,18 +291,21 @@ class ImportPath(ImportName, t.Generic[IT]):
             if not self._module.startswith(e.name):
                 raise
             elif default is ...:
-                raise ImportPathError(f'module {self._module!r} not found') from e
+                raise ImportPathError(
+                    f'module {self._module!r} not found',
+                    name=self._module
+                    ) from e
             return default
 
     def exists(self) -> bool:
         try:
-            self.get()
+            self.__call__()
             return True
         except ImportPathError:
             return False
 
-    def get(self, default: IT=...) -> IT:
-        raise NotImplementedError(f'{self.__class__.__qualname__}.get')
+    def __call__(self, default: IT=...) -> IT:
+        raise NotImplementedError(f'{self.__class__.__qualname__}.__call__')
 
     # @property
     # def value(self) -> t.Optional[IT]:
@@ -319,9 +324,10 @@ class ModulePath(ModuleName, ImportPath[ModuleType]):
     __slots__ = ()
 
     object: None = None
+    __call__ = ImportPath.module
 
-    def get(self, default: IT=...) -> IT:
-        return self.module(default)
+    # def __call__(self, default: IT=...) -> IT:
+    #     return self.module(default)
 
 
 
@@ -331,11 +337,12 @@ class ObjectPath(ObjectName, ImportPath[IT]):
 
     __slots__ = ()
 
-    def get(self, default: IT=...) -> IT:
-        rv = getitem(self.module(None), self._qualname, default)
+    def __call__(self, default: IT=...) -> IT:
+        rv = getitem(self.module(), self._qualname, default)
         if rv is ...:
             raise ImportPathError(
-                f'object {self._qualname!r} not found in module {self._module!r}'
+                f'cannot import name {self._qualname!r} from {str(self._module)!r}',
+                name=self._module
             )
         return rv
 

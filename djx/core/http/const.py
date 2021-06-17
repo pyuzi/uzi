@@ -1,6 +1,6 @@
 from enum import Enum
 
-from flex.utils.decorators import export
+from djx.common.utils import export
 
 
 

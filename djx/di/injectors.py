@@ -1,21 +1,21 @@
 import logging
+import typing as t
 from functools import partial
 from threading import Lock
 from collections.abc import Mapping, MutableMapping
 from collections import defaultdict, deque
-from contextlib import AbstractContextManager as ContextManager, ExitStack, contextmanager, nullcontext
+from contextlib import AbstractContextManager as ContextManager, ExitStack, nullcontext
 from types import FunctionType
 from contextvars import ContextVar
-from typing import Any, Callable, ClassVar, Generic, Optional, Sequence, Type, TypeVar, Union
-from djx.common.collections import fluentdict
+from djx.common.collections import fallbackdict
 
 
-from flex.utils.decorators import export
+from djx.common.utils import export
 
 from djx.common.utils import Void
 
 from .symbols import _ordered_id
-from .providers import ValueResolver
+from .providers import FactoryProvider, FuncParamsResolver, ValueResolver, is_provided
 from .abc import ( 
     InjectorContext, InjectorKeyError, Resolver, Scope, ScopeAlias, T,
     T_ContextStack, T_Injectable, T_Injected, T_Injector, T_Provider, T_Scope, _T_Providers
@@ -35,7 +35,7 @@ INJECTOR_TOKEN = f'{__package__}.Injector'
 
 @export()
 @abc.InjectorContext[T_Injector].register
-class InjectorContext(ExitStack, Generic[T_Injector]):
+class InjectorContext(ExitStack, t.Generic[T_Injector]):
 
 
     injector: T_Injector
@@ -119,15 +119,22 @@ class InjectorContext(ExitStack, Generic[T_Injector]):
     
 
 
+_pklock = Lock()
+_last_pk = 0
+def _new_pk() -> None:
+    global _last_pk
+    with _pklock:
+        _last_pk += 1
+        return _last_pk
 
 
 @export()
 @abc.Injector[T_Scope, T_Injected, T_Provider, T_Injector].register
-class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
+class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
     __slots__ = (
-        'scope', 'parent', 'cache', 'content', 'level', '__ctx',
-        '__booted', '__skipself', '__weakref__', '__missing__',
+        'scope', 'parent', 'content', 'level', '__ctx',
+        '__booted', '__skipself', '__weakref__',
     )
 
     scope: T_Scope
@@ -138,7 +145,7 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
 
     level: int
-    __skipself: bool
+    # __skipself: bool
     __booted: bool
 
     def __init__(self, scope: T_Scope, parent: T_Injector=None, content: _T_Providers=None) -> None:
@@ -147,13 +154,13 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         self.level = 0 if parent is None else parent.level + 1 
         self.content = content
         self.__booted = False
-        self.__skipself = False
-        self.__missing__ = self.parent.__getitem__
+        # self.__skipself = False
+        # self[None] = 
         self.__ctx = scope.create_context(self)
 
-    @property
-    def final(self):
-        return self.parent.final if self.__skipself is True else self
+    # @property
+    # def final(self):
+    #     return self.parent.final if self.__skipself is True else self
 
     @property
     def context(self):
@@ -162,6 +169,10 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
     @property
     def booted(self):
         return self.__booted
+
+    @property
+    def name(self) -> str:
+        return self.scope.name
 
     def boot(self: T_Injector) -> bool:
         return self._boot()
@@ -191,36 +202,65 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         ctx.wrap(self.parent.context)
         ctx.push(self._shutdown)
 
-    @contextmanager
-    def _bootmanager(self):
-        ind =f'#{self.level}' + '    '*(self.level+1) + '  '
-        logger.debug(f'{ind}+++{self} start boot context [{self.booted}]+++')
-        booted = self.boot()
-        logger.debug(f'{ind}+   {self} booted {booted}   +')
-        try:
-            yield self
-        finally:
-            booted and self.shutdown()
-            logger.debug(f'{ind}-   {self} destroyed   -')
+    # @contextmanager
+    # def _bootmanager(self):
+    #     ind =f'#{self.level}' + '    '*(self.level+1) + '  '
+    #     logger.debug(f'{ind}+++{self} start boot context [{self.booted}]+++')
+    #     booted = self.boot()
+    #     logger.debug(f'{ind}+   {self} booted {booted}   +')
+    #     try:
+    #         yield self
+    #     finally:
+    #         booted and self.shutdown()
+    #         logger.debug(f'{ind}-   {self} destroyed   -')
 
-        logger.debug(f'{ind}---{self} end boot context---')
+    #     logger.debug(f'{ind}---{self} end boot context---')
     
-    def get(self, k: T_Injectable, default: T=None) -> Union[T_Injected, T]: 
+    def get(self, injectable: T_Injectable, default: T=None, /, *args, **kwds) -> t.Union[T_Injected, T]: 
         try:
-            return self[k]
+            return self.make(injectable, *args, **kwds)
         except InjectorKeyError:
             return default
-        
-    # def __boot_on_missing__(self, key):
-    #     self.__enter__()
-    #     return self.__getitem__(key)
+    
+    def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
+        res = self.content.__getitem__(key)
+        if res is not None:
+            assert not (args or kwds) or isinstance(res, FuncParamsResolver), (
+                    f'{res!r} takes no arguments. Some given in {key}'
+                )
+
+            if res.value is not Void:
+                return res.value
+            else:
+                return res.__call__(*args, **kwds)
+        elif not is_provided(key) and isinstance(key, (type, FunctionType)):
+            del self.content[key]
+            self.scope.__class__.register_provider(
+                    FactoryProvider(key, key, scope=self.scope.name),
+                    self.scope,
+                    flush=False
+                )
+                
+            # self.content[injectable] = FactoryProvider(injectable, injectable, scope=self.scope.name)\
+            #     .resolver(self.scope).bind(self)
+            return self.make(key, *args, **kwds)
+
+        raise InjectorKeyError(f'{isinstance(key, abc.Scope)}({key}) in {self!r}')
+    
+
+    def __call__(self, key: T_Injectable=None, /, *args, **kwds) -> T_Injected:
+        if key is None:
+            assert not (args or kwds)
+            return self
+        else:
+            return self.make(key, *args, **kwds)
+
+    __getitem__ = make
 
     def __contains__(self, x) -> bool:
-        if True or self.__booted:
-            return self.content.__contains__(x) or \
-                (bool(self.parent) and self.parent.__contains__(x))
-        else:
-            return self.scope.__contains__(x)
+        if isinstance(x, abc.Injector): 
+            x = x.scope
+        return x in self.content or x in self.parent
 
     def __bool__(self) -> bool:
         return True
@@ -229,7 +269,7 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         return len(self.content)# if self.__booted else 0
 
     def __setitem__(self, k: T_Injectable, val: T_Injected):
-        if isinstance(val, Resolver):
+        if not isinstance(val, Resolver):
             val = ValueResolver(val, bound=self)
         self.content[k] = val
     
@@ -238,29 +278,37 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
             del self.content[k]
         except KeyError:
             pass
-   
-    def __getitem__(self, k: T_Injectable) -> T_Injected:
-        if self.__skipself:
-            return self.__missing__(k)
+        
+    # def __getitem__(self, k: T_Injectable) -> T_Injected:
+        # return self.make(k)
+        # if self.__skipself:
+        #     return self.__missing__(k)
 
-        rec = self.content.__getitem__(k)
-        if rec is not None:
-            return rec.__call__() if rec.value is Void else rec.value
-        else:
-            try:
-                self.__skipself = True
-                return self.__missing__(k)
-            finally:
-                self.__skipself = False
+        # rec = self.content.__getitem__(k)
+        # if rec is not None:
+        #     return rec.__call__() if rec.value is Void else rec.value
+        # # elif isinstance(k, abc.Scope):
+        # #     if not k.embedded and self.scope.has_descendant(k):
+        # #         return k.create(self)
+
+        # raise InjectorKeyError(f'{isinstance(k, abc.Scope)}({k}) in {self!r}')
+
+        # else:
+
+        #     try:
+        #         self.__skipself = True
+        #         return self.__missing__(k)
+        #     finally:
+        #         self.__skipself = False
                 
     def __str__(self) -> str:
-        return f'{self.__class__.__name__}[{self.level}]({self.scope.name!r})'
+        return f'{self.__class__.__name__}[{self.level}]({self.name!r})'
 
     def __repr__(self) -> str:
         return f'<{self}, {self.parent!r}>'
 
-    def __call__(self: T_Injector) -> T_Injector:
-        return self
+    # def __call__(self: T_Injector, key: T_Injectable, /, *args, **kwds) -> T_Injector:
+    #     return self.make(key, *args, **kwds) if key is No
     
     def __enter__(self: T_Injector) -> T_Injector:
         return self.context.__enter__()
@@ -274,18 +322,20 @@ class Injector(Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
 @export()
 @abc.Injector.register
-class NullInjector(Generic[T_Injector]):
+class NullInjector(t.Generic[T_Injector]):
     """NullInjector Object"""
 
     __slots__ = 'content', '__ctx',
 
     scope = None
     parent = None
+    name: str = 'null'
+    
     level = -1
     
     def __init__(self):
         self.__ctx = InjectorContext()
-        self.content = fluentdict()
+        self.content = fallbackdict()
 
     @property
     def final(self):
@@ -311,12 +361,12 @@ class NullInjector(Generic[T_Injector]):
         return iter(())
     
     def __getitem__(self, k: T_Injectable) -> None:
-        from .di import head
-        raise InjectorKeyError(f'{k} in {head()!r}')
+        from .di import current
+        raise InjectorKeyError(f'{k} in {current()!r}')
 
     def __missing__(self, k: T_Injectable) -> None:
-        from .di import head
-        raise InjectorKeyError(f'{k} in {head()!r}')
+        from .di import current
+        raise InjectorKeyError(f'{k} in {current()!r}')
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}'

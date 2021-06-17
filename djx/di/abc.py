@@ -1,5 +1,5 @@
 from __future__ import annotations
-from djx.common.collections import PriorityStack
+from djx.common.collections import OrderedSet, PriorityStack
 from djx.common.utils import Void
 import logging
 from abc import ABCMeta, abstractmethod
@@ -13,10 +13,10 @@ from itertools import chain
 from types import FunctionType, GenericAlias, MethodType
 from typing import (
     Any, ClassVar, Iterable, Literal, Optional, Protocol,
-    Generic, TYPE_CHECKING, Type, TypeVar, Union, cast, overload, runtime_checkable, 
+    Generic, TYPE_CHECKING, Type, TypeVar, Union
 )
 
-from flex.utils.decorators import cached_class_property, class_property, export
+from djx.common.utils import cached_class_property, class_property, export
 from flex.utils import text
 
 from djx.common.abc import Orderable
@@ -86,6 +86,14 @@ class Resolver(Generic[T_Injected], metaclass=ABCMeta):
     
     def __call__(self, *args, **kwds) -> T_Injected: 
         return self.value
+
+    def __str__(self) -> str: 
+        value, bound = self.value, self.bound
+        return f'{self.__class__.__name__}({bound=!r}, {value=!r})'
+
+    def __repr__(self) -> str: 
+        bound, value = self.bound, (self() if self.value is Void else self.value)
+        return f'{self.__class__.__name__}({bound=!r}, {value=!r})'
     
 
 
@@ -214,11 +222,13 @@ class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
     def own_providers(cls):
         return cls.all_providers[cls.config.name]
 
-    def register_provider(cls, provider: T_Provider, scope: Union[str, ScopeAlias]=None) -> T_Provider:
-        scope = cls._get_scope_name(scope or provider.scope or cls)
-        cls = cls._gettype(scope)
+    def register_provider(cls, provider: T_Provider, scope: Union[str, ScopeAlias]=None, *, flush: bool=None) -> T_Provider:
+        if scope.__class__ is not cls:
+            scope = cls._get_scope_name(scope or provider.scope or cls)
+            cls = cls._gettype(scope)
+        
         cls.own_providers[provider.abstract] = provider
-        cls.__instance__ and cls.__instance__.flush(provider.abstract)
+        flush is not False and cls.__instance__ and cls.__instance__.flush(provider.abstract)
         return provider
 
     def _get_scope_name(cls: 'ScopeType[T_Scope, _T_Conf]', val):
@@ -242,7 +252,7 @@ class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
             return cls
 
     def __call__(cls, scope=None, *args,  **kwds):
-        if type(scope) is cls:
+        if scope.__class__ is cls:
             return scope
         
         cls = cls._gettype(cls._get_scope_name(scope or cls))
@@ -260,10 +270,13 @@ class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
             params = params.__args__
         elif isinstance(params, (ScopeType, str)):
             params = cls._get_scope_name(params)
+        elif isinstance(params, Injector):
+            params = params.scope.name
         elif isinstance(params.__class__, ScopeType):
             params = cls._get_scope_name(params.__class__)
         elif params in (..., (...,), [...], Any, (Any,),[Any], (), []):
-            params = ANY_SCOPE        
+            params = ANY_SCOPE  
+              
         return ScopeAlias(cls, params)
 
     def register(cls, subclass: ScopeType[T]) -> type[T]:
@@ -292,6 +305,8 @@ class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
 ANY_SCOPE = 'any'
 MAIN_SCOPE = 'main'
 LOCAL_SCOPE = 'local'
+REQUEST_SCOPE = 'request'
+COMMAND_SCOPE = 'command'
 
 @export()
 class Scope(Orderable, Container, metaclass=ScopeType):
@@ -304,6 +319,8 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     providers: 'PriorityStack[StaticIndentity, T_Provider]'
     peers: list['Scope']
     embedded: bool
+    dependants: OrderedSet[T_Scope]
+
 
     ANY: ClassVar[ANY_SCOPE] = ANY_SCOPE
     MAIN: ClassVar[MAIN_SCOPE] = MAIN_SCOPE
@@ -360,6 +377,12 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     @abstractmethod
     def add_dependant(self, scope: Scope):
         ...
+    
+    @abstractmethod
+    def has_descendant(self, scope: Scope) -> bool:
+        """Check if a scope is a descendant of this scope. 
+        """
+        ...
 
     def __reduce__(self):
         return self.__class__, self.name
@@ -383,7 +406,7 @@ class Provider(Orderable, Generic[T_Injected, T_Injectable, T_Resolver, T_Scope]
     
     __slots__ = ()
     
-    _default_scope: ClassVar[str] = Scope.ANY
+    _default_scope: ClassVar[str] = Scope.MAIN
 
     abstract: StaticIndentity[T_Injectable]
 
@@ -451,21 +474,27 @@ class Injector(AbstractContextManager[T_Injector], Generic[T_Scope, T_Injected, 
 
     content: Mapping[T_Injectable, Resolver] 
 
-    @property
-    @abstractmethod
-    def final(self) -> T_Injector:
-        return self
+    # @property
+    # @abstractmethod
+    # def final(self) -> T_Injector:
+    #     return self
 
     @property
     def main(self) -> T_Injector:
-        """The injector for 
+        """The injector for the `main` scope.
         """
         return self[Scope[Scope.MAIN]]
 
     @property
     def local(self) -> T_Injector:
+        """The injector for for the `main` scope.
+        """
         return self[Scope[Scope.LOCAL]]
 
+    @property
+    def name(self) -> str:
+        return self.scope.name
+        
     @property
     @abstractmethod
     def context(self) -> InjectorContext[T_Injector]:
@@ -483,6 +512,14 @@ class Injector(AbstractContextManager[T_Injector], Generic[T_Scope, T_Injected, 
 
     @abstractmethod
     def get(self, k: T_Injectable, default: T=None) -> Union[T_Injected, T]: 
+        ...
+    
+    @abstractmethod
+    def make(self, injectable: T_Injectable, /, *args, **kwds) -> T_Injected: 
+        ...
+    
+    @abstractmethod
+    def __call__(self, injectable: T_Injectable=None, /, *args, **kwds) -> T_Injected: 
         ...
     
     @abstractmethod

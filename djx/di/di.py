@@ -1,17 +1,15 @@
 import logging
+import typing as t
 
-from threading import Lock
 
 from functools import update_wrapper
 from contextvars import ContextVar
 from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager
-from types import GenericAlias
-from typing import ClassVar, Generic, Literal, NamedTuple, TYPE_CHECKING, Union, get_type_hints
 
 
 from djx.common.proxy import Proxy
-from flex.utils.decorators import export
+from djx.common.utils import export
 
 
 from .injectors import Injector, NullInjector
@@ -20,37 +18,56 @@ from .inspect import signature
 from .providers import alias, is_provided, provide, injectable
 from . import abc
 
-from .abc import ANY_SCOPE, Injectable, InjectorKeyError, LOCAL_SCOPE, MAIN_SCOPE, ScopeAlias, StaticIndentity, T, T_Injected, T_Injector, T_Injectable
+from .abc import (
+    ANY_SCOPE, LOCAL_SCOPE, MAIN_SCOPE, REQUEST_SCOPE, COMMAND_SCOPE,
+    Injectable, InjectorKeyError, ScopeAlias, StaticIndentity, 
+    T, T_Injected, T_Injector, T_Injectable
+)
 
-if not TYPE_CHECKING:
+if not t.TYPE_CHECKING:
     __all__ = [
-        'head',
+        'current',
         'injector',
         'ANY_SCOPE',
         'LOCAL_SCOPE', 
-        'MAIN_SCOPE'
+        'MAIN_SCOPE',
+        'REQUEST_SCOPE', 
+        'COMMAND_SCOPE',
     ]
 
 
 logger = logging.getLogger(__name__)
 
 
-__null_inj = NullInjector()
 
-__main_inj = Proxy(lambda:  MainScope().create(), cache=True, callable=True)
-__inj_ctxvar = ContextVar[T_Injector]('__inj_ctxvar', default=__main_inj)
+__real_main_inj = None
+
+def __get_main_inj():
+    global __real_main_inj
+
+    rv = MainScope().create()
+    __inj_ctxvar.set(rv)
+
+    if __debug__:
+        logger.debug(f'start: {rv!r}')
+
+    return rv
 
 
+__main_inj = Proxy(__get_main_inj, cache=True, callable=False)
+__inj_ctxvar: t.Final = ContextVar[Injector]('__inj_ctxvar', default=__main_inj)
 
-head: Callable[[], T_Injector] = __inj_ctxvar.get
-injector = Proxy(head, callable=True)
+
+current: Callable[[], Injector] = __inj_ctxvar.get
+injector = Proxy(current, callable=False)
 
 
 
 @export()
-def proxy(abstract: T_Injectable, *, callable: bool=None) -> Proxy[T_Injected]:
+def proxy(abstract: T_Injectable, *, callable: bool=None) -> T_Injectable: # -> Proxy[T_Injected]:
     def resolve():
-        return head()[abstract]
+        return current()[abstract]
+    
     return Proxy(resolve, callable=callable)
 
 
@@ -58,34 +75,52 @@ def proxy(abstract: T_Injectable, *, callable: bool=None) -> Proxy[T_Injected]:
 
 
 @export()
-def final():
-    return head().final
+def make(key, *args, **kwds):
+    return current().make(key, *args, **kwds)
 
 
 @export()
 def get(abstract: T_Injectable, default: T = None):
-    return head().get(abstract, default)
+    return current().get(abstract, default)
+
+
+
+@export()
+def scope(name: t.Union[str, ScopeAlias] = Scope.MAIN) -> T_Injector:
+    inj = current()()
+    scope = Scope[name]
+    if scope not in inj:
+        inj = scope().create(inj)
+        inj.context.wrap(using(inj))
+    return inj
 
 
 
 @export()
 @contextmanager
-def scope(name: Union[str, ScopeAlias] = Scope.MAIN) -> AbstractContextManager[T_Injector]:
-    cur = head()
+def using(inj: t.Union[str, ScopeAlias, T_Injector] = Scope.MAIN) -> AbstractContextManager[T_Injector]:
+    cur: Injector[Scope] = current()()
 
-    scope = Scope[name]
+    scope = Scope[inj]
     token = None
     
     if scope not in cur:
-        cur = scope().create(cur)
+        if isinstance(inj, Injector):
+            if cur is not inj[cur.scope]:
+                raise RuntimeError(f'{inj!r} must be a descendant of {cur!r}.')
+            cur = inj
+        else:
+            cur = scope().create(cur)
         token = __inj_ctxvar.set(cur)
+        if __debug__:
+            logger.debug(f'set current: {cur!r}')
 
     try:
-        yield cur
+        yield current()
     finally:
+        if __debug__ and token:
+            logger.debug(f'reset current: {token.old_value!r} {id(token.old_value)!r}')
         token is None or __inj_ctxvar.reset(token)
-
-
 
 
 
@@ -126,7 +161,7 @@ def call(func: Callable[..., T], /, args: tuple=(), keywords:dict={}) -> T:
 
 
 
-class Dependency(NamedTuple):
+class Dependency(t.NamedTuple):
     depends: Injectable = None
     scope: str = Scope.ANY
 
@@ -134,7 +169,7 @@ class Dependency(NamedTuple):
 
 
 @export()
-class InjectedProperty(Generic[T_Injected]):
+class InjectedProperty(t.Generic[T_Injected]):
     
     __slots__ = '_dep','__name__', '_default', '__weakref__'
 
@@ -145,6 +180,7 @@ class InjectedProperty(Generic[T_Injected]):
         self._default = default
         self._dep = Dependency(dep, *(scope and (str(scope),) or ()))
         self.__name__ = name
+        self._register()
 
     @property
     def depends(self):
@@ -157,7 +193,7 @@ class InjectedProperty(Generic[T_Injected]):
     def __set_name__(self, owner, name):
         self.__name__ = name
         if self.depends is None:
-            dep = get_type_hints(owner).get(name)
+            dep = t.get_type_hints(owner).get(name)
             if dep is None:
                 raise TypeError(
                     f'Injectable not set for {owner.__class__.__name__}.{name}'
@@ -174,7 +210,7 @@ class InjectedProperty(Generic[T_Injected]):
         if obj is None:
             return self
         try:
-            return head()[self._dep]
+            return current()[self._dep]
         except InjectorKeyError as e:
             if self._default is ...:
                 raise AttributeError(self) from e
@@ -198,5 +234,5 @@ class InjectedClassVar(InjectedProperty[T_Injected]):
         return super().__get__(typ, typ)
 
 
-if TYPE_CHECKING:
-    InjectedClassVar = ClassVar[T_Injected]
+if t.TYPE_CHECKING:
+    InjectedClassVar = t.ClassVar[T_Injected]

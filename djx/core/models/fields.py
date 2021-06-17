@@ -1,13 +1,18 @@
-from functools import partial
 import typing as t 
+from functools import partial
+from collections.abc import MutableMapping, Callable
 from django.db import models as m
 from django.core import validators
 from django.db.models.fields.json import KeyTransform
+from django.db.models.query_utils import DeferredAttribute
 
 from djx.common import json
+from djx.common.collections import MappingObject
 from djx.common.utils import text, export, cached_property
 
 
+class _RawJson(str):
+    __slots__ = ()
 
 @export()
 class JSONField(m.JSONField):
@@ -23,10 +28,10 @@ class JSONField(m.JSONField):
         try:
             return json.loads(value)
         except json.JSONDecodeError:
-            return value
+            return _RawJson(value)
 
     def get_prep_value(self, value):
-        if value is None:
+        if value is None or isinstance(value, _RawJson):
             return value
         return json.dumps(value).decode()
 
@@ -42,6 +47,87 @@ class JSONField(m.JSONField):
                 code='invalid',
                 params={'value': value},
             )
+
+    def formfield(self, **kwargs):
+        return m.Field.formfield(self, **kwargs)
+
+
+
+
+class JSONObjectDescriptor(DeferredAttribute):
+
+    field: 'JSONObjectField'
+    
+    def __get__(self, obj, cls=None):
+        if obj is None:
+            return self
+
+        name = self.field.attname
+        try:
+            return obj.__dict__[name]
+        except KeyError:
+            self.__set__(obj, super().__get__(obj, cls))
+            return obj.__dict__[name]
+
+    def __set__(self, obj, val):
+        f = self.field
+        name = f.attname
+        cls = f.object_type
+        if isinstance(val, cls) or (val is None and f.null):
+            obj.__dict__[name] = val
+
+        func = f.object_factory or cls
+        if val is None and f.blank:
+            obj.__dict__[name] = (f.has_default() and f.get_default or func)()
+        else:
+            obj.__dict__[name] = func(val)
+
+    def __delete__(self, obj):
+        try:
+            del obj.__dict__[self.field.attname]
+        except KeyError:
+            pass
+        
+
+
+_T_JSONObject = t.TypeVar('_T_JSONObject', json.Jsonable, MappingObject)
+
+
+@export()
+class JSONObjectField(JSONField, t.Generic[_T_JSONObject]):
+    """JSONObjectField """
+
+    descriptor_class = JSONObjectDescriptor
+    empty_strings_allowed = False
+    
+    if t.TYPE_CHECKING:
+        def __new__(self, 
+                *args, 
+                type: type[_T_JSONObject]=MappingObject, 
+                factory: Callable[[t.Any], _T_JSONObject]=None, 
+                **kwargs) -> _T_JSONObject:
+            ...    
+
+    def __init__(self, 
+                *args, 
+                type: type[_T_JSONObject]=MappingObject, 
+                factory: Callable[[t.Any], _T_JSONObject]=None, 
+                **kwargs) -> None:
+        self.object_type = type
+        self.object_factory = factory
+        super().__init__(*args, **kwargs)
+    
+    def deconstruct(self):
+        name, path, args, kwargs = super().deconstruct()
+        
+        if self.object_type is not MappingObject:
+            kwargs['type'] = self.object_type
+
+        if self.object_factory is not None:
+            kwargs['factory'] = self.object_factory
+
+        return name, path, args, kwargs
+
 
 
 
@@ -82,15 +168,15 @@ class SlugField(m.SlugField):
             if auto_field is not None:
                 kwargs.update(self._auto_field_overrides)
 
-
-        super().__init__(*args, max_length=max_length, **kwargs)
-
         self.coerce = coerce
         self.allow_chars = allow_chars
         self.auto_field = auto_field
         self.auto_field_add = auto_field_add
         self.similar_with = similar_with
         self.auto_suffix = auto_suffix or False
+        
+        super().__init__(*args, max_length=max_length, **kwargs)
+
 
     @cached_property
     def default_validators(self):

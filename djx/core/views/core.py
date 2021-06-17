@@ -3,7 +3,7 @@ from typing import ClassVar, Generic, Type, TypeVar
 from django.db import models
 from django.db.models import Manager, Model
 
-from flex.utils.decorators import export
+from djx.common.utils import export
 
 from rest_framework.generics import GenericAPIView as BaseGenericAPIView
 from rest_framework.views import APIView as BaseAPIView

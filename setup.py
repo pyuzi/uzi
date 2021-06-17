@@ -17,8 +17,11 @@ setup(
     install_requires=[
         'cachetools~=4.2.1',
         'orjson>=3.5.2',
+        'uvicorn>=0.13.4',
+        'uvloop>=0.15.2',
     ],
     extras_require={
         'django': ['django~=3.1.7',],
+        'phonenumbers': ['phonenumbers>=8.12.24',],
     }
 )

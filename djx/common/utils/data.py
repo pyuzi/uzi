@@ -2,7 +2,7 @@ import re
 import typing as t 
 from enum import IntFlag
 
-from . import export
+from .functools import export
 
 R = t.TypeVar('R') # Return value
 O = t.TypeVar('O') # target object

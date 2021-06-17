@@ -12,7 +12,7 @@ import json as stdjson
 
 from enum import IntFlag, unique
 
-from functools import partial
+from functools import partial, reduce
 from djx.common.collections import fallbackdict
 from djx.common.utils import export
 
@@ -103,6 +103,10 @@ class JsonOpt(IntFlag):
 
     APPEND_NEWLINE = orjson.OPT_APPEND_NEWLINE
     PASSTHROUGH_DATACLASS = orjson.OPT_PASSTHROUGH_DATACLASS
+
+    ORJSON_OPT = reduce(lambda r, k: r | getattr(orjson, f'OPT_{k}', 0), vars(), 0)
+
+    DECODE = PASSTHROUGH_DATETIME << 8
     
 
 
@@ -127,11 +131,15 @@ def _get_default_fn(default=None):
 
 
 @export()
-def dumps(obj: Jsonable, *, default: t.Callable[[t.Any], Jsonable]=None, flags: JsonOpt=0) -> bytes:
+def dumps(obj: Jsonable, default: t.Callable[[t.Any], Jsonable]=None, opts: JsonOpt=0) -> t.AnyStr:
     """Serialize ``obj`` to a JSON formatted ``bytes``
     Uses ``orjson`` if available or falls back to the standard ``json`` library.
     """
-    return orjson.dumps(obj, _get_default_fn(default), flags)
+    if opts & JsonOpt.DECODE:
+        opts = opts & JsonOpt.ORJSON_OPT
+        return orjson.dumps(obj, _get_default_fn(default), int(opts)).decode()
+    else:
+        return orjson.dumps(obj, _get_default_fn(default), int(opts))
     
 
 

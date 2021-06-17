@@ -73,7 +73,7 @@ class _TestScope(Scope):
         
 
 
-@injectable(cache=True, scope='any')
+@injectable(cache=True, scope='main')
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
@@ -154,7 +154,6 @@ provide(user_symb, factory=user_func_symb, cache=False)
 def user_func_str():
     return f'user_func_str {user_str} -> #{_ordered_id()}'
     
-
 
 
 

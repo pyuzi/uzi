@@ -15,9 +15,10 @@ from typing import (
 )
 
 
-from flex.utils.decorators import export
+from djx.common.utils import export
 
-from djx.common.utils import Void
+from djx.common.utils import Void, saferef
+from djx.di.inspect import BoundArguments
 
 from .symbols import symbol, _ordered_id, identity
 from . import abc
@@ -32,7 +33,7 @@ T_ScopeAlias = TypeVar('T_ScopeAlias', str, ScopeAlias)
 _provided = set()
 
 def is_provided(obj) -> bool:
-    return identity(obj) in _provided # or (isinstance(obj, type) and issubclass(obj, abc.Injector))
+    return saferef(obj) in _provided # or (isinstance(obj, type) and issubclass(obj, abc.Injector))
 
 
 
@@ -51,7 +52,7 @@ def alias(abstract: T_Injectable,
 
 @export()
 def injectable(scope: str = None, priority: int = 1, *, cache:bool=None, with_context:bool=None, abstract: T_Injectable = None, **opts):
-    def register(factory: Callable[..., T]):
+    def register(factory):
         provide(
             abstract or factory, 
             priority=priority, 
@@ -183,12 +184,12 @@ class FuncResolver(ConcreteResolver[T, Callable[..., T]]):
         super().__init__(concrete, **kwds)
         self.cache = cache
         if cache:
-            def __call__() -> T:
-                self.value = concrete()
+            def __call__(*args, **kwds) -> T:
+                self.value = concrete(*args, **kwds)
                 return self.value
             self.__call__ = __call__
         else:
-            self.__call__ = concrete.__call__
+            self.__call__ = concrete
 
     def clone(self, *args, **kwds):
         kwds.setdefault('cache', self.cache)
@@ -204,19 +205,21 @@ class FuncParamsResolver(FuncResolver):
 
     __slots__ = 'params',
 
+    params: BoundArguments
+
     def __init__(self, concrete, *, params=None, **kwds):
         super().__init__(concrete, **kwds)
 
         self.params = params
         if self.cache:
-            def __call__() -> T:
+            def __call__(*args, **kwds) -> T:
                 bound = self.bound
-                self.value = concrete(*params.inject_args(bound), **params.inject_kwargs(bound))
+                self.value = concrete(*params.inject_args(bound, kwds), *args, **params.inject_kwargs(bound, kwds))
                 return self.value
         else:
-            def __call__() -> T:
+            def __call__(*args, **kwds) -> T:
                 bound = self.bound
-                return concrete(*params.inject_args(bound), **params.inject_kwargs(bound))
+                return concrete(*params.inject_args(bound, kwds), *args, **params.inject_kwargs(bound, kwds))
                 
         self.__call__ = __call__
     
@@ -254,7 +257,7 @@ class Provider(abc.Provider[T, T_Injectable, T_Resolver, T_Scope]):
         self.priority = priority or 0
         self.options = options
         self.set_concrete(concrete)
-        _provided.add(identity(self.abstract))
+        _provided.add(saferef(self.abstract))
 
     def set_concrete(self, concrete) -> None:
         self.concrete = concrete
@@ -393,7 +396,7 @@ class Depends:
     def __new__(cls, *args, **kwargs):
         raise TypeError("Type Depends cannot be instantiated.")
 
-    def __class_getitem__(cls, params):
+    def __class_getitem__(cls, params: Union[T, tuple[T, ...]]) -> Annotated[T]:
         scope = None
         if not isinstance(params, tuple):
             deps = ((tp := params),)

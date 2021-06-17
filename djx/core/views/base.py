@@ -9,7 +9,7 @@ from django import http
 
 from djx.core.http import HttpMethod
 
-from flex.utils.decorators import export, cached_class_property, class_only_method
+from djx.common.utils import export, cached_class_property, class_only_method
 from flex.utils.metadata import metafield, BaseMetadata, get_metadata_class
 
 

@@ -1,10 +1,7 @@
-from typing_extensions import Literal
 import typing as t
-import inspect as ins
 import pytest
-from typing import Optional, Union
 
-from ...collections import fallbackdict, fluentdict
+from ...collections import fallbackdict
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize

@@ -1,30 +1,19 @@
 from contextlib import nullcontext
-import os
-from functools import partial, partialmethod
-# from django import setup
 
-# os.environ.setdefault("DJANGO_SETTINGS_MODULE", "example_app.test_settings")
 
-# setup()
 
-from types import FunctionType, MethodType
 import typing as t
-import pickle
 
 from timeit import repeat
 
 import pytest
 
 
-
-
-from ... import is_injectable, scope, injector, INJECTOR_TOKEN, di
-
+from ... import is_injectable, using, injector, INJECTOR_TOKEN, di
 
 
 from .mocks import *
 
-from statistics import mean, median
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
@@ -62,7 +51,7 @@ class SymbolTests:
         class Late:
             pass
 
-        with scope('test') as inj:
+        with using('test') as inj:
             with inj.context:
                 key = 'late'
                 val ='This was injected late'
@@ -93,7 +82,7 @@ class SymbolTests:
             #     print('*'*16, inj,'*'*16)
             #     # with scope('abc') as _inj:
                 #     nl = "\n    -- "
-                with scope('test') as inj:
+                with using('test') as inj:
                     with inj.context:
                         null = lambda: None
                         mkinj = lambda: injector()
@@ -109,18 +98,18 @@ class SymbolTests:
                         inj404 = lambda: inj['404']
 
 
-                        _n = int(.5e4)
+                        _n = int(2.5e4)
                         self.run('Baz', mkbaz, injbaz, _n)
                         self.run('Foo', mkfoo, injfoo, _n)
                         self.run('Bar', mkbar, injbar, _n)
         
                         pro = di.proxy(Bar, callable=True)
 
-                        print(f'\n---> {Bar.infoo!r}\n   --> {injbafoo()!r}')
+                        # print(f'\n---> {Bar.infoo!r}\n   --> {injbafoo()!r}')
                         
                         # print(f'\n => {injector[Foo]=}\n => {injector[Bar]=}\n => {injector[Bar]=}\n => {injector[Baz]=}\n => {injector[Scope["main"]]=}\n => {injector[INJECTOR_TOKEN]=}\n\n {pro()=}\n')
 
-                        print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))
+                        # print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))
 
                         assert injector[Bar] is not injector[Bar]
 

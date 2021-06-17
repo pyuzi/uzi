@@ -21,5 +21,4 @@ if __name__ == "__main__":
                 "forget to activate a virtual environment?"
             )
         raise
-    with di.scope('main'):
-        execute_from_command_line(sys.argv)
+    execute_from_command_line(sys.argv)

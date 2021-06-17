@@ -32,6 +32,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    "djx.core",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -78,7 +79,7 @@ TEMPLATES = [
     }
 ]
 
-WSGI_APPLICATION = "example_app.wsgi.application"
+
 
 
 DATABASES = {

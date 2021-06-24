@@ -12,7 +12,7 @@ from djx.common.collections import OrderedSet, fallbackdict
 
 
 from djx.common.utils import export, lookup_property, cached_property
-from flex.utils.metadata import metafield, BaseMetadata, get_metadata_class
+from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
@@ -372,6 +372,17 @@ class RequestScope(Scope):
             LOCAL_SCOPE,
         ]
         
+
+
+class TaskScope(Scope):
+    class Config:
+        name = 'task'
+        depends = [
+            MAIN_SCOPE,
+            LOCAL_SCOPE,
+        ]
+        
+
 
 
 

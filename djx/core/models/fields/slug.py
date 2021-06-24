@@ -1,134 +1,8 @@
 import typing as t 
 from functools import partial
-from collections.abc import MutableMapping, Callable
 from django.db import models as m
 from django.core import validators
-from django.db.models.fields.json import KeyTransform
-from django.db.models.query_utils import DeferredAttribute
-
-from djx.common import json
-from djx.common.collections import MappingObject
 from djx.common.utils import text, export, cached_property
-
-
-class _RawJson(str):
-    __slots__ = ()
-
-@export()
-class JSONField(m.JSONField):
-    """JSONField Object"""
-
-    def from_db_value(self, value, expression, connection):
-        if value is None:
-            return value
-        # Some backends (SQLite at least) extract non-string values in their
-        # SQL datatypes.
-        if isinstance(expression, KeyTransform) and not isinstance(value, str):
-            return value
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return _RawJson(value)
-
-    def get_prep_value(self, value):
-        if value is None or isinstance(value, _RawJson):
-            return value
-        return json.dumps(value).decode()
-
-    def validate(self, value, model_instance):
-
-        m.Field.validate(self, value, model_instance)
-        
-        try:
-            json.dumps(value)
-        except TypeError:
-            raise m.ValidationError(
-                self.error_messages['invalid'],
-                code='invalid',
-                params={'value': value},
-            )
-
-    def formfield(self, **kwargs):
-        return m.Field.formfield(self, **kwargs)
-
-
-
-
-class JSONObjectDescriptor(DeferredAttribute):
-
-    field: 'JSONObjectField'
-    
-    def __get__(self, obj, cls=None):
-        if obj is None:
-            return self
-
-        name = self.field.attname
-        try:
-            return obj.__dict__[name]
-        except KeyError:
-            self.__set__(obj, super().__get__(obj, cls))
-            return obj.__dict__[name]
-
-    def __set__(self, obj, val):
-        f = self.field
-        name = f.attname
-        cls = f.object_type
-        if isinstance(val, cls) or (val is None and f.null):
-            obj.__dict__[name] = val
-
-        func = f.object_factory or cls
-        if val is None and f.blank:
-            obj.__dict__[name] = (f.has_default() and f.get_default or func)()
-        else:
-            obj.__dict__[name] = func(val)
-
-    def __delete__(self, obj):
-        try:
-            del obj.__dict__[self.field.attname]
-        except KeyError:
-            pass
-        
-
-
-_T_JSONObject = t.TypeVar('_T_JSONObject', json.Jsonable, MappingObject)
-
-
-@export()
-class JSONObjectField(JSONField, t.Generic[_T_JSONObject]):
-    """JSONObjectField """
-
-    descriptor_class = JSONObjectDescriptor
-    empty_strings_allowed = False
-    
-    if t.TYPE_CHECKING:
-        def __new__(self, 
-                *args, 
-                type: type[_T_JSONObject]=MappingObject, 
-                factory: Callable[[t.Any], _T_JSONObject]=None, 
-                **kwargs) -> _T_JSONObject:
-            ...    
-
-    def __init__(self, 
-                *args, 
-                type: type[_T_JSONObject]=MappingObject, 
-                factory: Callable[[t.Any], _T_JSONObject]=None, 
-                **kwargs) -> None:
-        self.object_type = type
-        self.object_factory = factory
-        super().__init__(*args, **kwargs)
-    
-    def deconstruct(self):
-        name, path, args, kwargs = super().deconstruct()
-        
-        if self.object_type is not MappingObject:
-            kwargs['type'] = self.object_type
-
-        if self.object_factory is not None:
-            kwargs['factory'] = self.object_factory
-
-        return name, path, args, kwargs
-
-
 
 
 _T_AutoSlugFunc = t.Callable[[m.Model, t.Optional[str]], t.Optional[str]]
@@ -184,25 +58,21 @@ class SlugField(m.SlugField):
 
     @cached_property
     def _auto_add_func(self) -> t.Callable[[m.Model, str], str]:
-        if self.auto_field_add:
-            if callable(self.auto_field_add):
-                def func(obj, val):
+        if not self.auto_field_add:
+            return self._auto_func
+    
+        if callable(self.auto_field_add):
+            def func(obj, val):
+                if not val:
                     val = self.auto_field_add(obj, val)
-                    return self.slugify(val) if val else val
-            else:
-                def func(obj, val):
-                    if not val:
-                        val = getattr(obj, self.auto_field_add, val)
-                    return self.slugify(val) if val else val
-            
-            # if self.auto_suffix:
-            #     fn = func
-            #     def func(obj: m.Model, val):
-            #         qs = obj.__class__._default_manager.            
-
-            return func
-        return self._auto_func
-
+                return self.slugify(val) if val else val
+        else:
+            def func(obj, val):
+                if not val:
+                    val = getattr(obj, self.auto_field_add, val)
+                return self.slugify(val) if val else val
+        return func
+    
     @cached_property
     def _auto_func(self) -> t.Callable[[m.Model, str], str]:
         if self.auto_field:
@@ -265,9 +135,12 @@ class SlugField(m.SlugField):
         if value is None and self.null:
             return None
         elif add:
-            return self._auto_add_func(model_instance, value)
+            value = self._auto_add_func(model_instance, value)
         else:
-            return self._auto_func(model_instance, value)
+            value = self._auto_func(model_instance, value)
+
+        setattr(model_instance, self.attname, value)
+        return value
 
         # if not value:
         #     # if add and self.auto_field_add is not None:

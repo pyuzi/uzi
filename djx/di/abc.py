@@ -16,8 +16,7 @@ from typing import (
     Generic, TYPE_CHECKING, Type, TypeVar, Union
 )
 
-from djx.common.utils import cached_class_property, class_property, export
-from flex.utils import text
+from djx.common.utils import cached_class_property, class_property, export, text
 
 from djx.common.abc import Orderable
 

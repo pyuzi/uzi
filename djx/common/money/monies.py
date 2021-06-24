@@ -130,7 +130,8 @@ class Monies:
         if other == 0:
             # Support comparing to integer/Decimal zero as it is useful
             return not self.__bool__()
-        # elif not isinstance(other, Monies):
+        # elif not isinstance(other, (Monies, )):
+
         #     return NotImplemented
         #     # raise TypeError(
         #     #     "Can only compare Monies objects to other "

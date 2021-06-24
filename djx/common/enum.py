@@ -3,6 +3,7 @@ from collections.abc import MutableMapping, Mapping, Iterable
 from enum import (
     EnumMeta as BaseEnumMeta,
     Enum as BaseEnum, 
+    IntEnum as BaseIntEnum,
     IntFlag as BaseIntFlag,
     Flag as BaseFlag,
 )
@@ -73,7 +74,7 @@ class EnumMeta(BaseEnumMeta):
                 f'ClassVar __properties__ in {name}. '
                 f'New syntax:  class {name}('
                 f'{", ".join(b.__name__ for b in bases)}, '
-                f'properties={attrs["__properties__"]!r}, defaults=`prop defaults`)', 
+                f'fields={attrs["__properties__"]!r}, defaults=`prop defaults`)', 
                 DeprecationWarning, 
                 stacklevel=2
             )
@@ -124,11 +125,11 @@ class EnumMeta(BaseEnumMeta):
         fields: Iterable = ()
 
         mapfn = lambda f: (
-            (f, Any, field(default=None))
+            (f, t.Any, field(default=None))
                 if isinstance(f, str)
                 else (f.name, f.type, f)
                 if isinstance(f, Field) 
-                else chain(f := [*f], [Any, field(default=None)][len(f)-1:])
+                else chain(f := [*f], [t.Any, field(default=None)][len(f)-1:])
             )
         
         if is_dataclass(fieldset):
@@ -165,7 +166,8 @@ class EnumMeta(BaseEnumMeta):
             )
 
     def choices(cls):
-        return tuple((m, m.label) for m in cls)
+        empty = ((None, cls.__empty__),) if hasattr(cls, '__empty__') else ()
+        return empty + tuple((m.value, m.label) for m in cls)
 
 
 
@@ -199,7 +201,7 @@ class Flag(BaseFlag, metaclass=EnumMeta):
 
 
 @export()
-class IntEnum(int, Enum):
+class IntEnum(BaseIntEnum, metaclass=EnumMeta):
     __slots__ = ()
 
     name: str
@@ -218,7 +220,6 @@ class IntFlag(BaseIntFlag, metaclass=EnumMeta):
     def __json__(self):
         return self.value
 
-from flex.datastructures.enum import StrEnum
 
 @export()
 class StrEnum(str, Enum):

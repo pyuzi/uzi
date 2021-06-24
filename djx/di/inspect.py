@@ -14,7 +14,6 @@ from typing import (
 from collections.abc import Iterator, Mapping
 
 from djx.common.utils import export
-from flex.utils.proxy import Proxy, ValueProxy
 
 
 from .abc import Injector, T_Injectable

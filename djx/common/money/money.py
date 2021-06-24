@@ -16,6 +16,8 @@ except ImportError:
 _match_re = re.compile(r'^(?:(-)|\+)?([a-z]{3})?(\d+(?:\.\d+)?)$', re.IGNORECASE)
 _sub_re = re.compile(r'[\s,]+')
 
+
+
 class MoneyAbc(metaclass=ABCMeta):
 
     __slots__ = ()
@@ -54,6 +56,7 @@ class MoneyAbc(metaclass=ABCMeta):
 
 
 MoneyAbc.register(_Money)
+
 
 
 class Money(_Base, MoneyAbc):

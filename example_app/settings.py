@@ -42,13 +42,13 @@ INSTALLED_APPS = [
     'polymorphic_tree',
     'polymorphic',
     'mptt',
-    "django_extensions",
+    # "django_extensions",
     "djx.spaces",
     "djx.ledgers",
     "djx.xtags",
     "djx.schemas",
     "djx.keydb",
-    "example_app",
+    # "example_app",
 ]
 
 MIDDLEWARE = [
@@ -108,6 +108,10 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
+
 # Internationalization
 # https://docs.djangoproject.com/en/1.10/topics/i18n/
 
@@ -130,6 +134,8 @@ STATIC_URL = "/static/"
 LOGIN_URL = "/auth/login/"
 
 STATIC_ROOT = "static"
+
+DEFAULT_CURRENCY = 'KES'
 
 
 

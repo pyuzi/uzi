@@ -21,7 +21,7 @@ setup(
         'uvloop>=0.15.2',
     ],
     extras_require={
-        'django': ['django~=3.1.7',],
+        'django': ['django~=3.2.4', 'django-ninja>=0.12.3'],
         'phonenumbers': ['phonenumbers>=8.12.24',],
     }
 )

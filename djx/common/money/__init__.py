@@ -1,3 +1,4 @@
+from decimal import Decimal
 import typing as t
 
 
@@ -6,16 +7,21 @@ import typing as t
 
 from moneyed import Currency, CURRENCIES, CURRENCIES_BY_ISO, get_currency
 
-from .money import Money
+from .money import Money, MoneyAbc
 from .monies import Monies
 from .settings import DEFAULT_CURRENCY, ALLOWED_CURRENCIES
 
 __all__ = [
     'Money',
     'Monies',
+    'MoneyLike',
     'Currency',
     'get_currency',
 ]
+
+
+MoneyLike = t.Union[MoneyAbc, Decimal, int, float]
+
 
 if t.TYPE_CHECKING:
     money = None

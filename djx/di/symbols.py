@@ -6,8 +6,9 @@ from weakref import WeakMethod, finalize, ref
 from typing import (
     Any, Callable, ClassVar, Dict, Generic, Hashable, Literal, NamedTuple, Optional, TYPE_CHECKING, Type, TypeVar, Union, 
 )
+from enum import IntEnum, auto, unique 
 
-from flex.datastructures.enum import IntEnum, auto, unique 
+
 from djx.common.utils import export
 
 from djx.common.abc import Orderable

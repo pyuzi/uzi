@@ -75,6 +75,9 @@ class PhoneNumber(BasePhoneNumber):
     def carrier(self, lang='en'):
         return carrier.name_for_number(self, lang)
 
+    def region(self, lang='en'):
+        return carrier.region_code_for_number(self)
+
     def format(self, fmt):
         return format_number(self, fmt)
 

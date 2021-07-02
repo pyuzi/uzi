@@ -51,7 +51,7 @@ def alias(abstract: T_Injectable,
 
 
 @export()
-def injectable(scope: str = None, priority: int = 1, *, cache:bool=None, with_context:bool=None, abstract: T_Injectable = None, **opts):
+def injectable(scope: str = None, priority: int = 1, *, cache:bool=None, abstract: T_Injectable = None,**opts):
     def register(factory):
         provide(
             abstract or factory, 
@@ -59,7 +59,6 @@ def injectable(scope: str = None, priority: int = 1, *, cache:bool=None, with_co
             factory=factory, 
             scope=scope, 
             cache=cache, 
-            with_context=with_context,
             **opts)
         return factory
 
@@ -74,28 +73,49 @@ _kwd_cls_map = dict[str, Callable[..., type[T_Provider]]](
     value=lambda: ValueProvider
 )
 
+# @overload
+# def provide(*abstracts: T_Injectable, priority: int = 1, value: T, scope: str = None, with_context:bool=None, **opts): ...
+# @overload
+# def provide(*abstracts: T_Injectable, priority: int = 1, alias: abc.Injectable[T], scope: str = None, **opts): 
+# ...
 @overload
-def provide(*abstracts: T_Injectable, priority: int = 1, value: T, scope: str = None, with_context:bool=None, **opts) -> 'ValueProvider': ...
-@overload
-def provide(*abstracts: T_Injectable, priority: int = 1, alias: abc.Injectable[T], scope: str = None, **opts) -> 'AliasProvider': ...
-@overload
-def provide(*abstracts: T_Injectable, priority: int = 1, factory: Callable[..., T],
-            scope: str = None, cache: bool = None, with_context:bool=None, **opts) -> 'FactoryProvider': ...
+def provide(abstract: T_Injectable=..., 
+            *abstracts: T_Injectable, 
+            factory: Callable[..., T]=None,
+            alias: abc.Injectable[T]=None,
+            value: T=None,
+            priority: int = 1, 
+            scope: str = None, 
+            cache: bool = None,
+            **opts): 
+    ...
 @export()
-def provide(*abstracts: T_Injectable, priority: int = 1, 
-            scope: str = None, cache: bool = None, **kwds) -> T_Provider:
-    cls, concrete = next((c(), kwds.pop(k)) for k,c in _kwd_cls_map.items() if k in kwds)
+def provide(abstract: T_Injectable=..., 
+            *abstracts:T_Injectable, 
+            priority: int = 1, 
+            scope: str = None, 
+            cache: bool = None, 
+            **kwds):
 
-    rv = {}
-    for abstract in abstracts:
-        if abstract in rv:
-            continue
+    def register(_abstract):
+        
+        cls, concrete = next((c(), kwds.pop(k)) for k,c in _kwd_cls_map.items() if k in kwds)
 
-        rv[abstract] = register_provider(
-            cls(abstract, concrete, priority, cache=cache, scope=scope, **kwds)
-        )
+        seen = set()
+        for abstract in (_abstract, *abstracts):
+            if abstract not in seen:
+                seen.add(abstract)
+                prov = cls(abstract, concrete, priority, cache=cache, scope=scope, **kwds)
+                register_provider(prov)
 
-    return rv[abstracts[0]] if len(abstracts) == 1 else rv.values()
+        return _abstract
+
+        # return rv[abstracts[0]] if len(abstracts) == 1 else rv.values()
+
+    if abstract is ...:
+        return register
+    else:
+        return register(abstract)
 
 
 
@@ -396,7 +416,7 @@ class Depends:
     def __new__(cls, *args, **kwargs):
         raise TypeError("Type Depends cannot be instantiated.")
 
-    def __class_getitem__(cls, params: Union[T, tuple[T, ...]]) -> Annotated[T]:
+    def __class_getitem__(cls, params: Union[T, tuple[T, ...]]) -> Annotated[T, Dependency]:
         scope = None
         if not isinstance(params, tuple):
             deps = ((tp := params),)

@@ -15,7 +15,7 @@ from djx.common.utils import export
 from .injectors import Injector, NullInjector
 from .scopes import Scope, MainScope
 from .inspect import signature
-from .providers import alias, is_provided, provide, injectable
+from .providers import alias, is_provided, provide, injectable, Depends
 from . import abc
 
 from .abc import (
@@ -28,6 +28,7 @@ if not t.TYPE_CHECKING:
     __all__ = [
         'current',
         'injector',
+        'Depends',
         'ANY_SCOPE',
         'LOCAL_SCOPE', 
         'MAIN_SCOPE',
@@ -80,8 +81,8 @@ def make(key, *args, **kwds):
 
 
 @export()
-def get(abstract: T_Injectable, default: T = None):
-    return current().get(abstract, default)
+def get(abstract: T_Injectable, default: T = None, /, *args, **kwds):
+    return current().get(abstract, default, *args, **kwds)
 
 
 

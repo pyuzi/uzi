@@ -136,6 +136,7 @@ class Injectable(SupportsIndentity, Generic[T_Injected]):
 Injectable.register(str)
 Injectable.register(type)
 Injectable.register(tuple)
+Injectable.register(TypeVar)
 Injectable.register(MethodType)
 Injectable.register(FunctionType)
 Injectable.register(GenericAlias)
@@ -405,7 +406,7 @@ class Provider(Orderable, Generic[T_Injected, T_Injectable, T_Resolver, T_Scope]
     
     __slots__ = ()
     
-    _default_scope: ClassVar[str] = Scope.MAIN
+    _default_scope: ClassVar[str] = Scope.ANY
 
     abstract: StaticIndentity[T_Injectable]
 

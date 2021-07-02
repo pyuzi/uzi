@@ -1,6 +1,7 @@
 from __future__ import annotations
 from collections import defaultdict
 import datetime
+import logging
 import operator as op
 
 from abc import ABCMeta, abstractmethod
@@ -20,6 +21,8 @@ __all__ = [
 ]
 
 
+logger = logging.getLogger(__name__)
+
 
 @export()
 def saferef(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, checkstatic:bool=True) -> ReferenceType[_T]:
@@ -32,10 +35,7 @@ def saferef(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, check
 
     try:
         return weakref(obj, callback)
-    except TypeError as e:
-
-        print(f'WEAKREF FAILED:--', e)
-
+    except TypeError:
         if strict is True: 
             raise
         elif coerce:

@@ -38,12 +38,14 @@ def _none_fn(k=None):
 
 _FallbackCallable =  Callable[[TK], t.Optional[TV]]
 _FallbackMap = Mapping[TK, t.Optional[TV]]
-_FallbackType =  t.Union[_FallbackCallable[TK, TV], _FallbackMap[TK, TV]] 
+_FallbackType =  t.Union[_FallbackCallable[TK, TV], _FallbackMap[TK, TV], TV] 
+
+_TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 
 
 @export()
 @FluentMapping.register
-class fallbackdict(dict[TK, TV]):
+class fallbackdict(dict[TK, TV], t.Generic[TK, TV]):
     """A dict that retruns a fallback value when a missing key is retrived.
     
     Unlike defaultdict, the fallback value will not be set.
@@ -64,20 +66,27 @@ class fallbackdict(dict[TK, TV]):
     @fallback.setter
     def fallback(self, fb: _FallbackType[TK, TV]):
         if fb is None:
-            self._fb, self._fbfunc = None, _none_fn
+            # self._fb, self._fbfunc = None, _none_fn
+            self._fb = self._fbfunc = None
         elif isinstance(fb, Mapping):
             self._fb, self._fbfunc = fb, fb.__getitem__
         elif callable(fb):
             self._fb = self._fbfunc = fb
         else:
-            raise TypeError(f'Fallback must be a Mapping or Callable. Got: {type(fb)}')
+            self._fb = fb
+            self._fbfunc = None
+        # else:
+            # raise TypeError(f'Fallback must be a Mapping or Callable. Got: {type(fb)}')
 
     @property
     def fallback_func(self):
-        return self._fbfunc
+        return self._fbfunc or _none_fn
 
     def __missing__(self, k: TK) -> TV:
-        return self._fbfunc(k)
+        if self._fbfunc is None:
+            return self._fb
+        else:
+            return self._fbfunc(k)
     
     def __reduce__(self):
         return self.__class__, (self._fb, super().copy())
@@ -88,9 +97,10 @@ class fallbackdict(dict[TK, TV]):
     __copy__ = copy
 
     def __deepcopy__(self, memo):
-        if self._fb is not self._fbfunc and self._fb is not None:
-            return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))    
-        return self.__class__(self._fb, super().__deepcopy__(memo))
+        # if self._fb is not self._fbfunc and self._fb is not None:
+        #     return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))    
+        # return self.__class__(self._fb, super().__deepcopy__(memo))
+        return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))
 
 
 

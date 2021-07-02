@@ -18,7 +18,8 @@ from .symbols import _ordered_id
 from .providers import FactoryProvider, FuncParamsResolver, ValueResolver, is_provided
 from .abc import ( 
     InjectorContext, InjectorKeyError, Resolver, Scope, ScopeAlias, T,
-    T_ContextStack, T_Injectable, T_Injected, T_Injector, T_Provider, T_Scope, _T_Providers
+    T_ContextStack, T_Injectable, T_Injected, T_Injector, T_Provider, T_Scope, 
+    T_Resolver
 )
 from . import abc
 
@@ -139,7 +140,7 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
     scope: T_Scope
     parent: T_Injector
-    content: _T_Providers[T_Provider]
+    content: dict[T_Injectable, T_Resolver]
     
     __ctx: InjectorContext[T_Injector]
 
@@ -148,7 +149,7 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
     # __skipself: bool
     __booted: bool
 
-    def __init__(self, scope: T_Scope, parent: T_Injector=None, content: _T_Providers=None) -> None:
+    def __init__(self, scope: T_Scope, parent: T_Injector=None, content: dict[T_Injectable, T_Resolver]=None) -> None:
         self.scope = scope
         self.parent = NullInjector() if parent is None else parent
         self.level = 0 if parent is None else parent.level + 1 

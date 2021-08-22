@@ -15,10 +15,12 @@ setup(
     include_package_data=True,
     python_requires="~=3.9",
     install_requires=[
+        'arrow~=1.1.1',
         'cachetools~=4.2.1',
         'orjson>=3.5.2',
         'uvicorn>=0.13.4',
         'uvloop>=0.15.2',
+        'blinker>=1.4',
     ],
     extras_require={
         'django': ['django~=3.2.4', 'django-ninja>=0.12.3'],

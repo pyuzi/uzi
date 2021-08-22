@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import Enum
 from abc import ABCMeta, abstractmethod
 from collections.abc import Set, Mapping, Sequence, Callable
 from dataclasses import is_dataclass
@@ -19,13 +20,16 @@ from djx.common.utils import export
 
 T_Jsonable = t.TypeVar('T_Jsonable', bound='Jsonable', covariant=True)
 
-
+def _json(o):
+    return 
 
 def _get_default_encoder(typ):
     if hasattr(typ, '__json__'):
         __type_defaults[typ] = typ.__json__
     elif issubclass(typ, Mapping):
         __type_defaults[typ] = dict
+    elif issubclass(typ, Enum):
+        __type_defaults[typ] = Jsonable.attr_getter('value')
     elif issubclass(typ, decimal.Decimal):
         __type_defaults[typ] = str
     elif issubclass(typ, (Sequence, Set)):
@@ -33,7 +37,7 @@ def _get_default_encoder(typ):
     # elif issubclass(typ, (time, date, datetime)):
     #     __type_defaults[typ] = typ.isoformat
     elif issubclass(typ, Jsonable):
-        __type_defaults[typ] = lambda o: o.__json__()
+        __type_defaults[typ] = Jsonable.method_caller()
     else:
         __type_defaults[typ] = None
     return __type_defaults[typ]
@@ -63,6 +67,29 @@ class Jsonable(metaclass=ABCMeta):
     @abstractmethod
     def __json__(self) -> Jsonable:
         ...
+
+    @classmethod
+    def method_caller(cls, obj, name='__json__', *, default=...):
+        default_fn = callable(default) and default
+        def __json__(obj):
+            fn = getattr(obj, name, None)
+            if fn is None:
+                if default is ...:
+                    raise AttributeError(name)
+                elif default_fn is False:
+                    return default
+                fn = default_fn
+            return fn()
+
+    @classmethod
+    def attr_getter(cls, name, *, default=...):
+        def __json__(obj):
+            rv = getattr(obj, name, default)
+            if rv is ... is default:
+                raise AttributeError(name)
+            return rv
+    
+    
 
 
 Jsonable.register(time)

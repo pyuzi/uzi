@@ -19,7 +19,7 @@ def compact(text, *, strip=True, space=' '):
 	the given (space) value.
 	If strip is True, the string will also be striped.
 	"""
-	if strip:
+	if strip and space:
 		text = text.strip()
 	return re.sub(r'\s+', space, text)
 
@@ -131,13 +131,18 @@ def snake(text, /, *, sep='_'):
 	return re.sub(f'[^0-9a-z{re.escape(sep)}]+', sep, text)
 
 
-def camel(val):
-	return compact(startcase(val), space='')
+def camel(val: str) -> str:
+	rv = uppercamel(val)
+	return rv[0].lower() + rv[1:]
 
 
 
-def startcase(val):
-	return re.sub(r'_+', ' ', slug(val)).title()
+def uppercamel(val: str) -> str:
+	return startcase(val).replace(' ', '')
+
+
+def startcase(val) -> str:
+	return compact(snake(val, sep=' ')).title()
 
 
 def words(text, words=100, end ='...'):
@@ -168,7 +173,7 @@ def is_hex(s):
 	return re.fullmatch(r"^[0-9a-fA-F]+$", s or "") is not None
 
 
-def tobase64(s, padding=int, altchars=b'-_'):
+def tobase64(s, padding=None, altchars=b'-_'):
 	rv = base64.b64encode(to_bytes(s), altchars).decode()
 	if padding is int:
 		lenb4, rv = len(rv), rv.rstrip('=')
@@ -178,7 +183,7 @@ def tobase64(s, padding=int, altchars=b'-_'):
 	return rv
 
 
-def dkeydb64(s, padding=int, altchars=b'-_', validate=False):
+def debase64(s, padding=None, altchars=b'-_', validate=False):
 	if padding is int:
 		pad, s = int(s[-1]), s[:-1]
 		s = '%s%s' % (s, '='*pad)

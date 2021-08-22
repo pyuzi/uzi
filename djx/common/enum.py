@@ -18,6 +18,14 @@ __all__ = []
 
 
 
+# def __json__(self):
+#     return self.value
+
+# BaseEnum.__json__ = __json__
+# del __json__
+
+
+
 def _get_member_names(attrs, factory=list, default=None):
     f = factory and callable(factory) \
         and (lambda: factory((a for a in attrs if a[0] == '_' == a[-1])))
@@ -137,7 +145,7 @@ class EnumMeta(BaseEnumMeta):
         elif isinstance(fieldset, str):
             dbase = make_dataclass(
                     f'_{name}DataclassAbc',
-                    map(mapfn, fieldset.replace(',', ' ').split()),
+                    map(mapfn, text.compact(fieldset.replace(',', ' ')).split()),
                     frozen=True
                 )
         else:
@@ -181,9 +189,6 @@ class Enum(BaseEnum, metaclass=EnumMeta):
     label: str
     value: t.Any
 
-    def __json__(self):
-        return self.value
-
 
 
 @export()
@@ -193,11 +198,6 @@ class Flag(BaseFlag, metaclass=EnumMeta):
     name: str
     label: str
     value: t.Any
-
-    def __json__(self):
-        return self.value
-
-
 
 
 @export()
@@ -216,10 +216,6 @@ class IntFlag(BaseIntFlag, metaclass=EnumMeta):
     name: str
     label: str
     value: t.Any
-
-    def __json__(self):
-        return self.value
-
 
 @export()
 class StrEnum(str, Enum):

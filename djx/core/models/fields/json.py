@@ -1,12 +1,14 @@
 import typing as t 
 from collections.abc import Callable
+
+from django import forms
 from django.db import models as m
 from django.db.models.fields.json import KeyTransform
 from django.db.models.query_utils import DeferredAttribute
 
 from djx.common import json
-from djx.common.collections import MappingObject
-from djx.common.utils import export
+from djx.common.collections import AttributeMapping
+from djx.common.utils import export, cached_property
 
 
 class _RawJson(str):
@@ -50,8 +52,15 @@ class JSONField(m.JSONField):
             )
 
     def formfield(self, **kwargs):
-        return m.Field.formfield(self, **kwargs)
+        return m.Field.formfield(self, **{
+            'max_length': None,
+            **({} if self.choices is not None else {'widget': forms.Textarea}),
+            **kwargs,
+        })
 
+    # def contribute_to_class(self, cls: type[m.Model], name: str, private_only: bool=False) -> None:
+    #     print(f'{self.__class__.__name__}.contribute_to_class({cls=}, {name=!r}, {private_only=!r})')
+    #     return super().contribute_to_class(cls, name, private_only=private_only)
 
 
 
@@ -81,7 +90,7 @@ class JSONObjectDescriptor(DeferredAttribute):
         
 
 
-_T_JSONObject = t.TypeVar('_T_JSONObject', json.Jsonable, MappingObject)
+_T_JSONObject = t.TypeVar('_T_JSONObject', json.Jsonable, AttributeMapping)
 _T_ObjectFactory = Callable[[t.Optional[t.Any]], _T_JSONObject]
 
 @export()
@@ -93,20 +102,25 @@ class JSONObjectField(JSONField, t.Generic[_T_JSONObject]):
     
     def __init__(self, 
                 *args, 
-                type: type[_T_JSONObject]=MappingObject, 
+                type: type[_T_JSONObject]=AttributeMapping, 
                 factory:_T_ObjectFactory = None, 
                 **kwargs) -> None:
         self.object_type = type
         self.object_factory = factory
         super().__init__(*args, **kwargs)
     
-    # def get_internal_type(self):
-    #     return 'JSONField'
+    @cached_property
+    def default_object_factory(self):
+        try:
+            from djx.schemas.tools import object_parser
+            return object_parser(self.object_type)
+        except ImportError:
+            return self.object_type
 
     def deconstruct(self):
         name, path, args, kwargs = super().deconstruct()
         
-        if self.object_type is not MappingObject:
+        if self.object_type is not AttributeMapping:
             kwargs['type'] = self.object_type
 
         if self.object_factory is not None:
@@ -128,7 +142,7 @@ class JSONObjectField(JSONField, t.Generic[_T_JSONObject]):
         if isinstance(value, str):
             value = self.value_from_json(value)
 
-        func = self.object_factory or cls
+        func = self.object_factory or self.default_object_factory
         if try_default is True and value is None and self.blank:
             return (self.has_default() and self.get_default or func)()
         else:

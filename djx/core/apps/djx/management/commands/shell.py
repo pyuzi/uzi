@@ -1,8 +1,8 @@
 
 from django.contrib.staticfiles.handlers import StaticFilesHandler
 
-from django.contrib.staticfiles.management.commands.runserver import (
-    Command as RunserverCommand,
+from django.core.management.commands.shell import (
+    Command as ShellCommand,
 )
 
 from django.conf import settings
@@ -11,9 +11,7 @@ from djx.di import di
 
 
 
-class Command(RunserverCommand):
-    
-    help = "Starts a lightweight Web server for development and also serves static files."
+class Command(ShellCommand):
 
     def __init__(self, *args, **kwds) -> None:
         super().__init__(*args, **kwds)

@@ -140,7 +140,8 @@ class PhoneStr(str):
 
     __slots__ = ('__phone',)
     __phone: 'PhoneNumber'
-    _fmt: PhoneFormat = PhoneFormat.PLAIN
+
+    _fmt: t.ClassVar[PhoneFormat] = None
 
     _cache = WeakKeyDictionary()
     __fmttypes: t.Final[dict[PhoneFormat, type['PhoneStr']]] = dict()
@@ -159,18 +160,21 @@ class PhoneStr(str):
             fmt = PhoneFormat(fmt)
         else:
             raise TypeError(f'Invalid type {fmt}')
+        
+        if cls._fmt and cls._fmt != fmt:
+            raise TypeError(f'Invalid {cls} format {fmt}')
 
-        if fmt not in cls.__fmttypes:
+        if (cls, fmt) not in cls.__fmttypes:
             ftype = type(
                 f'{text.camel(fmt.name)}Str', 
-                (PhoneStr,), 
+                (cls,), 
                 dict(_fmt=fmt, _cache=WeakKeyDictionary())
             )
-            cls.__fmttypes.setdefault(fmt, ftype)
-        return cls.__fmttypes[fmt]
+            cls.__fmttypes.setdefault((cls, fmt), ftype)
+        return cls.__fmttypes[(cls, fmt)]
 
     def __new__(cls: type[_T_PhoneStr], phone: t.Union[_T_Phone, 'PhoneStr'], fmt: PhoneFormat=None) -> _T_PhoneStr:
-        if cls is PhoneStr:
+        if cls._fmt is None:
             cls = cls[PhoneFormat.PLAIN if fmt is None else  fmt]
         
         fmt = cls._fmt
@@ -209,25 +213,17 @@ class PhoneStr(str):
             return self.phone.to(fmt)
 
     @classmethod
-    def coerce(cls, val):
-        if not isinstance(val, cls):
-            if isinstance(val, PhoneStr):
-                val = val.to(cls._fmt)
+    def validate(cls, v, **kwargs):
+        if not isinstance(v, cls):
+            if isinstance(v, (PhoneStr, PhoneNumber)):
+                v = v.to(cls._fmt)
             else:
-                val = PhoneNumber.coerce(val).to(cls._fmt)
+                v = PhoneNumber.coerce(v, **kwargs).to(cls._fmt)
         
-        # print(f'xxxxxxxxx coerce {cls} {type(val)=} {val}')
-        
-        return val
+        return v
 
     @classmethod
-    def validate(cls, val: _T_PhoneStr):
-        PhoneNumber.check_possibility(val.phone)
-        return val
-    
-    @classmethod
     def __get_validators__(cls):
-        yield cls.coerce
         yield cls.validate
 
     @classmethod
@@ -307,7 +303,7 @@ class PhoneNumber(base.PhoneNumber):
             val = func(self, loc.language, loc.script, loc.territory)
             return cache.setdefault(loc, val)
         return cache[loc]
-
+#
     def copy(self):
         return self.__class__(self)
     __copy__ = copy
@@ -408,11 +404,11 @@ class PhoneNumber(base.PhoneNumber):
     
     def __json__(self):
         return self.plain()
-
+#
     @classmethod
     def __get_validators__(cls):
         yield cls.coerce
-        yield cls.check_validity
+        # yield cls.check_validity
 
     @classmethod
     def __modify_schema__(cls, field_schema: dict[str, t.Any]) -> None:
@@ -420,28 +416,34 @@ class PhoneNumber(base.PhoneNumber):
         field_schema.update(type='string', format=f'phone-number', example=example)
 
     @classmethod
-    def coerce(cls, val):
-        if not isinstance(val, cls):
+    def coerce(cls, v, **kwargs):
+        if not isinstance(v, cls):
             try:
-                val = to_phone(val, _phone_class=cls)
+                val = to_phone(v, _phone_class=cls)
             except NumberParseException as e:
                 raise ValueError(f'must be a valid phone number.') from e
+            else:
+                field = kwargs.get('field')
+                as_valid = getattr(field, 'as_valid', False)
+                if not (as_valid or val.isvalid()):
+                    raise ValueError(f'must be an valid phone number.')
+                return val
         # print(f'xxxxxxxxx coerce {cls} {type(val)=} {val}')
-        return val
+        return v
 
-    @classmethod
-    def check_validity(cls, val: _T_Phone):
-        print(f'xxxxxxxxx check_validity {type(val)=} {val!r}')
-        if val.isinvalid():
-            raise ValueError(f'must be an valid phone number.')
-        return val
+    # @classmethod
+    # def check_validity(cls, val: _T_Phone):
+    #     print(f'xxxxxxxxx check_validity {type(val)=} {val!r}')
+    #     if val.isinvalid():
+    #         raise ValueError(f'must be an valid phone number.')
+    #     return val
     
-    @classmethod
-    def check_possibility(cls, val: _T_Phone):
-        print(f'xxxxxxxxx check_possibility {type(val)=} {val!r}')
-        if val.isimpossible():
-            raise ValueError(f'must be an valid phone number.')
-        return val
+    # @classmethod
+    # def check_possibility(cls, val: _T_Phone):
+    #     print(f'xxxxxxxxx check_possibility {type(val)=} {val!r}')
+    #     if val.isimpossible():
+    #         raise ValueError(f'must be an valid phone number.')
+    #     return val
     
     
 
@@ -475,7 +477,7 @@ def parse_phone(number,
 
 
 
-def to_phone(number: t.Any, *, region: str=..., default=..., _phone_class: type[_T_Phone]=None) -> _T_Phone:
+def to_phone(number: t.Any, *, region: str=..., silent: bool=False, _phone_class: type[_T_Phone]=None) -> _T_Phone:
     if isinstance(number, PhoneStr):
         number = number.phone
 
@@ -484,16 +486,18 @@ def to_phone(number: t.Any, *, region: str=..., default=..., _phone_class: type[
         return number if number.frozen else number.copy()
     elif isinstance(number, base.PhoneNumber):
         return _phone_class(number)
-    elif isinstance(number, str):
+    
+    if isinstance(number, int):
+        number = f'+{number}'
+
+    if isinstance(number, str):
         try:
             return parse_phone(number, region, phone_class=_phone_class)    
-        except NumberParseException as e:
-            if default is ...:
-                raise e
-            return default
-    elif default is not ...:
-        return default
-    raise ValueError(f'must be a valid phone string')
+        except NumberParseException:
+            if silent is not True:
+                raise
+    elif silent is not True:
+        raise ValueError(f'must be a valid phone string')
     
         
 

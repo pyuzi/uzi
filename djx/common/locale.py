@@ -9,6 +9,7 @@ from djx.di import di
 from djx.common.utils import cached_property, export
 from djx.common.collections import fallbackdict
 
+from djx.core import settings
 
 if not t.TYPE_CHECKING:
     __all__ = [
@@ -30,7 +31,7 @@ def _get_settings():
     global _val_settings
     if _val_settings is None:
         try:
-            from django.conf import settings
+            
             bool(settings)
         except Exception:
             return None
@@ -84,12 +85,11 @@ def default_locale(category: LangCategory=None,
                     aliases=LOCALE_ALIASES):
     category = category or 'LOCALE'
     rv = None
-    if (settings := _get_settings()):
-        for k in _cat_settings_keys[category]:
-            rv = getattr(settings, k, None)
-            rv = rv and get_locale_identifier(parse_locale(rv, _locale_sep[k]))
-            if rv: 
-                break
+    for k in _cat_settings_keys[category]:
+        rv = getattr(settings, k, None)
+        rv = rv and get_locale_identifier(parse_locale(rv, _locale_sep[k]))
+        if rv: 
+            break
 
     return rv or env_locale(category, aliases)
     
@@ -132,4 +132,17 @@ class Locale(Babel):
 
 
 locale: Locale = di.proxy(Locale, callable=True)
+
+
+
+
+@di.wrap()
+def get_locale_currency(locale: Locale=None):
+    return locale and locale.local_currency
+
+
+
+@di.wrap()
+def get_locale_currencies(locale: Locale=None):
+    return locale and locale.local_currencies
 

@@ -59,13 +59,6 @@ class UnsupportedTypeError(TypeError):
 
 
 
-__last_id: int = 0
-def _ordered_id():
-    global __last_id
-    __last_id += 1
-    return __last_id
-
-
 @export()
 @Injectable.register
 @StaticIndentity.register
@@ -127,7 +120,7 @@ class symbol(Orderable, Generic[_S]):
             if rv is s:
                 rv.__ident = ident
                 
-                rv.__pos = _ordered_id()
+                rv.__pos = ordered_id()
 
                 rv._name = name
                 if isinstance(obj, StaticIndentity):

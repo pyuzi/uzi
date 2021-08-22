@@ -92,20 +92,22 @@ class SymbolTests:
                         mkfunc = lambda: user_func_injectable(user_func_str(), mkfoo())
                         mkbar = lambda: Bar(mkfoo(), mkfoo(), user_func_str(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
                         injfoo = lambda: inj[Foo]
+                        injfunc = lambda: inj[user_func_str]
                         injbar = lambda: inj[Bar]
                         injbafoo = lambda: inj[Bar].infoo
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
-
 
                         _n = int(2.5e4)
                         self.run('Baz', mkbaz, injbaz, _n)
                         self.run('Foo', mkfoo, injfoo, _n)
                         self.run('Bar', mkbar, injbar, _n)
         
-                        pro = di.proxy(Bar, callable=True)
+                        wrapbar = di.wrap(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
+                        wrapfunc = di.wrap(user_func_str, kwargs=dict(p='PATCHED USER'))
 
-                        # print(f'\n---> {Bar.infoo!r}\n   --> {injbafoo()!r}')
+                        print(f'\n WRAPPED ---> {wrapbar()!r}\n REAL   ---> {injbar()!r}')
+                        print(f'\n WRAPPED ---> {wrapfunc()!r}\n REAL   ---> {injfunc()!r}')
                         
                         # print(f'\n => {injector[Foo]=}\n => {injector[Bar]=}\n => {injector[Bar]=}\n => {injector[Baz]=}\n => {injector[Scope["main"]]=}\n => {injector[INJECTOR_TOKEN]=}\n\n {pro()=}\n')
 

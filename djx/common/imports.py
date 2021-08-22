@@ -262,14 +262,14 @@ ImportName._Flavor.object = ObjectName
 
 
 
-class ImportPathError(ImportError):
+class ImportRefError(ImportError):
     ...
 
 
 
 
 
-class ImportPath(ImportName, t.Generic[IT]):
+class ImportRef(ImportName, t.Generic[IT]):
 
     __slots__ = ()
 
@@ -280,7 +280,7 @@ class ImportPath(ImportName, t.Generic[IT]):
     class _Flavor:
         object: type['ObjectPath'] = None
         module: type['ModulePath'] = None
-        invalid: type['InvalidImportPath'] = None
+        invalid: type['InvalidImportRef'] = None
 
     def module(self, default: IT=...) -> ModuleType:
         if self._module in sys.modules:
@@ -291,7 +291,7 @@ class ImportPath(ImportName, t.Generic[IT]):
             if not self._module.startswith(e.name):
                 raise
             elif default is ...:
-                raise ImportPathError(
+                raise ImportRefError(
                     f'module {self._module!r} not found',
                     name=self._module
                     ) from e
@@ -301,7 +301,7 @@ class ImportPath(ImportName, t.Generic[IT]):
         try:
             self.__call__()
             return True
-        except ImportPathError:
+        except ImportRefError:
             return False
 
     def __call__(self, default: IT=...) -> IT:
@@ -313,18 +313,18 @@ class ImportPath(ImportName, t.Generic[IT]):
     
 
 
-class InvalidImportPath(InvalidImportName, ImportPath):
+class InvalidImportRef(InvalidImportName, ImportRef):
 
     __slots__ = ()
 
 
 
-class ModulePath(ModuleName, ImportPath[ModuleType]):
+class ModulePath(ModuleName, ImportRef[ModuleType]):
 
     __slots__ = ()
 
     object: None = None
-    __call__ = ImportPath.module
+    __call__ = ImportRef.module
 
     # def __call__(self, default: IT=...) -> IT:
     #     return self.module(default)
@@ -333,14 +333,14 @@ class ModulePath(ModuleName, ImportPath[ModuleType]):
 
 
 
-class ObjectPath(ObjectName, ImportPath[IT]):
+class ObjectPath(ObjectName, ImportRef[IT]):
 
     __slots__ = ()
 
     def __call__(self, default: IT=...) -> IT:
         rv = getitem(self.module(), self._qualname, default)
         if rv is ...:
-            raise ImportPathError(
+            raise ImportRefError(
                 f'cannot import name {self._qualname!r} from {str(self._module)!r}',
                 name=self._module
             )
@@ -350,9 +350,9 @@ class ObjectPath(ObjectName, ImportPath[IT]):
 
 
 
-ImportPath._Flavor.module = ModulePath
-ImportPath._Flavor.object = ObjectPath
-ImportPath._Flavor.invalid = InvalidImportPath
+ImportRef._Flavor.module = ModulePath
+ImportRef._Flavor.object = ObjectPath
+ImportRef._Flavor.invalid = InvalidImportRef
 
 
 

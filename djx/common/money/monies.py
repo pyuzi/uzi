@@ -4,8 +4,9 @@ import typing as t
 from decimal import Decimal
 
 
+from djx.common.locale import get_locale_currency
 
-from . import settings
+
 
 from .money import Money, MoneyAbc
 
@@ -124,7 +125,13 @@ class Monies:
         return self.__class__([abs(m) for m in self._money_obs])
 
     def __bool__(self):
-        return any([bool(m) for m in self._money_obs])
+        return any(bool(m) for m in self._money_obs)
+
+    def __iter__(self):
+        return iter(self._money_obs)
+
+    def __len__(self):
+        return len(self._money_obs)
 
     def __eq__(self, other):
         if other == 0:
@@ -168,8 +175,9 @@ class Monies:
             # Shortcut if we have a single value with the same currency
             return self._money_obs[0] < other._money_obs[0]
         else:
-            money = self.normalise(settings.DEFAULT_CURRENCY)._money_obs[0]
-            other_money = other.normalise(settings.DEFAULT_CURRENCY)._money_obs[0]
+            cur = get_locale_currency()
+            money = self.normalise(cur)._money_obs[0]
+            other_money = other.normalise(cur)._money_obs[0]
             return money < other_money
 
     def __gt__(self, other):

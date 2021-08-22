@@ -8,8 +8,13 @@ import pytest
 from ...providers import (
     alias, provide, injectable
 )
-from ... import symbol, Depends, Scope, InjectedClassVar, InjectedProperty, Injector
-from ...symbols import _ordered_id
+from ... import Depends, Scope, InjectedClassVar, InjectedProperty, Injector, abc
+from ...inspect import ordered_id
+
+from djx.common.utils.saferef import strong_ref as symbol
+
+
+abc.Injectable.register(symbol)
 
 
 user_str = 'test-str'
@@ -77,15 +82,15 @@ class _TestScope(Scope):
 class Foo:
     
     def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
-        self.name = f'{name} -> #{_ordered_id()}'
+        self.name = f'{name} -> #{ordered_id()}'
         self.user = user
         self.inj = inj
     
     def __repr__(self):
-        return f'Foo({self.name!r} u={self.user!r} inj={self.inj})'
+        return f'Foo({self.name!r}, inj={self.inj})'
     
     def __str__(self):
-        return f'Foo({self.name!r} u={self.user!r} inj={self.inj!r})'
+        return f'Foo({self.name!r}' #' u={self.user!r} inj={self.inj!r})'
 
 
 provide('foo.name', value='My Name Is Foo!!')
@@ -99,16 +104,22 @@ class Follow:
 
 alias(Follow, Foo, cache=False)
 
+
 @injectable(scope=Scope.ANY, cache=True)
 def user_func_injectable(user: Depends[str, user_str], d2: Follow):
-    return f'user_func_injectable -> {user=!r} #{_ordered_id()}'
+    return f'user_func_injectable -> {user=!r} #{ordered_id()}'
+
+
+@injectable(scope=Scope.ANY, cache=True)
+def user_func_injectable(user: Depends[str, user_str], d2: Follow):
+    return f'user_func_injectable -> {user=!r} #{ordered_id()}'
 
 
 @injectable(cache=False)
 class Baz:
 
     def __init__(self):
-        self.abc = f'Baz -> #{_ordered_id()}'
+        self.abc = f'Baz -> #{ordered_id()}'
     
 
 
@@ -133,26 +144,31 @@ class Bar:
         self.user = user
         self.sym = sym
         self.baz = baz
-        self.pk = _ordered_id()
+        self.kw2 = kw2
+        self.pk = ordered_id()
  
     def __repr__(self):
-        return f'{self}'
+        nl = "\n"
+        tb = "\t"
+        sep = f",{nl}{tb}"
+        return f'{self.__class__.__name__}({nl}{tb}{sep.join(f"{k}={v!r}" for k, v in self.__dict__.items())}{nl})'
     
     def __str__(self):
-        return f'Bar#{self.pk}(foo={self.foo!r}, user={self.user!r})'
+        return f'Bar#{self.pk}(foo={self.foo!r}: user={self.user!r})'
     
 
 
 def user_func_symb():
-    return f'user_func_symb {user_symb} -> #{_ordered_id()}'
+    return f'user_func_symb {user_symb} -> #{ordered_id()}'
     
 
 provide(user_symb, factory=user_func_symb, cache=False)
 
 
 @injectable(abstract=user_str, cache=False)
-def user_func_str():
-    return f'user_func_str {user_str} -> #{_ordered_id()}'
+@injectable()
+def user_func_str(p=None):
+    return f'user_func_str {user_str} -> {p=!r} -> #{ordered_id()}'
     
 
 

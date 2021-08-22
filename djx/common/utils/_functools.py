@@ -1,23 +1,34 @@
 from __future__ import annotations
 
 import sys
-from types import MemberDescriptorType
-import weakref
+
+
 import typing as t
+from collections.abc import Callable
 from warnings import warn
 from threading import RLock
-from functools import update_wrapper, wraps, cache
+from functools import partial, update_wrapper, wraps, cache, cached_property
 
 
-try:
-    from functools import cached_property as _native_cached_property
-except ImportError:
-    _native_cached_property = None
+
 
 
 NOTHING = object()
 
-T = t.TypeVar('T')
+_T = t.TypeVar('_T')
+
+
+
+def export(obj =..., /, *, name=None, exports=None, module=None):
+    def add_to_all(_obj):
+        _module = sys.modules[module or _obj.__module__]
+        _exports = exports or getattr(_module, '__all__', None)
+        if _exports is None:
+            _exports = []
+            setattr(_module, '__all__', _exports)
+        _exports.append(name or _obj.__name__)
+        return _obj
+    return add_to_all if obj is ... else add_to_all(obj)
 
 
 class class_only_method(classmethod):
@@ -37,20 +48,43 @@ class class_only_method(classmethod):
         return super().__get__(cls, cls)
 
 
-class class_property(property, t.Generic[T]):
+
+class class_only_property(classmethod):
+    """Creates a classmethod available only to the class. Raises AttributeError
+    when called from an instance of the class.
+    """
+
+    def __init__(self, func, name=None):
+        super().__init__(func)
+        self.__name__ = name or func.__name__
+
+    def __get__(self, obj, cls):
+        if obj is not None:
+            raise AttributeError(
+                f"{cls.__name__}.{self.__name__} is available "
+                f"only to the class, and not it's instances."
+            )
+        return super().__get__(cls, cls)()
+
+
+
+
+
+class class_property(property, t.Generic[_T]):
     """A decorator that converts a function into a lazy class property."""
     # __slots__ = ()    
-    def __get__(self, obj, cls) -> T:
+    def __get__(self, obj, cls) -> _T:
         return super().__get__(cls, cls)
+    
 
 
-class cached_class_property(class_property[T]):
+class cached_class_property(class_property[_T]):
     """A decorator that converts a function into a lazy class property."""
 
     # if t.TYPE_CHECKING:
     #     fget = cache(lambda v: v)
 
-    def __init__(self, func: t.Callable[..., T]):
+    def __init__(self, func: t.Callable[..., _T]):
         super().__init__(cache(func))
     
     
@@ -88,60 +122,9 @@ class cached_class_property(class_property[T]):
 
 
 
-if _native_cached_property is not None:
-    native_cached_property = _native_cached_property
-else:
-    class native_cached_property(property): 
-        def __init__(self, func):
-            self.func = func
-            self.attrname = None
-            self.__doc__ = func.__doc__
-            self.lock = RLock()
-
-        def __set_name__(self, owner, name):
-            if self.attrname is None:
-                self.attrname = name
-            elif name != self.attrname:
-                raise TypeError(
-                    "Cannot assign the same cached_property to two different names "
-                    f"({self.attrname!r} and {name!r})."
-                )
-
-        def __get__(self, instance, owner=None):
-            if instance is None:
-                return self
-            if self.attrname is None:
-                raise TypeError(
-                    "Cannot use cached_property instance without calling __set_name__ on it.")
-            try:
-                cache = instance.__dict__
-            # not all objects have __dict__ (e.g. class defines slots)
-            except AttributeError:
-                msg = (
-                    f"No '__dict__' attribute on {type(instance).__name__!r} "
-                    f"instance to cache {self.attrname!r} property."
-                )
-                raise TypeError(msg) from None
-            
-            val = cache.get(self.attrname, NOTHING)
-            if val is NOTHING:
-                with self.lock:
-                    # check if another thread filled cache while we awaited lock
-                    val = cache.get(self.attrname, NOTHING)
-                    if val is NOTHING:
-                        val = self.func(instance)
-                        try:
-                            cache[self.attrname] = val
-                        except TypeError:
-                            msg = (
-                                f"The '__dict__' attribute on {type(instance).__name__!r} instance "
-                                f"does not support item assignment for caching {self.attrname!r} property."
-                            )
-                            raise TypeError(msg) from None
-            return val
 
 
-class cached_property(native_cached_property):
+class cached_property(cached_property, t.Generic[_T]):
     """Transforms a method into property whose value is computed once. 
     The computed value is then cached as a normal attribute for the life of the 
     instance::
@@ -181,34 +164,44 @@ class cached_property(native_cached_property):
     an AttributeError is raised. 
     The class has to have a `__dict__` in order for this property to work. 
     """
+    func: Callable[[t.Any], _T]
 
-    def __init__(self, fget=None, /, fset=None, fdel=None, *, readonly=None):
+    def __init__(self, fget: Callable[[t.Any], _T]=None, /, fset=None, fdel=None, *, readonly=False):
         super().__init__(fget)
+        self._fset = None
         self.fset = None
+        self._fdel = None
         self.fdel = None
-        self.deleter(fdel)
-        readonly or readonly is fset is None or self.setter(fset)
+        readonly or self.deleter(fdel)
+        readonly or self.setter(fset)
 
-    def getter(self, func) -> cached_property:
+    def getter(self, func: Callable[[t.Any], _T]):
         self.func = func
         self.__doc__ = func.__doc__
         return self
 
-    def setter(self, func=None) -> cached_property:
+    def setter(self, func=None):
+        self._fset = func
         self.fset = self._get_fset(func)
         return self
 
-    def deleter(self, func=None) -> cached_property:
+    def deleter(self, func=None):
+        self._fdel = func
         self.fdel = self._get_fdel(func)
         return self
 
-    def __set__(self, instance, val):
+    if t.TYPE_CHECKING:
+        def __get__(self, obj, typ = None) -> _T:
+            ...   
+
+    def __set__(self, instance, val: _T):
         if not callable(self.fset):
             raise AttributeError(
                 f'can\'t set readonly attribute {self.attrname!r}'
                 f' on {type(instance).__name__!r}.'
             )
         with self.lock:
+            self._fset is None or instance.__dict__.pop(self.attrname, None)
             self.fset(instance, val)
 
     def __delete__(self, instance):
@@ -218,6 +211,7 @@ class cached_property(native_cached_property):
                 f' on {type(instance).__name__!r}.'
             )
         with self.lock:
+            self._fdel is None or instance.__dict__.pop(self.attrname, None)
             self.fdel(instance)
 
     def _get_fset(self, func=None):
@@ -264,7 +258,13 @@ class cached_property(native_cached_property):
             )
 
             try:
-                del descriptor.__dict__[attrname]
+                del self.__dict__[attrname]
+            except KeyError:
+                pass
+                # raise AttributeError(
+                #     f'can\'t delete attribute {attrname!r}'
+                #     f' on {type(self).__name__!r}.'
+                # ) from None
             except TypeError:
                 raise TypeError(
                     f"The '__dict__' attribute on {type(self).__name__!r} instance "
@@ -277,13 +277,7 @@ class cached_property(native_cached_property):
                     f"instance to cache {attrname!r} property."
                 ) from None
 
-            except KeyError:
-                raise AttributeError(
-                    f'can\'t delete attribute {attrname!r}'
-                    f' on {type(self).__name__!r}.'
-                ) from None
 
-        fdel.descriptor = descriptor
         return fdel
 
 
@@ -363,75 +357,119 @@ def method_decorator(decorator, name=''):
     return _dec
 
 
+
+__LookupBases = (property,) # if t.TYPE_CHECKING else ()
 _T_Look = t.TypeVar('_T_Look')
-class lookup_property(property, t.Generic[_T_Look]):
+
+def _selflookup(obj):
+    return obj
+
+class lookup_property(*__LookupBases, t.Generic[_T_Look]):
     """Baseclass for `environ_property` and `header_property`."""
-    read_only = True
+    # read_only = True
 
-    def __init__(self, name=None, lookup='self', default=..., load_func=None, dump_func=None,
-                 read_only=None, doc=None):
-        self.name = name
+    __slots__ = (
+        'name', 'src', 
+        'default', 'read_only', 'doc',
+        'fget', 'fset', 'fdel', 'flook'
+    )
+
+    # def __subclasscheck__(self, subclass: type) -> bool:
+    #     return super().__subclasscheck__(subclass)
+
+    def __init__(self, name=..., source='self', 
+                default=..., *, read_only=False, 
+                fget=None, fset=None, fdel=None, doc=None):
+
+        if name is not ...:
+            self.name = name
+
+        self.looker(source)
+        self.getter(fget)
+        self.setter(fset)
+        self.deleter(fdel)
+
+        self.doc = doc
         self.default = default
-        self.load_func = load_func
-        self.dump_func = dump_func
-        if lookup == 'self':
-            self.lookup_func = None
-            self.read_only = True
-        elif isinstance(lookup, str):
-            def attr_lookup(obj):
-                for a in attr_lookup.attr.split('.'):
-                    obj = getattr(obj, a)
-                return obj
-            attr_lookup.attr = lookup
-            self.lookup_func = attr_lookup
-        elif callable(lookup):
-            self.lookup_func = lookup
-        else:
-            raise ValueError(
-                    f'lookup must be a callable or string. Got {type(lookup)}')
-        
-        if read_only is not None:
-            self.read_only = read_only
-        self.__doc__ = doc
-
-    def lookup(self, obj):
-        return obj if self.lookup_func is None else self.lookup_func(obj)
+        self.read_only = read_only
+    
+    @property
+    def __doc__(self):
+        return self.doc
 
     def __set_name__(self, owner, name):
-        if self.name is None:
+        if not hasattr(self, 'name'):
             self.name = name
 
     def __get__(self, obj, type=None) -> _T_Look:
         if obj is None:
             return self
 
-        src = self.lookup(obj)
-        rv = getattr(src, self.name, self.default)
+        from .data import getitem
+        
+        rv = getitem(self.flook(obj), self.name, self.default)
+        
         if rv is ...:
             raise AttributeError(self.name)
         else:
-            return rv if self.load_func is None else self.load_func(obj, rv)
+            if self.fget is not None:
+                rv = self.fget(obj, rv)
+            return rv
 
     def __set__(self, obj, value):
         if self.read_only:
             raise AttributeError('read only property')
-        if self.dump_func is not None:
-            value = self.dump_func(obj, value)
+        
+        if self.fset is not None:
+            value = self.fset(obj, value)
 
-        setattr(self.lookup(obj), self.name, value)
+        from .data import setitem
+        setitem(self.flook(obj), self.name, value)
 
     def __delete__(self, obj):
         if self.read_only:
             raise AttributeError('read only property')
-        else:
-            delattr(self.lookup(obj), self.name)
+        
+        from .data import delitem
+        delitem(self.flook(obj), self.name)
+
+        if self.fdel is not None:
+            self.fdel(obj)
 
     def __repr__(self):
-        return '<%s %s>' % (
-            self.__class__.__name__,
-            self.name
-        )
+        return f'<{self.__class__.__name__}: {self.name!r} from {self.src!r}>'
+    
+    def deleter(self, fdel):
+        self.fdel = fdel
+        return self
 
+    def getter(self, fget):
+        self.fget = fget
+        return self
+
+    def looker(self, source):
+        self.src = source
+
+        if source == 'self':
+            self.flook = _selflookup
+        elif callable(source):
+            self.flook = source
+        else:
+            from .data import getitem
+
+            def flook(obj):
+                return getitem(obj, self.src)
+
+            self.flook = flook
+
+        return self
+    
+    def setter(self, fset):
+        self.fset = fset
+        return self
+
+
+    
 
 class dict_lookup_property(object):
 
@@ -492,26 +530,10 @@ class dict_lookup_property(object):
         )
 
 
-
-T = t.TypeVar('T')
-
-def export(obj =..., /, *, name=None, exports=None, module=None):
-    def add_to_all(_obj):
-        _module = sys.modules[module or _obj.__module__]
-        _exports = exports or getattr(_module, '__all__', None)
-        if _exports is None:
-            _exports = []
-            setattr(_module, '__all__', _exports)
-        _exports.append(name or _obj.__name__)
-        return _obj
-    return add_to_all if obj is ... else add_to_all(obj)
-
-
-
 def deprecated(alt=None, version=None, *, message=None, onload=False, once=False):
     """Issues a deprecated warning on module load or when the decorated function is invoked.
     """
-    def decorator(func: T) -> T:
+    def decorator(func: _T) -> _T:
         name = f'{func.__module__}.{func.__qualname__}()'
         altname = alt if alt is None or isinstance(alt, str)\
                     else f'{alt.__module__}.{alt.__qualname__}()'

@@ -7,9 +7,11 @@ import typing as t
 
 from moneyed import Currency, CURRENCIES, CURRENCIES_BY_ISO, get_currency
 
-from .money import Money, MoneyAbc
+from .money import Money, MoneyAbc, to_money
 from .monies import Monies
-from .settings import DEFAULT_CURRENCY, ALLOWED_CURRENCIES
+from ..locale import locale as _locale
+
+# from .settings import DEFAULT_CURRENCY, ALLOWED_CURRENCIES
 
 __all__ = [
     'Money',
@@ -17,15 +19,17 @@ __all__ = [
     'MoneyLike',
     'Currency',
     'get_currency',
+    'to_money'
 ]
 
 
 MoneyLike = t.Union[MoneyAbc, Decimal, int, float]
 
 
-if t.TYPE_CHECKING:
-    money = None
-    monies = None
+
+def local_currency():
+    return get_currency(_locale.local_currency)
+
 
 
 def __patch_currency():

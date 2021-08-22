@@ -1,5 +1,7 @@
 from __future__ import annotations
-from djx.common.collections import OrderedSet, PriorityStack
+from functools import cache
+from weakref import WeakSet
+from djx.common.collections import KeyedSet, PriorityStack
 from djx.common.utils import Void
 import logging
 from abc import ABCMeta, abstractmethod
@@ -12,11 +14,11 @@ from contextlib import AbstractContextManager, ExitStack
 from itertools import chain
 from types import FunctionType, GenericAlias, MethodType
 from typing import (
-    Any, ClassVar, Iterable, Literal, Optional, Protocol,
+    Annotated, Any, ClassVar, Iterable, Literal, Optional, Protocol,
     Generic, TYPE_CHECKING, Type, TypeVar, Union
 )
 
-from djx.common.utils import cached_class_property, class_property, export, text
+from djx.common.utils import cached_class_property, cached_property, class_property, export, text
 
 from djx.common.abc import Orderable
 
@@ -86,13 +88,13 @@ class Resolver(Generic[T_Injected], metaclass=ABCMeta):
     def __call__(self, *args, **kwds) -> T_Injected: 
         return self.value
 
-    def __str__(self) -> str: 
-        value, bound = self.value, self.bound
-        return f'{self.__class__.__name__}({bound=!r}, {value=!r})'
+    # def __str__(self) -> str: 
+    #     value, bound = self.value, self.bound
+    #     return f'{self.__class__.__name__}({bound=}, {value=!r})'
 
     def __repr__(self) -> str: 
-        bound, value = self.bound, (self() if self.value is Void else self.value)
-        return f'{self.__class__.__name__}({bound=!r}, {value=!r})'
+        bound, value = self.bound, self.value #(self() if self.value is Void else self.value)
+        return f'{self.__class__.__name__}({bound=!s}, {value=!r})'
     
 
 
@@ -128,9 +130,39 @@ StaticIndentity.register(frozenset)
 
 
 @export()
-class Injectable(SupportsIndentity, Generic[T_Injected]):
+class InjectableType(ABCMeta):
+
+    @property
+    @cache
+    def _typ_cache(cls):
+        return set()
+
+    def register(cls, subclass):
+        """Register a virtual subclass of an ABC.
+
+        Returns the subclass, to allow usage as a class decorator.
+        """
+        cls._typ_cache.add(subclass)
+        return super().register(subclass)
+
+
+
+@export()
+class Injectable(SupportsIndentity, Generic[T_Injected], metaclass=InjectableType):
 
     __slots__ = ()
+
+    def __class_getitem__(cls, param):
+        if isinstance(param, tuple):
+            param = param[0]
+
+        excl = {type, Callable, None}
+        typs = tuple(t for t in cls._typ_cache if t not in excl)
+
+        rv = Union[type[param], Callable[[Any], param], Union[typs]]
+
+        return rv
+
 
 
 Injectable.register(str)
@@ -319,7 +351,7 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     providers: 'PriorityStack[StaticIndentity, T_Provider]'
     peers: list['Scope']
     embedded: bool
-    dependants: OrderedSet[T_Scope]
+    dependants: KeyedSet[T_Scope]
 
 
     ANY: ClassVar[ANY_SCOPE] = ANY_SCOPE
@@ -406,7 +438,7 @@ class Provider(Orderable, Generic[T_Injected, T_Injectable, T_Resolver, T_Scope]
     
     __slots__ = ()
     
-    _default_scope: ClassVar[str] = Scope.ANY
+    _default_scope: ClassVar[str] = Scope.MAIN
 
     abstract: StaticIndentity[T_Injectable]
 

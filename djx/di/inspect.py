@@ -57,6 +57,15 @@ _KEYWORD_ONLY = ins.Parameter.KEYWORD_ONLY
 
 
 
+__last_id: int = 0
+
+@export()
+def ordered_id():
+    global __last_id
+    __last_id += 1
+    return __last_id
+
+
 
 def annotated_deps(obj) -> Union[list, Any]:
     from .providers import Dependency

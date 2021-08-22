@@ -1,11 +1,13 @@
 import logging
+from types import GenericAlias
 import typing as t
 
 
-from functools import update_wrapper
+from functools import partial, update_wrapper
 from contextvars import ContextVar
 from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager
+from cachetools.keys import hashkey
 
 
 from djx.common.proxy import Proxy
@@ -14,9 +16,9 @@ from djx.common.utils import export
 
 from .injectors import Injector, NullInjector
 from .scopes import Scope, MainScope
-from .inspect import signature
+from .inspect import signature, ordered_id
 from .providers import alias, is_provided, provide, injectable, Depends
-from . import abc
+from . import abc, signals
 
 from .abc import (
     ANY_SCOPE, LOCAL_SCOPE, MAIN_SCOPE, REQUEST_SCOPE, COMMAND_SCOPE,
@@ -40,6 +42,7 @@ if not t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_T_Callable = t.TypeVar('_T_Callable', type, Callable, covariant=True)
 
 __real_main_inj = None
 
@@ -60,7 +63,7 @@ __inj_ctxvar: t.Final = ContextVar[Injector]('__inj_ctxvar', default=__main_inj)
 
 
 current: Callable[[], Injector] = __inj_ctxvar.get
-injector = Proxy(current, callable=False)
+injector: Injector = Proxy(current, callable=False)
 
 
 
@@ -72,6 +75,36 @@ def proxy(abstract: T_Injectable, *, callable: bool=None) -> T_Injectable: # -> 
     return Proxy(resolve, callable=callable)
 
 
+
+
+
+# @export()
+# def after(*what: t.Any, run=None):
+
+#     def resolve():
+#         return current()[abstract]
+    
+#     return Proxy(resolve, callable=callable)
+
+
+
+
+# @export()
+# def before(abstract: T_Injectable, *, callable: bool=None) -> T_Injectable: # -> Proxy[T_Injected]:
+#     def resolve():
+#         return current()[abstract]
+    
+#     return Proxy(resolve, callable=callable)
+
+
+
+
+
+@export()
+def at(*scopes: t.Union[str, ScopeAlias, type[Scope]], default=...):
+    """Get the first available Injector for given scope(s).
+    """
+    return current().at(*scopes, default=default)
 
 
 
@@ -125,45 +158,59 @@ def using(inj: t.Union[str, ScopeAlias, T_Injector] = Scope.MAIN) -> AbstractCon
 
 
 
-
+@t.overload
+def wrap(cls: type[T], /, *, scope: str=None, priority=-1, **kwds) -> type[T]:
+    ...
+@t.overload
+def wrap(func: Callable[..., T], /, *, scope: str=None, priority=-1, **kwds) -> Callable[..., T]:
+    ...
+@t.overload
+def wrap(*, scope: str=None, priority=-1, **kwds) -> Callable[[_T_Callable], _T_Callable]:
+    ...
 @export()
-def wrapped(func: Callable[..., T], /, args: tuple=(), keywords:dict={}) -> Callable[..., T]:
-    params = signature(func).bind_partial(*args, **keywords)
-    def wrapper(inj: Injector=None, /, *args, **kwds) -> T:
-        if inj is None: 
-            inj = __inj_ctxvar.get()
-        # fallbackdict(params.arguments, kwds)
-        return func(*params.inject_args(inj), **params.inject_kwargs(inj))
+def wrap(func: _T_Callable =..., /, *, scope: str=None, **kwds) -> _T_Callable:
     
-    update_wrapper(wrapper, func)
+    scope = scope or ANY_SCOPE
 
-    return wrapper if params else func
-
-
-
-
-
-@export()
-def wrap(*args, **kwds):
     def decorate(fn):
-        return wrapped(fn, args, kwds)
-    return decorate
+        aka = WrappedAlias(fn, (scope, ordered_id()))
+        provide(aka, scope=scope, factory=fn, **kwds)
+        return aka
+    
+    if func is ...:
+        return decorate
+    else:
+        return decorate(func)
+
+
+
+
+
+
+# @export()
+# def wrapped(*args, **kwds):
+#     def decorate(fn):
+#         return wrap(fn, args, kwds)
+#     return decorate
 
 
 
 
 @export()
-def call(func: Callable[..., T], /, args: tuple=(), keywords:dict={}) -> T:
-    inj = __inj_ctxvar.get()
-    params = signature(func).bind_partial(*args, **keywords)
-    return func(*params.inject_args(inj), **params.inject_kwargs(inj))
+def call(func: Callable[..., T], /, *args: tuple, **kwargs) -> T:
+    # inj = __inj_ctxvar.get()
+    # params = signature(func).bind_partial(*args, **kwargs)
+    return current().make(func, *args, **kwargs)
+    # func(*params.inject_args(inj), **params.inject_kwargs(inj))
 
 
 
 
 
+# class Dependency(t.NamedTuple('_Dependency', dict(depends=T_Injected, scope=t.Any).items())):
 class Dependency(t.NamedTuple):
-    depends: Injectable = None
+
+    depends: Injectable[T_Injected] = None
     scope: str = Scope.ANY
 
 
@@ -172,13 +219,15 @@ class Dependency(t.NamedTuple):
 @export()
 class InjectedProperty(t.Generic[T_Injected]):
     
-    __slots__ = '_dep','__name__', '_default', '__weakref__'
+    __slots__ = '_dep', 'finj', 'cache', '__name__', '_default', '__weakref__'
 
-    _dep: Dependency
+    _dep: Dependency[T_Injected]
     __name__: str
+    cache: bool
 
-    def __init__(self, dep: Injectable=None, default: T_Injected=..., *, name=None, scope=None) -> T_Injected:
+    def __init__(self, dep: Injectable[T_Injected]=None, default: T_Injected=..., *, name=None, cache: bool=None, scope=None) -> T_Injected:
         self._default = default
+        self.cache = bool(cache)
         self._dep = Dependency(dep, *(scope and (str(scope),) or ()))
         self.__name__ = name
         self._register()
@@ -204,18 +253,29 @@ class InjectedProperty(t.Generic[T_Injected]):
 
     def _register(self):   
         dep = self._dep
-        if not (dep.depends is None or is_provided(dep)):
-            alias(dep, dep.depends, scope=dep.scope)
+        if dep.depends is not None:
+            is_provided(dep) or alias(dep, dep.depends, scope=dep.scope)
+            if dep.scope in {ANY_SCOPE, None}:
+                self.finj = current
+            else:
+                self.finj = partial(at, dep.scope)
 
     def __get__(self, obj, typ=None) -> T_Injected:
         if obj is None:
             return self
         try:
-            return current()[self._dep]
+            if self.cache:
+                if (val := obj.__dict__.get(self.__name__, ...)) is not ...:
+                    return val
+                val = self.finj().make(self._dep)
+            else:
+                return self.finj().make(self._dep)
         except InjectorKeyError as e:
             if self._default is ...:
                 raise AttributeError(self) from e
             return self._default
+        else:
+            return obj.__dict__.setdefault(self.__name__, val)
 
     def __str__(self) -> T_Injected:
         return f'{self.__class__.__name__}({self._dep!r})'
@@ -237,3 +297,34 @@ class InjectedClassVar(InjectedProperty[T_Injected]):
 
 if t.TYPE_CHECKING:
     InjectedClassVar = t.ClassVar[T_Injected]
+
+
+
+@abc.Injectable.register
+class WrappedAlias(GenericAlias):
+
+    __slots__ = ()
+
+    # def __new__(cls, orig, *args, **kwds):
+    #     if cls is WrappedAlias:
+    #         if isinstance(orig, (type, GenericAlias)):
+    #             cls = WrappedTypeAlias
+    #         else:
+    #             cls = WrappedCallableAlias
+        
+    #     return super().__new__(cls, orig, *args, **kwds)
+
+    def __call__(self, *args, **kwds):
+        return current().make(self, *args, **kwds)
+
+
+
+# class WrappedTypeAlias(WrappedAlias):
+
+#     __slots__ = ()
+
+
+# class WrappedCallableAlias(WrappedAlias):
+
+#     __slots__ = ()
+

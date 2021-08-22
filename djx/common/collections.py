@@ -1,6 +1,8 @@
+import sys
 from copy import deepcopy
 from functools import wraps
 from itertools import chain
+from types import GenericAlias
 import typing as t
 from collections.abc import (
     Hashable, Mapping, MutableMapping, MutableSet, Iterable, Set, MutableSequence, 
@@ -8,19 +10,18 @@ from collections.abc import (
 )
 import warnings
 
-from djx.common.utils.functools import deprecated
 
 
 
-from .utils import export
+
+from .utils import export, class_only_method, cached_class_property
 from .abc import FluentMapping, Orderable
 
 _empty = object()
 
-_T_Ordered = t.TypeVar('_T_Ordered', bound=Hashable)
-TK = t.TypeVar('TK')
-TV = t.TypeVar('TV')
-TM = t.TypeVar('TM', bound=Mapping)
+_T_Keyed = t.TypeVar('_T_Keyed', bound=Hashable)
+_TK = t.TypeVar('_TK', bound=Hashable)
+_TV = t.TypeVar('_TV')
 
 
 
@@ -36,35 +37,35 @@ def _none_fn(k=None):
 
 
 
-_FallbackCallable =  Callable[[TK], t.Optional[TV]]
-_FallbackMap = Mapping[TK, t.Optional[TV]]
-_FallbackType =  t.Union[_FallbackCallable[TK, TV], _FallbackMap[TK, TV], TV] 
+_FallbackCallable =  Callable[[_TK], t.Optional[_TV]]
+_FallbackMap = Mapping[_TK, t.Optional[_TV]]
+_FallbackType =  t.Union[_FallbackCallable[_TK, _TV], _FallbackMap[_TK, _TV], _TV] 
 
 _TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 
 
 @export()
 @FluentMapping.register
-class fallbackdict(dict[TK, TV], t.Generic[TK, TV]):
+class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
     """A dict that retruns a fallback value when a missing key is retrived.
     
     Unlike defaultdict, the fallback value will not be set.
     """
     __slots__ = ('_fb', '_fbfunc')
 
-    _fb: _FallbackType[TK, TV]
-    _fbfunc: _FallbackCallable[TK, TV]
+    _fb: _FallbackType[_TK, _TV]
+    _fbfunc: _FallbackCallable[_TK, _TV]
 
-    def __init__(self, fallback: _FallbackType[TK, TV]=None, *args, **kwds):
+    def __init__(self, fallback: _FallbackType[_TK, _TV]=None, *args, **kwds):
         super().__init__(*args, **kwds)
         self.fallback = fallback
 
     @property
-    def fallback(self) -> _FallbackType[TK, TV]:
+    def fallback(self) -> _FallbackType[_TK, _TV]:
         return self._fb
     
     @fallback.setter
-    def fallback(self, fb: _FallbackType[TK, TV]):
+    def fallback(self, fb: _FallbackType[_TK, _TV]):
         if fb is None:
             # self._fb, self._fbfunc = None, _none_fn
             self._fb = self._fbfunc = None
@@ -82,7 +83,7 @@ class fallbackdict(dict[TK, TV], t.Generic[TK, TV]):
     def fallback_func(self):
         return self._fbfunc or _none_fn
 
-    def __missing__(self, k: TK) -> TV:
+    def __missing__(self, k: _TK) -> _TV:
         if self._fbfunc is None:
             return self._fb
         else:
@@ -132,11 +133,11 @@ class fallbackdict(dict[TK, TV], t.Generic[TK, TV]):
 
 
 
-class _dictset(dict[_T_Ordered, _T_Ordered], t.Generic[_T_Ordered]):
+class _dictset(dict[_T_Keyed, _T_Keyed], t.Generic[_T_Keyed]):
 
     __slots__ = ()
 
-    def __init__(self, *iterables: Iterable[_T_Ordered]):
+    def __init__(self, *iterables: Iterable[_T_Keyed]):
         super().__init__((i, i) for it in iterables for i in it)
     
     def __or__(self, other):
@@ -178,7 +179,7 @@ class _dictset(dict[_T_Ordered, _T_Ordered], t.Generic[_T_Ordered]):
     
     
 @export()
-class FrozenOrderedset(_dictset[_T_Ordered], Set[_T_Ordered], t.Generic[_T_Ordered]):
+class FrozenKeyedSet(_dictset[_T_Keyed], Set[_T_Keyed], t.Generic[_T_Keyed]):
     
     __slots__ = ()
     
@@ -196,7 +197,7 @@ class FrozenOrderedset(_dictset[_T_Ordered], Set[_T_Ordered], t.Generic[_T_Order
 
 
 @export()
-class OrderedSet(_dictset[_T_Ordered], MutableSet[_T_Ordered], t.Generic[_T_Ordered]):
+class KeyedSet(_dictset[_T_Keyed], MutableSet[_T_Keyed], t.Generic[_T_Keyed]):
     
     __slots__ = ()
 
@@ -211,11 +212,11 @@ class OrderedSet(_dictset[_T_Ordered], MutableSet[_T_Ordered], t.Generic[_T_Orde
         except KeyError:
             pass
 
-    def update(self, *iterables: Iterable[_T_Ordered]):
+    def update(self, *iterables: Iterable[_T_Keyed]):
         """Add an element."""
         super().update((i, i) for it in iterables for i in it)
     
-    def pop(self, val: _T_Ordered=_empty, *default):
+    def pop(self, val: _T_Keyed=_empty, *default):
         """Return the popped value.  Raise KeyError if empty."""
         if val is _empty:
             return self.popitem()[0]
@@ -340,17 +341,38 @@ class FluentPriorityStack(PriorityStack[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
     
 
 
+_TypeOfTypedDict = type(t.TypedDict('_Type', {}, total=False))
+
+
 @export()
-class MappingObject(MutableMapping):
+class AttributeMapping(MutableMapping):
 
     __slots__ = ('__weakref__', '__dict__')
+    
+    __dict_class__: t.ClassVar[type[Mapping]] = dict 
+
+    def __createdict___(self, args):
+        cls = self.__class__.__dict_class__
+        if not args:
+            return cls(), args
+        elif args[0].__class__ is cls:
+            return args[0].copy(), args[1:]
+        else:
+            return cls(), args
 
     def __init__(self, *args, **kwds) -> None:
+        dct, args = self.__createdict___(args)
+        object.__setattr__(self, '__dict__', dct)
         self.update(*args, **kwds)
 
-    def update(self, *arg, **kwds) -> None:
-        self.__dict__.update(*arg, **kwds)
+    def update(self, *args, **kwds):
+        args = (i for a in args if a for i in (a.items() if isinstance(a, Mapping) else a or ()))
+        self.__dict__.update(args, **kwds)
+        return self
     
+    def copy(self):
+        return self.__class__(self.__dict__)
+
     def __bool__(self):
         return True
 
@@ -360,12 +382,21 @@ class MappingObject(MutableMapping):
     def __json__(self):
         return self.__dict__
 
+    # def __setattr__(self, key, value):
+    #     self.__dict__[key] = value
+
     def __setitem__(self, key, value):
         self.__dict__[key] = value
 
     def __getitem__(self, key):
-        return self.__dict__[key]
+        try:
+            return self.__dict__[key]
+        except KeyError:
+            return self.__missing__(key)
     
+    def __missing__(self, key):
+        raise KeyError(key)
+
     def __delitem__(self, key):
         del self.__dict__[key]
 
@@ -376,11 +407,31 @@ class MappingObject(MutableMapping):
         return iter(self.__dict__)
 
     def __str__(self):
-        return repr(self.__dict__)
+        return str(self.__dict__)
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self})'
 
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @cached_class_property[Callable[[t.Any], 'AttributeMapping']]
+    def validate(cls) -> Callable[[t.Any], 'AttributeMapping']:
+        try:
+            from djx.schemas import object_parser
+        except ImportError:
+            def parser(v):
+                if isinstance(v, cls):
+                    return v
+                return cls(v)
+        else:
+            parser = object_parser(cls.__dict_class__)
+
+        return parser
+        
+        
+        
     
 
 

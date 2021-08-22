@@ -8,8 +8,8 @@ from functools import cache, partial
 from .utils import saferef
 
 
-TP = t.TypeVar('TP', covariant=True)
-T_Fget = t.Callable[[], TP]
+_TP = t.TypeVar('_TP', covariant=True)
+_T_Fget = t.Callable[[], _TP]
 
 
 _notset = object()
@@ -32,7 +32,7 @@ def isproxytype(typ: type[t.Any], cls: t.Union[type[Proxy], tuple[type[Proxy]]] 
 _set_own_attr = object.__setattr__
 
 
-class _ProxyLookup(t.Generic[TP]):
+class _ProxyLookup(t.Generic[_TP]):
     """Descriptor that handles proxied attribute lookup for
     :class:`LocalProxy`.
 
@@ -73,14 +73,14 @@ class _ProxyLookup(t.Generic[TP]):
     def __set_name__(self, owner, name):
         self.name = name
 
-    def __get__(self, instance: Proxy[TP], owner=None):
+    def __get__(self, instance: Proxy[_TP], owner=None):
         if instance is None:
             if self.class_value is not None:
                 return self.class_value
 
             return self
 
-        obj: TP = instance.__proxy_target__
+        obj: _TP = instance.__proxy_target__
         if self.bind_f is not None:
             return self.bind_f(instance, obj)
 
@@ -131,7 +131,7 @@ class ProxyType(type):
     pass
 
 
-class Proxy(t.Generic[TP], metaclass=ProxyType):
+class Proxy(t.Generic[_TP], metaclass=ProxyType):
     """Forwards all operations to the return value of the given callable `fget`.
 
     ``__repr__`` and ``__class__`` are forwarded, so ``repr(x)`` and
@@ -146,9 +146,15 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
         '__weakref__',
     )
 
-    __proxy_target_func__: T_Fget[TP]
+    __proxy_target_func__: _T_Fget[_TP]
 
-    def __new__(cls, fget: T_Fget[TP], /, *, cache: bool=None, weak: bool=None, callable: bool=None, **kwds) -> TP:
+    @t.overload
+    def __new__(cls, fget: _T_Fget[_TP], /, *, cache: bool=None, weak: bool=None, callable: bool=None, **kwds) -> _TP: 
+        ...
+    @t.overload
+    def __new__(cls, *, cache: bool=None, weak: bool=None, callable: bool=None, **kwds) -> t.Callable[[_T_Fget[_TP]], _TP]: 
+        ...
+    def __new__(cls, fget: _T_Fget[_TP]=..., /, *, cache: bool=None, weak: bool=None, callable: bool=None, **kwds) -> _TP:
         if cls is Proxy:
             if not(cache is callable is weak is None):
                 if weak is True and cache is not True:
@@ -159,9 +165,13 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
                         else WeakProxy if True is cache is weak \
                             else CachedProxy if cache is True \
                                 else CallableProxy if callable is True\
-                                    else cls
+                                    else SimpleProxy
         
-        if isproxytype(type(fget)):
+        if fget is ...:
+            def decorate(fget):
+                return cls(fget)
+            return decorate
+        elif isproxytype(type(fget)):
             rv = cls._clone_proxy_from(fget, cache=cache, weak=weak, callable=callable, **kwds)
             if rv is NotImplemented:
                 raise TypeError(f'cannot create a {cls.__name__} from {type(fget).__name__}.')
@@ -169,7 +179,7 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
         else:
             return super().__new__(cls)
 
-    def __init__(self, fget: T_Fget[TP], /, *, cached: bool=None, weak: bool=None, callable: bool=None) -> None:
+    def __init__(self, fget: _T_Fget[_TP], /, *, cached: bool=None, weak: bool=None, callable: bool=None) -> None:
         _set_own_attr(self, '__proxy_target_func__', fget)
 
     @classmethod
@@ -179,7 +189,7 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
         return NotImplemented  
 
     @property
-    def __proxy_target__(self) -> TP:
+    def __proxy_target__(self) -> _TP:
         """Return the current object.  This is useful if you want the real
         object behind the proxy at a time for performance reasons or because
         you want to pass the object into a different context.
@@ -187,7 +197,7 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
         return self.__proxy_target_func__()
 
     @property
-    def __proxy_wrapped__(self) -> T_Fget[TP]:
+    def __proxy_wrapped__(self) -> _T_Fget[_TP]:
         return self.__proxy_target_func__
 
 #
@@ -310,18 +320,26 @@ class Proxy(t.Generic[TP], metaclass=ProxyType):
 ###
 
 
+class SimpleProxy(Proxy):
+
+    __slots__ = ()
+
+    __proxy_target_val__: _TP
+
+
+
 class CachedProxy(Proxy):
 
     __slots__ = ()
 
-    __proxy_target_val__: TP
+    __proxy_target_val__: _TP
 
-    def __init__(self, fget: T_Fget[TP], /, **kwds) -> None:
+    def __init__(self, fget: _T_Fget[_TP], /, **kwds) -> None:
         _set_own_attr(self, '__proxy_target_val__', _notset)
         _set_own_attr(self, '__proxy_target_func__', fget)
 
     @property
-    def __proxy_target__(self) -> TP:
+    def __proxy_target__(self) -> _TP:
         """Return the current object.  This is useful if you want the real
         object behind the proxy at a time for performance reasons or because
         you want to pass the object into a different context.
@@ -337,14 +355,14 @@ class WeakProxy(CachedProxy):
 
     __slots__ = ()
 
-    __proxy_target_val__: TP
+    __proxy_target_val__: _TP
 
-    def __init__(self, fget: T_Fget[TP], /, **kwds) -> None:
+    def __init__(self, fget: _T_Fget[_TP], /, **kwds) -> None:
         _set_own_attr(self, '__proxy_target_val__', _notset_ref)
         _set_own_attr(self, '__proxy_target_func__', fget)
 
     @property
-    def __proxy_target__(self) -> TP:
+    def __proxy_target__(self) -> _TP:
         """Return the current object.  This is useful if you want the real
         object behind the proxy at a time for performance reasons or because
         you want to pass the object into a different context.
@@ -365,7 +383,7 @@ class WeakProxy(CachedProxy):
 
 
 
-class CallableProxy(Proxy[TP]):
+class CallableProxy(Proxy[_TP]):
 
     __slots__ = ()
 
@@ -373,7 +391,7 @@ class CallableProxy(Proxy[TP]):
     def __wrapped__(self):
         return self.__proxy_target_func__
 
-    def __call__(self) -> TP:
+    def __call__(self) -> _TP:
         return self.__proxy_target__
 
 
@@ -393,28 +411,30 @@ class WeakCallableProxy(WeakProxy, CallableProxy):
 
 
 
+def unproxy(val: t.Union[Proxy[_TP], _TP]) -> _TP:
+    return getattr(val, '__proxy_target__', val)
 
 
 if t.TYPE_CHECKING:
     _Proxy = Proxy
     
     @t.overload
-    def proxy(fget: T_Fget[TP]) -> TP: 
+    def proxy(fget: _T_Fget[_TP]) -> _TP: 
         ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: False = None, callable: False = None) -> TP: ...
+    def proxy(fget: _T_Fget[_TP], /, *, cache: False = None, callable: False = None) -> _TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: False = None, callable: False = None) -> TP: ...
+    def proxy(fget: _T_Fget[_TP], /, *, cache: True, weak: False = None, callable: False = None) -> _TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: True, callable: False = None) -> TP: ...
+    def proxy(fget: _T_Fget[_TP], /, *, cache: True, weak: True, callable: False = None) -> _TP: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, callable: True, cache: False = None) -> TP: ...
+    def proxy(fget: _T_Fget[_TP], /, *, callable: True, cache: False = None) -> t.Union[_TP, _T_Fget[_TP]]: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, callable: True) -> TP: ...
+    def proxy(fget: _T_Fget[_TP], /, *, cache: True, callable: True) -> t.Union[_TP, _T_Fget[_TP]]: ...
     @t.overload
-    def proxy(fget: T_Fget[TP], /, *, cache: True, weak: True, callable: True) -> TP:
+    def proxy(fget: _T_Fget[_TP], /, *, cache: True, weak: True, callable: True) -> t.Union[_TP, _T_Fget[_TP]]:
         ...
-    def proxy(fget: T_Fget[TP], /, *, cache: bool=False, callable: bool=False) -> TP:
+    def proxy(fget: _T_Fget[_TP], /, *, cache: bool=False, callable: bool=False) -> _TP:
         ...
 
     Proxy = proxy

@@ -5,7 +5,6 @@ import pytest
 from typing import Optional, Union
 
 from ...inspect import  BoundArguments, signature, InjectableSignature, Parameter
-from ...symbols import symbol
 
 
 xfail = pytest.mark.xfail

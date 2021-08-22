@@ -8,7 +8,8 @@ from typing import Callable, ClassVar, Generic
 from collections import ChainMap
 from collections.abc import Collection
 
-from djx.common.collections import OrderedSet, fallbackdict
+from djx.common.collections import KeyedSet, fallbackdict
+from djx.common.imports import ImportRef
 
 
 from djx.common.utils import export, lookup_property, cached_property
@@ -17,7 +18,7 @@ from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 from .providers import AliasProvider, InjectorProvider
-from .symbols import _ordered_id
+from .inspect import ordered_id
 from .injectors import Injector, InjectorContext, NullInjector, INJECTOR_TOKEN
 from .abc import (
     ANY_SCOPE, COMMAND_SCOPE, LOCAL_SCOPE, MAIN_SCOPE, REQUEST_SCOPE,
@@ -25,13 +26,13 @@ from .abc import (
     T_ContextStack, T_Injector, T_Provider, _T_Conf, T_Scope,
 )
 
-from . import abc
+from . import abc, signals
 
 logger = logging.getLogger(__name__)
 
 
 
-_config_lookup = partial(lookup_property, lookup='config', read_only=True)
+_config_lookup = partial(lookup_property, source='config', read_only=True)
 
 
 
@@ -44,7 +45,7 @@ class Config(BaseMetadata[T_Scope], ScopeConfig, Generic[T_Scope, T_Injector, T_
 
     @metafield[int]()
     def _pos(self, value) -> int:
-        return _ordered_id()
+        return ordered_id()
     
     @metafield[str](inherit=True)
     def name(self, value: str, base: str=None) -> str:
@@ -140,7 +141,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     priority: int = _config_lookup()
     context_class: type[T_ContextStack] = _config_lookup()
     injector_class: type[T_Injector] = _config_lookup()
-    dependants: OrderedSet[T_Scope]
+    dependants: KeyedSet[T_Scope]
     injectors: list[ref[T_Injector]]
     _lock: RLock 
 
@@ -148,8 +149,9 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         self.__pos = 0
         super().__init__()
         self._lock = RLock()
-        self.dependants = OrderedSet()
+        self.dependants = KeyedSet()
         self.injectors = []
+        signals.boot.send(self.key, scope=self)
 
     @property
     def is_ready(self):
@@ -208,6 +210,8 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         self.setup_content(rv)
         self.injectors.append(ref(rv, self.injectors.remove))
 
+        signals.init.send(self.key, injector=rv, scope=self)
+
         return rv
 
     def create_context(self, inj: T_Injector) -> T_ContextStack:
@@ -220,6 +224,14 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     def setup_content(self, inj: T_Injector):
         def fallback(key):
             res = self.providers.get(key)
+            if res is None and isinstance(key, ImportRef):
+                try:
+                    obj = key()
+                except Exception:
+                    pass
+                else:
+                    res = self.providers.get(obj)
+            
             if res is None:
                 return content.setdefault(key, inj.parent.content[key])
             else:
@@ -262,11 +274,13 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
                 raise RuntimeError(f'Scope {self} already prepared')
             return
         
+
         self._prepare()
         self.ready()
+        signals.ready.send(self.key, scope=self)
     
     def _prepare(self):
-        self.__pos = self.__pos or _ordered_id()
+        self.__pos = self.__pos or ordered_id()
 
         mkprov = partial(AliasProvider, scope=self.name, priority=-1)
         for abstract in (None, Injector, abc.Injector, self.injector_class, INJECTOR_TOKEN):

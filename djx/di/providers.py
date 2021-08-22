@@ -1,26 +1,21 @@
 from __future__ import annotations
 from abc import abstractmethod
+from djx.common.collections import fallbackdict
 
-from functools import cache, wraps
-from collections import defaultdict
 from collections.abc import Sequence, Mapping, Iterable, ItemsView, Callable
 from re import S
 
 from weakref import WeakSet
 
-from types import FunctionType, MethodType
+from types import FunctionType, MappingProxyType, MethodType
 from typing import (
     Annotated, Any, ClassVar, Generator, 
     Generic, Literal, NamedTuple, Optional, Protocol, Type, TypeVar, Union, overload
 )
 
 
-from djx.common.utils import export
-
-from djx.common.utils import Void, saferef
-from djx.di.inspect import BoundArguments
-
-from .symbols import symbol, _ordered_id, identity
+from djx.common.utils import export, Void, saferef
+from .inspect import BoundArguments, ordered_id
 from . import abc
 from .abc import Injectable, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, T, T_Scope, T_Resolver
 
@@ -41,7 +36,7 @@ def is_provided(obj) -> bool:
 def alias(abstract: T_Injectable, 
         alias: abc.Injectable[T], 
         priority: int = 1, *, 
-        scope: str = None, 
+        scope: str = 'any', 
         cache:bool=None, 
         **opts) -> AliasProvider:
     """Registers an `AliasProvider`
@@ -99,7 +94,15 @@ def provide(abstract: T_Injectable=...,
 
     def register(_abstract):
         
-        cls, concrete = next((c(), kwds.pop(k)) for k,c in _kwd_cls_map.items() if k in kwds)
+        cls, concrete = next(
+            ((c(), kwds.pop(k)) for k,c in _kwd_cls_map.items() if k in kwds), 
+            (None, None)
+        )
+
+        if None is cls is concrete:
+            assert callable(_abstract)
+            cls = _kwd_cls_map['factory']
+            concrete = _abstract
 
         seen = set()
         for abstract in (_abstract, *abstracts):
@@ -181,17 +184,47 @@ class AliasResolver(ConcreteResolver[T, T_Injectable]):
         super().__init__(concrete, **kwds)
         self.cache = cache
         if cache:
-            def __call__() -> T:
-                self.value = self.bound[concrete]
+            def __call__(*a, **kw) -> T:
+                self.value = self.bound.make(concrete, *a, **kw)
                 return self.value
         else:
-            def __call__() -> T:
-                return self.bound[concrete]
+            def __call__(*a, **kw) -> T:
+                return self.bound.make(concrete, *a, **kw)
         self.__call__ = __call__
 
     def clone(self, *args, **kwds):
         kwds.setdefault('cache', self.cache)
         return super().clone(*args, **kwds)
+
+
+                                                                                                                                                             
+@export()
+class AliasWithParamsResolver(AliasResolver):
+    """Resolver Object"""
+
+    __slots__ = 'params',
+
+    def __init__(self, concrete, *, cache=False, params=((), {}),  **kwds):
+        super().__init__(concrete, **kwds)
+        self.cache = cache
+        self.params = params
+        if cache:
+            def __call__(*a, **kw) -> T:
+                _a, _kw = self.params
+                self.value = self.bound.make(concrete, *_a, *a, **_kw, **kw)
+                return self.value
+        else:
+            def __call__(*a, **kw) -> T:
+                _a, _kw = self.params
+                return self.bound.make(concrete, *_a, *a, **_kw, **kw)
+        self.__call__ = __call__
+
+    def clone(self, *args, **kwds):
+        kwds.setdefault('cache', self.cache)
+        kwds.setdefault('params', self.params)
+        return super().clone(*args, **kwds)
+
+
 
 
 @export()
@@ -249,16 +282,17 @@ class FuncParamsResolver(FuncResolver):
 
 
 
+_readony_options = MappingProxyType(fallbackdict())
 
 @export()
 class Provider(abc.Provider[T, T_Injectable, T_Resolver, T_Scope]):
 
     __slots__ = (
         'abstract', 'concrete', 'scope', 'cache', 
-        'priority', 'options', '__pos', '_resolver',
+        'priority', '__pos', '_resolver', 'options'
     )
     
-    abstract: symbol[T_Injectable]
+    abstract: T_Injectable
     __pos: int
 
     def __init__(self, 
@@ -271,11 +305,13 @@ class Provider(abc.Provider[T, T_Injectable, T_Resolver, T_Scope]):
         global _provided
 
         self.abstract = abstract
-        self.__pos = _ordered_id()
+        self.__pos = ordered_id()
         self.scope = scope or self._default_scope
         self.cache = cache
         self.priority = priority or 0
-        self.options = options
+
+        self.options = fallbackdict(None, options)
+
         self.set_concrete(concrete)
         _provided.add(saferef(self.abstract))
 
@@ -327,8 +363,8 @@ class ValueProvider(Provider[T, T_Injectable, ValueResolver[T], T_Scope]):
 @export()
 class AliasProvider(Provider[T, T_Injectable, AliasResolver[T, T_Injectable], T_Scope]):
 
-    __slots__ = ()
-    concrete: symbol[T]
+    __slots__ = '_params',
+    concrete: T
 
     def check(self):
         super().check()
@@ -336,8 +372,21 @@ class AliasProvider(Provider[T, T_Injectable, AliasResolver[T, T_Injectable], T_
                 f'No provider for aliased `{self.concrete}` in `{self.abstract}`'
             )
 
+    @property
+    def params(self):
+        try:
+            return self._params
+        except AttributeError:
+            args = self.options['args']
+            kwds = self.options['kwargs']
+            self._params = (args or (), kwds or {}) if args or kwds else None
+            return self._params
+
     def make_resolver(self, scope: T_Scope):
-        return AliasResolver(self.concrete, cache=self.cache)
+        params = self.params
+        if params is None:
+            return AliasResolver(self.concrete, cache=self.cache)
+        return AliasWithParamsResolver(self.concrete, cache=self.cache, params=params)
 
 
 
@@ -346,7 +395,7 @@ class AliasProvider(Provider[T, T_Injectable, AliasResolver[T, T_Injectable], T_
 class FactoryProvider(Provider[T, T_Injectable, FuncResolver[T], T_Scope]):
 
     __slots__ = ('_sig', '_params')
-    concrete: symbol[Callable[..., T]]
+    concrete: Callable[..., T]
 
     @property
     def signature(self):
@@ -362,7 +411,9 @@ class FactoryProvider(Provider[T, T_Injectable, FuncResolver[T], T_Scope]):
         try:
             return self._params
         except AttributeError:
-            self._params = self.signature.bind_partial() or None
+            args = self.options['args'] or ()
+            kwds = self.options['kwargs'] or {}
+            self._params = self.signature.bind_partial(*args, **kwds) or None
             return self._params
 
     def check(self):
@@ -379,7 +430,7 @@ class FactoryProvider(Provider[T, T_Injectable, FuncResolver[T], T_Scope]):
 
     def make_resolver(self, scope: T_Scope):
         params = self.params
-        if not params:
+        if params is None:
             return FuncResolver(self.concrete, cache=self.cache)
         return FuncParamsResolver(self.concrete, cache=self.cache, params=params)
 

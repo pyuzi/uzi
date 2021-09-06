@@ -205,9 +205,16 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
         class_value=__doc__, fallback=lambda self: type(self).__doc__
     )
     # __del__ should only delete the proxy
-    __repr__ = _ProxyLookup(
-        repr, fallback=lambda self: f"<{type(self).__name__} unbound>"
-    )
+
+    def __repr__(self):
+        return f'{type(self).__name__}({self.__proxy_target__!r})'
+
+    def __repr__(self):
+        return f'{type(self).__name__}({self.__proxy_target__!r})'
+
+    # __repr__ = _ProxyLookup(
+    #     repr, fallback=lambda self: f"<{type(self).__name__} unbound>"
+    # )
     __str__ = _ProxyLookup(str)
     __bytes__ = _ProxyLookup(bytes)
     __format__ = _ProxyLookup()  # type: ignore

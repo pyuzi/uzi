@@ -1,4 +1,4 @@
-from collections.abc import Mapping, Callable
+from collections.abc import Mapping, Callable, Iterable
 from collections import ChainMap
 from itertools import chain
 from operator import or_
@@ -7,6 +7,7 @@ import typing as t
 
 from functools import cache, cached_property, partial, reduce
 from django.db import models as m
+from django.core.exceptions import FieldDoesNotExist
 from django.contrib.postgres.fields import ArrayField
 
 from django.db.models.functions import Now
@@ -32,10 +33,15 @@ _T_Model = t.TypeVar('_T_Model', bound='Model', covariant=True)
 _T_Config = t.TypeVar('_T_Config', bound='ModelConfig', covariant=True)
 
 
+from . import _patch as __
 
 
 @export()
 class ModelConfig(BaseMetadata[_T_Model]):
+
+    @property
+    def modelmeta(self):
+        return self.target._meta
 
     @metafield[bool](inherit=True)
     def timestamps(self, value, base=None) -> bool:
@@ -58,9 +64,6 @@ class ModelConfig(BaseMetadata[_T_Model]):
 
         value and rv.update(value)
         return { k: k if v is True else v for k,v in rv.items() }
-
-    # @cached_property
-    # def hidden_alias_query_vars(self):
 
     @metafield[dict](inherit=True)
     def select_related(self, value, base=None):
@@ -122,7 +125,19 @@ class ModelConfig(BaseMetadata[_T_Model]):
     def which_natural_key_fields(self, value, *, strict: bool=None):
         return self.which_valid_fields(value, self.natural_keys or (), strict=strict)
 
-    def which_valid_fields(self, value, fields=None, *, strict: bool=None):
+    @cache
+    def has_field(self, name):
+        return self.get_field(name, default=None) is not None
+
+    def get_field(self, name, *, default=...):
+        try:
+            return self.modelmeta.get_field(name)
+        except FieldDoesNotExist:
+            if default is ...:
+                raise
+            return default
+
+    def which_valid_fields(self, value, fields: Iterable[str]=None, *, strict: bool=None):
         found = bool(strict)
         if fields is None:
             fields = self.target._meta.fields

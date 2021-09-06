@@ -53,7 +53,7 @@ class ViewType(type):
         cls = super().__new__(mcls, name, bases, dct)
 
         conf_cls = get_metadata_class(cls, '__config_class__')
-        conf_cls(cls, '_conf', raw_conf)
+        cls._conf = conf_cls(cls, '_conf', raw_conf)
 
         return cls
 

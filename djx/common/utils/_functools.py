@@ -19,8 +19,8 @@ _T = t.TypeVar('_T')
 
 
 
-def export(obj =..., /, *, name=None, exports=None, module=None):
-    def add_to_all(_obj):
+def export(obj: _T =..., /, *, name=None, exports=None, module=None) -> _T:
+    def add_to_all(_obj: _T) -> _T:
         _module = sys.modules[module or _obj.__module__]
         _exports = exports or getattr(_module, '__all__', None)
         if _exports is None:
@@ -279,6 +279,16 @@ class cached_property(cached_property, t.Generic[_T]):
 
 
         return fdel
+    
+    def __getstate__(self):
+        rv = dict(self.__dict__)
+        del rv['lock']
+        return rv
+    
+    def __setstate__(self, state):
+        old = self.__dict__.copy()
+        self.__dict__.update(state, lock=RLock())
+        
 
 
 def method_decorator(decorator, name=''):

@@ -40,6 +40,8 @@ IS_MAP = PathFlag.IS_MAP
 
 class PathLookupError(LookupError):
     
+    lookup_type = 'path'
+
     def __init_subclass__(cls, lookup='path') -> None:
         cls.lookup_type = lookup
         return super().__init_subclass__()
@@ -99,8 +101,62 @@ def assign(obj: _O, *items, **kwds) -> _O:
 
 @export()
 def delitem(obj: _O, path: _P) -> _O:
-    popitem(obj, path)
+    popitem(obj, path, None)
     return obj
+
+
+
+
+@export()
+def getall(obj: _O, *paths: _P, default: _R = missing, withkeys=False, skip_missing=False):
+    for path in paths:
+        try:
+            val = getitem(obj, path)
+        except PathLookupError as e:
+            if skip_missing is True:
+                continue
+            elif default is missing:
+                raise e
+            elif withkeys is True:
+                yield path, default
+            else:
+                yield default
+        else:
+            if withkeys is True:
+                yield path, val
+            else:
+                yield val
+                
+
+@export()
+def getany(obj: _O, *paths: _P, default: _R = missing) -> _R:
+    for path in paths:
+        try:
+            return getitem(obj, path)
+        except PathLookupError as e:
+            pass
+    if default is missing:
+        if paths:
+            raise e from PathLookupError(None, path, obj)
+        else:
+            raise PathLookupError(None, path, obj)
+            
+    return default
+
+    
+
+@export()
+def hasany(obj: _O, *paths: _P) -> bool:
+    for path in paths:
+        try:
+            getitem(obj, path)
+        except PathLookupError:
+            pass
+        else:
+            return True
+    
+    return False
+
 
 
 

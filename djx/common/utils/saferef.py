@@ -88,7 +88,7 @@ class ReferenceType(t.Generic[_T], metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def __call__(self):
+    def __call__(self) -> _T:
         ...
 
 

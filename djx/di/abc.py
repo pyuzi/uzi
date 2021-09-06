@@ -1,7 +1,7 @@
 from __future__ import annotations
 from functools import cache
 from weakref import WeakSet
-from djx.common.collections import KeyedSet, PriorityStack
+from djx.common.collections import orderedset, PriorityStack
 from djx.common.utils import Void
 import logging
 from abc import ABCMeta, abstractmethod
@@ -158,8 +158,12 @@ class Injectable(SupportsIndentity, Generic[T_Injected], metaclass=InjectableTyp
 
         excl = {type, Callable, None}
         typs = tuple(t for t in cls._typ_cache if t not in excl)
+        if isinstance(param, (type, GenericAlias, TypeVar)):
+            ptyp = param
+        else:
+            ptyp = type(param)
 
-        rv = Union[type[param], Callable[[Any], param], Union[typs]]
+        rv = Union[ptyp, type[param], Callable[[Any], param], Union[typs]]
 
         return rv
 
@@ -351,7 +355,7 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     providers: 'PriorityStack[StaticIndentity, T_Provider]'
     peers: list['Scope']
     embedded: bool
-    dependants: KeyedSet[T_Scope]
+    dependants: orderedset[T_Scope]
 
 
     ANY: ClassVar[ANY_SCOPE] = ANY_SCOPE

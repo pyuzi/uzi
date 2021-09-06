@@ -8,7 +8,7 @@ from typing import Callable, ClassVar, Generic
 from collections import ChainMap
 from collections.abc import Collection
 
-from djx.common.collections import KeyedSet, fallbackdict
+from djx.common.collections import orderedset, fallbackdict
 from djx.common.imports import ImportRef
 
 
@@ -41,9 +41,9 @@ _INTERNAL_SCOPE_NAMES = fallbackdict(main=None, any=None)
 @export()
 class Config(BaseMetadata[T_Scope], ScopeConfig, Generic[T_Scope, T_Injector, T_ContextStack]):
 
-    is_abstract = metafield[bool]('abstract', default=False)
+    is_abstract = metafield[bool]('abstract', default=False, inherit=False)
 
-    @metafield[int]()
+    @metafield[int](inherit=False)
     def _pos(self, value) -> int:
         return ordered_id()
     
@@ -107,7 +107,7 @@ class ScopeType(abc.ScopeType):
         cls: ScopeType[T_Scope, _T_Conf] = super().__new__(mcls, name, bases, dct)
 
         conf_cls = get_metadata_class(cls, '__config_class__', base=Config, name='Config')
-        conf_cls(cls, 'config', raw_conf)
+        cls.config = conf_cls(cls, 'config', raw_conf)
         
         if _INTERNAL_SCOPE_NAMES[cls.config.name]:
             raise NameError(f'Scope: {cls.config.name!r} not allowed')
@@ -124,8 +124,6 @@ class ScopeType(abc.ScopeType):
     def __str__(cls) -> str:
         return f'<ScopeType({cls.__name__}, {cls.config.name!r}>'
 
-    
-
 
 @export
 class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
@@ -141,7 +139,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     priority: int = _config_lookup()
     context_class: type[T_ContextStack] = _config_lookup()
     injector_class: type[T_Injector] = _config_lookup()
-    dependants: KeyedSet[T_Scope]
+    dependants: orderedset[T_Scope]
     injectors: list[ref[T_Injector]]
     _lock: RLock 
 
@@ -149,7 +147,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         self.__pos = 0
         super().__init__()
         self._lock = RLock()
-        self.dependants = KeyedSet()
+        self.dependants = orderedset()
         self.injectors = []
         signals.boot.send(self.key, scope=self)
 

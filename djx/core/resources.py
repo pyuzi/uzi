@@ -1,6 +1,9 @@
 
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 from contextlib import nullcontext
+from itertools import chain
+from types import GenericAlias
 import typing as t
 import logging
 
@@ -8,13 +11,13 @@ from functools import partial
 from collections.abc import Hashable, Iterable
 
 from django.db import models as m, transaction
-from djx.common.imports import ImportRef
-from djx.common.utils.data import assign
+from djx.common.collections import orderedset
+from djx.common.imports import ImportRef, ObjectImportRef
 
 from djx.core.models import ModelUrn
-from djx.common.utils import export, lookup_property
+from djx.common.utils import export, lookup_property, assign
 from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
-from djx.schemas import GenericSchema, OrmSchema, Schema, create_schema
+from djx.schemas import QueryLookupSchema, OrmSchema, Schema, create_schema, BaseConfig
 from pydantic.class_validators import validator
 from pydantic.fields import ModelField
 
@@ -25,13 +28,20 @@ else:
     Model = m.Model
     _DbManager = m.Manager
 
-    
+
+if not t.TYPE_CHECKING:
+    BaseConfig = object
+
+
 
 logger = logging.getLogger(__name__)
+
 
 _T_Schema = t.TypeVar('_T_Schema', bound=Schema)
 
 _T_Resource = t.TypeVar('_T_Resource', bound='Resource', covariant=True)
+_T_Entity = t.TypeVar('_T_Entity', covariant=True)
+
 _T_Model = t.TypeVar('_T_Model', bound=Model, covariant=True)
 _T_Key = t.TypeVar('_T_Key', str, int, t.SupportsInt, Hashable)
 
@@ -60,21 +70,10 @@ Resource.register(Model)
 _config_lookup = partial(lookup_property, source='config', read_only=True)
 
 
-class QueryLookups(Schema):
 
-    def Q(self, **kwds):
-        kwds.setdefault('exclude_none', True)
-        dct = self.dict(**kwds)
-        args = tuple(dct.pop(k) for k in tuple(dct) if isinstance(dct[k], m.Q))
-        return m.Q(*args, **dct)
+class SchemaConfig(OrmSchema, t.Generic[_T_Resource]):
 
-
-
-
-
-class ResourceSchemaDefs(OrmSchema, t.Generic[_T_Resource]):
-
-    class Config:
+    class Config(BaseConfig):
         extra = 'allow'
         auto_imports = True
         validate_assignment = True
@@ -82,69 +81,117 @@ class ResourceSchemaDefs(OrmSchema, t.Generic[_T_Resource]):
         copy_on_model_validation = False
         underscore_attrs_are_private = True
         alternatives = dict(
+            View=['Base'],
             List=['View'],
             Embed=['List'],
-            Create=['View'],
+        
+            Create=['Base'],
             Update=['Create'],
+            
             Created=['View'],
+            Updated=['Created'],
         )
 
-    Query:    type[QueryLookups] = create_schema('ResourceQueryLookups', QueryLookups, pk=(t.Union[int, str], None))
+        @classmethod
+        def get_alternatives(cls, *names, include_self=True, skip=None) -> None:
+            skip = skip or set(names)
+            for name in names:
+
+                if include_self:
+                    yield name
+
+                for alt in cls.alternatives.get(name, ()):
+                    if alt in skip or skip.add(alt):
+                        continue
+
+                    yield from cls.get_alternatives(alt, skip=skip)
+
+                
+        @classmethod
+        def prepare_class(cls, klass) -> None:
+            super().prepare_class(klass)
+
+            val = defaultdict[str, orderedset](orderedset)
+            for b in cls.mro():
+                for k,v in (getattr(b, 'alternatives', {}) or {}).items():
+                    val[k].update(v)
+
+            cls.alternatives = dict(val)
+
+
+    Base:     type[Schema] = None
+
+    Query:    type[QueryLookupSchema] = create_schema('ResourceQueryLookups', QueryLookupSchema, pk=(t.Union[int, str], None))
     # Search:   type[OrmSchema] = create_schema('ResourceSearchSchema', __root__=_T_Key)
 
-    Sort:     type[OrmSchema] = None
+    Sort:     type[Schema] = None
     Paginate: type[Schema] = None
 
-    View:      type[OrmSchema] = None
-    List:      type[OrmSchema] = None
-    Embed:     type[OrmSchema] = None
+    View:      type[Schema] = None
+    List:      type[Schema] = None
+    Embed:     type[Schema] = None
 
     Create:    type[Schema] = None
     Update:    type[Schema] = None
     
-    Created:   type[OrmSchema] = None
-    Updated:   type[OrmSchema] = None
+    Created:   type[Schema] = None
+    Updated:   type[Schema] = None
 
     @validator('*', pre=True, always=True, allow_reuse=True)
-    def _auto_import_strings(cls, v, values, field: ModelField):
+    def _pre_validate_schema(cls, v, values, config: Config, field: ModelField):
+        if isinstance(v, str): # and v not in cls.__fields__:
+            v = ObjectImportRef(v)()
+
         if isinstance(v, type):
             return v
-        elif isinstance(v, str):
-            return ImportRef(v)(v)
+        elif isinstance(v, (list, tuple)):
+            alts = v
         elif v is None:
-            for alt in cls.__config__.alternatives.get(field.name, ()):
+            alts = ()
+        else:
+            return v
+
+        for alt in config.get_alternatives(*alts, field.name):
+            if alt != field.name:
                 alt = values.get(alt)
                 if alt is not None:
                     return alt
-        else:
-            return v
+    
+        return v
 
 
 
 
 @export()
-class Config(BaseMetadata['ResourceManager[_T_Resource]']):
+class Config(BaseMetadata[_T_Resource], t.Generic[_T_Resource, _T_Entity]):
 
-    is_abstract = metafield[bool]('abstract', default=False)
+    is_abstract = metafield[bool]('abstract', default=False, inherit=False)
 
-    @metafield[type['ResourceSchemaDefs']](inherit=True)
-    def SchemaDefs(self, value, base=None):
+    SchemaConfig: type[SchemaConfig] = metafield(default=None, inherit=True)
+
+    __allowextra__ = True
+
+    __class_getitem__ = classmethod(GenericAlias)
+
+    @metafield[type[SchemaConfig]](inherit=True)
+    def schema_config_class(self, value, base=None):
         if isinstance(self.target, type):
-            if value is None:
-                return base or ResourceSchemaDefs
-            else:
-                bases = filter(None, (value, base, (None if base is ResourceSchemaDefs else ResourceSchemaDefs)))
-                class SchemaDef(*bases):
-                    ...
+            bases = [*{b:b for b in (value, base, self.SchemaConfig, SchemaConfig) if b}]
+            class SchemaDef(*bases):
+                ...
 
-                return SchemaDef
+            return SchemaDef
         else:        
             return base
 
-    @metafield['ResourceSchemaDefs'](inherit=True)
-    def schemas(self, value, base: type[Schema]=None):
-        value = value and self.SchemaDefs.validate(value)
-        return self.SchemaDefs.construct(**dict(base or (), **dict(value or ())))
+    @metafield[SchemaConfig](inherit=True)
+    def schemas(self, value, base: SchemaConfig = None):
+        rv = self.schema_config_class.validate(value or {})
+        if base:
+            exclude = rv.dict(exclude_defaults=True, exclude_unset=True).keys()
+            base = base.dict(exclude=exclude, exclude_defaults=True, exclude_unset=True)
+            assign(rv, base)
+        return rv
 
     @metafield[type[_T_Resource]](inherit=True)
     def model(self, value, base=None):
@@ -172,48 +219,73 @@ class Config(BaseMetadata['ResourceManager[_T_Resource]']):
 
 
 @export()
-class ResourceManager(t.Generic[_T_Resource]):
+class Resource(t.Generic[_T_Entity]):
     """ResourceManager Object"""
     
     config: Config 
-    schemas: ResourceSchemaDefs = _config_lookup('schemas')
+    schemas: SchemaConfig = _config_lookup('schemas')
+
+    class ResourceConfig:
+        abstract = True
+
+    __class_getitem__ = classmethod(GenericAlias)
 
     def __init_subclass__(cls, *, config=None) -> None:
         conf_cls = get_metadata_class(cls, '__config_class__', base=Config, name='Config')
-        conf_cls(cls, 'config', cls.__dict__.get('Config') if config is None else config)
+        cls.config = conf_cls(cls, 'config', cls.__dict__.get('Config') if config is None else config, allowextra=True)
 
-    def __init__(self, **config: t.Union[ResourceSchemaDefs, dict]) -> None:
-        self._configure(config)
+    def __init__(self, config: ResourceConfig = None, /, **kwds) -> None:
+        self._configure(config, **kwds)
     
-    @abstractmethod
-    def get(self, key: _T_Key, default=...) -> _T_Resource:
-        ...
+    def _configure(self, conf: ResourceConfig = None, /, **kwds):
+        self.config = self.__class__.config.copy(target=self)
+        self.config.update(conf or (), **kwds)
+        return self.config
 
-    @abstractmethod
-    def create(self, obj, /, **kwds) -> _T_Resource:
-        ...
+    def _to_schema(self, typ: type[_T_Schema], val: _T_Schema=None, /, *args, **kwds) -> _T_Schema:
+        if val is None:
+            return typ(*args, **kwds)
+        elif kwds or args:
+            return typ(*args, **dict(val, **kwds))
+        elif not isinstance(val, typ):
+            return typ.validate(val)
+        else:
+            return val
 
-    @abstractmethod
-    def delete(self, obj:t.Union[_T_Resource, _T_Key]) -> bool:
-        ...
+    def _dump_data(self, data, default=None, /, *, to: t.Literal['dict', 'obj']='dict', **schema_kwds):
+        if data is None:
+            return default
+        elif isinstance(data, Schema):
+            if to == 'obj':
+                return data.obj(**schema_kwds)
+            else:
+                return data.dict(**schema_kwds)
+        elif to == 'obj' or isinstance(data, dict):
+            return data
+        else:
+            return dict(data)
 
-    @abstractmethod
-    def update(self, obj:t.Union[_T_Resource, _T_Key], *args, **kwds) -> bool:
-        ...
+    if t.TYPE_CHECKING:    
+        @abstractmethod
+        def get(self, key: _T_Key, default=...) -> _T_Resource:
+            ...
 
-    def _configure(self, conf):
-        base = self.__class__.config
-        return base.__class__(self, 'config', conf, base)
+        @abstractmethod
+        def create(self, obj, /, **kwds) -> _T_Resource:
+            ...
+
+        @abstractmethod
+        def delete(self, obj:t.Union[_T_Resource, _T_Key]) -> bool:
+            ...
+
+        @abstractmethod
+        def update(self, obj:t.Union[_T_Resource, _T_Key], *args, **kwds) -> bool:
+            ...
 
 
-class DbManager(m.Manager, t.Generic[_T_Model]):
-
-    model: type[_T_Model]
-
-    
 
 @export()
-class ModelResourceManager(ResourceManager[_T_Model]):
+class ModelResource(Resource[_T_Model]):
     """ResourceManager Object"""
     
     __slots__ = ()
@@ -223,14 +295,13 @@ class ModelResourceManager(ResourceManager[_T_Model]):
     def get(self, key: _T_Key, default=..., /, **kwds) -> _T_Model:
         q = self.default_q()
         if kwds:
-            q = q & self.schemas.Query(**kwds).Q()
-        
+            q = q & self.schemas.Query(**kwds).obj()
         try:
             return self.get_urn_class()(key).object(q=q)
         except self.Model.DoesNotExist:
-            if False and self.Model.__config__.natural_keys:
+            if not isinstance(key, ModelUrn) and self.Model.__config__.natural_keys:
                 return self._get_by_natural_key(
-                    self.get_db_manager().filter(q), 
+                    self.get_queryset(apply_default_q=False).filter(q), 
                     key, default
                 )
             elif default is ...:
@@ -238,13 +309,7 @@ class ModelResourceManager(ResourceManager[_T_Model]):
             return default
 
     def get_by_natural_key(self, key: _T_Key, default=..., /, **kwds) -> _T_Model:
-        q = self.default_q()
-        if kwds:
-            q = q & self.schemas.Query(**kwds).Q()
-        return self._get_by_natural_key(
-                self.get_db_manager().filter(q),
-                key, default
-            )
+        return self._get_by_natural_key(self.query(**kwds), key, default)
 
     def _get_by_natural_key(self, qs: m.QuerySet[_T_Model], key: _T_Key, default=...) -> _T_Model:
         try:
@@ -282,9 +347,9 @@ class ModelResourceManager(ResourceManager[_T_Model]):
         assign(obj, **self._dump_data(obj, exclude_unset=True)).save()
         return obj
 
-    def query(self, q: QueryLookups=None, ordering=None, /, **kwds) -> m.QuerySet[_T_Model]:
+    def query(self, q: QueryLookupSchema=None, ordering=None, /, **kwds) -> m.QuerySet[_T_Model]:
         q = self._to_schema(self.schemas.Query, q, **kwds)
-        qs = self.get_queryset().filter(q.Q())
+        qs = self.get_queryset().filter(q.obj())
         return qs
 
     def get_queryset(self, *, apply_default_q: bool=True) -> m.QuerySet[_T_Model]:
@@ -301,26 +366,6 @@ class ModelResourceManager(ResourceManager[_T_Model]):
 
     def get_urn_class(self) -> type[ModelUrn]:
         return self.Model.Urn
-
-    def _to_schema(self, typ: type[_T_Schema], val: _T_Schema=None, /, **kwds) -> _T_Schema:
-        if val is None:
-            return typ(**kwds)
-        elif not isinstance(val, typ):
-            raise TypeError(f'expected {typ} but got {type(val)}')
-        elif kwds:
-            return typ(**dict(val, **kwds))
-        else:
-            return val
-
-    def _dump_data(self, data, default=None, /, **schema_kwds):
-        if data is None:
-            return default
-        elif isinstance(data, dict):
-            return data
-        elif isinstance(data, Schema):
-            return data.dict(**schema_kwds)
-        else:
-            return dict(data)
 
     def get_operation_context(self, op: str=None, *, atomic: bool = None):
         if atomic is None:

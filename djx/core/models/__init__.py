@@ -1,4 +1,3 @@
-from . import _patch as __
 
 import typing as t
 from django.apps import apps
@@ -24,7 +23,7 @@ from .urn import *
 
 
 
-def AppModel(app_label, model_name=None, require_ready=True, *, swapped: bool=True):
+def AppModel(app_label, model_name: str=None, require_ready: bool=False, *, swapped: bool=True, cache: bool=True):
     def get_model()-> type[m.Model]:
         rv: type[m.Model] = apps.get_model(app_label, model_name, require_ready)
         if swapped:

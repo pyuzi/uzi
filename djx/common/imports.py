@@ -244,7 +244,15 @@ class ObjectName(ImportName):
     is_module = False
 
     @classmethod
-    def _parse_raw(cls, mod: str, qual: str):
+    def _parse_raw(cls, mod: str, qual: str=None):
+        if qual is None:
+            mod, _, qual = mod.partition(':')
+            if not qual:
+                mod, _, qual = mod.rpartition('.')
+            
+            if not mod:
+                mod = 'builtins'
+
         rv: cls = str.__new__(cls, f'{mod}:{qual}')
         rv._module = (super()._Flavor.module or ModuleName)(mod)
         rv._qualname = qual
@@ -253,7 +261,6 @@ class ObjectName(ImportName):
     # @property
     # def name(self):
     #     return f'{self._module}.{self._qualname}'
-
 
 
 ImportName._Flavor.invalid = InvalidImportName
@@ -275,11 +282,11 @@ class ImportRef(ImportName, t.Generic[IT]):
 
     # __class_getitem__ = classmethod(GenericAlias)
     
-    _module: 'ModulePath'
+    _module: 'ModuleImportRef'
 
     class _Flavor:
-        object: type['ObjectPath'] = None
-        module: type['ModulePath'] = None
+        object: type['ObjectImportRef'] = None
+        module: type['ModuleImportRef'] = None
         invalid: type['InvalidImportRef'] = None
 
     def module(self, default: IT=...) -> ModuleType:
@@ -319,7 +326,7 @@ class InvalidImportRef(InvalidImportName, ImportRef):
 
 
 
-class ModulePath(ModuleName, ImportRef[ModuleType]):
+class ModuleImportRef(ModuleName, ImportRef[ModuleType]):
 
     __slots__ = ()
 
@@ -331,9 +338,7 @@ class ModulePath(ModuleName, ImportRef[ModuleType]):
 
 
 
-
-
-class ObjectPath(ObjectName, ImportRef[IT]):
+class ObjectImportRef(ObjectName, ImportRef[IT]):
 
     __slots__ = ()
 
@@ -350,8 +355,8 @@ class ObjectPath(ObjectName, ImportRef[IT]):
 
 
 
-ImportRef._Flavor.module = ModulePath
-ImportRef._Flavor.object = ObjectPath
+ImportRef._Flavor.module = ModuleImportRef
+ImportRef._Flavor.object = ObjectImportRef
 ImportRef._Flavor.invalid = InvalidImportRef
 
 

@@ -1,25 +1,28 @@
+from collections import ChainMap
+from inspect import signature
 import sys
 from copy import deepcopy
-from functools import wraps
+from functools import cache, wraps
 from itertools import chain
 from types import GenericAlias
 import typing as t
 from collections.abc import (
-    Hashable, Mapping, MutableMapping, MutableSet, Iterable, Set, MutableSequence, 
-    Callable, KeysView, ItemsView, ValuesView, Iterator
+    Hashable, Mapping, MutableMapping, MutableSet, Iterable, Set, Sequence, MutableSequence, 
+    Callable, KeysView, ItemsView, ValuesView, Iterator, Sized, Reversible
 )
 import warnings
 
+from djx.common.utils.saferef import saferef
 
 
 
 
-from .utils import export, class_only_method, cached_class_property
+
+from .utils import export, class_only_method, cached_class_property, assign
 from .abc import FluentMapping, Orderable
 
 _empty = object()
 
-_T_Keyed = t.TypeVar('_T_Keyed', bound=Hashable)
 _TK = t.TypeVar('_TK', bound=Hashable)
 _TV = t.TypeVar('_TV')
 
@@ -39,7 +42,7 @@ def _none_fn(k=None):
 
 _FallbackCallable =  Callable[[_TK], t.Optional[_TV]]
 _FallbackMap = Mapping[_TK, t.Optional[_TV]]
-_FallbackType =  t.Union[_FallbackCallable[_TK, _TV], _FallbackMap[_TK, _TV], _TV] 
+_FallbackType =  t.Union[_FallbackCallable[_TK, _TV], _FallbackMap[_TK, _TV], _TV, None] 
 
 _TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 
@@ -55,6 +58,7 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
 
     _fb: _FallbackType[_TK, _TV]
     _fbfunc: _FallbackCallable[_TK, _TV]
+    _default_fallback: t.ClassVar[_FallbackType[_TK, _TV]] = None
 
     def __init__(self, fallback: _FallbackType[_TK, _TV]=None, *args, **kwds):
         super().__init__(*args, **kwds)
@@ -66,6 +70,9 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
     
     @fallback.setter
     def fallback(self, fb: _FallbackType[_TK, _TV]):
+        if fb is None:
+            fb = self._default_fallback
+
         if fb is None:
             # self._fb, self._fbfunc = None, _none_fn
             self._fb = self._fbfunc = None
@@ -81,11 +88,13 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
 
     @property
     def fallback_func(self):
-        return self._fbfunc or _none_fn
+        if self._fbfunc is None:
+            self._fbfunc = _none_fn
+        return self._fbfunc
 
     def __missing__(self, k: _TK) -> _TV:
         if self._fbfunc is None:
-            return self._fb
+            return self.fallback_func(k)
         else:
             return self._fbfunc(k)
     
@@ -97,34 +106,104 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
 
     __copy__ = copy
 
-    def __deepcopy__(self, memo):
-        # if self._fb is not self._fbfunc and self._fb is not None:
-        #     return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))    
-        # return self.__class__(self._fb, super().__deepcopy__(memo))
-        return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))
+    # def __deepcopy__(self, memo=None):
+    #     # if self._fb is not self._fbfunc and self._fb is not None:
+    #     #     return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))    
+    #     # return self.__class__(self._fb, super().__deepcopy__(memo))
+    #     return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))
 
 
+@cache
+def _has_self_arg(val):
+    sig = signature(val(), follow_wrapped=False)
+    return 'self' in sig.parameters
 
 
-#@export()
-# @deprecated(fallbackdict)
-# class fluentdict(fallbackdict[TK, TV]):
-    # """A dict that retruns a fallback value when a missing key is retrived.
+@export()
+class fallback_chain_dict(fallbackdict[_TK, _TV]):
+
+    _default_fallback = fallbackdict
     
-    # Unlike defaultdict, the fallback value will not be set.
-    # """
-    # __slots__ = ()
+    @property
+    def fallback(self) -> _FallbackType[_TK, _TV]:
+        self._fbfunc is None and self.fallback_func
+        return self._fb
 
-    # def __init__(self, *args: t.Union[Iterable[tuple[TK, TV]], Mapping[TK, TV]], **kwds: TV):
-    #     super().__init__(None, *args, **kwds)
+    @fallback.setter
+    def fallback(self, fb: _FallbackType[_TK, _TV]):
+        if fb is None:
+            fb = self._default_fallback
 
-    # def __reduce__(self):
-    #     return self.__class__, (self,)
+        if isinstance(fb, Mapping):
+            self._fb = fb
+            self._fbfunc = fb.__getitem__
+        elif callable(fb):
+            self._fb = fb
+            self._fbfunc = None
+        else:
+            raise ValueError('fallback must be provided.')
 
-    # def copy(self):
-    #     return self.__class__(self)
+    @property
+    def fallback_func(self):
+        if self._fbfunc is None:
+            fb = self._fb
+            if isinstance(fb, type):
+                self._fb = fb()
+                self._fbfunc = fb.__getitem__
+            elif fb is None:
+                self._fbfunc = _none_fn
+            else:
+                self._fb = fb(self)
+                self._fbfunc = self._fb.__getitem__
 
-    # __copy__ = copy
+        return self._fbfunc
+
+
+    def get(self, key, default=None) -> t.Union[_TV, None]:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, o) -> bool:
+        return super().__contains__(o) or self.fallback.__contains__(o)
+
+    @property
+    def parent(self):                          # like Django's Context.pop()
+        'New ChainMap from maps[1:].'
+        return self.__class__(*self.maps[1:])
+
+    def __iter__(self):
+        yield from dict.fromkeys(
+            (k for s in (self.fallback.__iter__(), super().__iter__()) for k in s)
+        ).__iter__()
+
+    def __len__(self):
+        return super().__len__() + len(self.fallback.keys() - super().keys())
+
+    def __bool__(self) -> bool:
+        return super().__len__() > 0 or bool(self.fallback)
+        
+    def __eq__(self, o):
+        return o == dict(self)
+    
+    def __ne__(self, o):
+        return not self.__eq__(o)
+
+    def extend(self, *args, **kwds):                # like Django's Context.push()
+        '''New ChainMap with a new map followed by all previous maps.
+        If no map is provided, an empty dict is used.
+        '''
+        return self.__class__(self, *args, **kwds)
+
+    def keys(self):
+        return KeysView[_TK](self)
+
+    def items(self):
+        return ItemsView[tuple[_TK, _TV]](self)
+
+    def values(self):
+        return ValuesView[_TV](self)
 
 
 
@@ -133,98 +212,420 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
 
 
 
-class _dictset(dict[_T_Keyed, _T_Keyed], t.Generic[_T_Keyed]):
 
+
+
+
+class SizedReversible(Sized, Reversible):
     __slots__ = ()
 
-    def __init__(self, *iterables: Iterable[_T_Keyed]):
-        super().__init__((i, i) for it in iterables for i in it)
+
+
+
+# @t.overload
+# def enumerate_reversed(obj: SizedReversible[_TV], start=None, stop=0, step=-1) -> tuple[int, _TV]:
+#     ...
+
+# def enumerate_reversed(obj: SizedReversible[_TV], *args, **kwds) -> tuple[int, _TV]:
     
+#     assert isinstance(obj, SizedReversible), 'must be Sized and Reversible'
+
+
+#     s = slice(*args, **kwds)
+#     start, stop, step = s.start or len(obj), s.stop or 0, s.step or -1
+
+#     it = reversed(obj) 
+#     _1 = 1 if step > 0 else -1
+#     if step > 0:
+#         i = 
+#     i = nexti = min(start, len(obj)-1) 
+
+#     for v in it:
+#         if i == nexti:
+#             yield i, v
+#             nexti += step
+#             if nexti < stop:
+#                 break
+
+#         i += _1
+
+
+
+
+
+@Sequence.register
+class _orderedsetabc:
+
+    __slots__ = '__data__', '__set__'
+
+    __data__: dict[_TK, _TK]
+    __set__: Set[_TK]
+
+    __class_getitem__ = classmethod(GenericAlias)
+
+    # def __class_getitem__(cls, params):
+    #     return GenericAlias(cls, tuple(params) if isinstance(params, (tuple, list)) else (params,))
+
+    def __init__(self, iterable: Iterable[_TK]=None):
+        self.__data__ = self._init_data_set_(iterable)
+
+    def _init_data_set_(self, iterable: Iterable[_TK]):
+        if isinstance(iterable, _orderedsetabc):
+            return iterable.__data__.copy()
+        elif iterable is None:
+            return {}
+        else:
+            return dict.fromkeys(iterable)
+
+    def __setstate__(self, state):
+        self.__data__ = state
+        
+    def __getstate__(self):
+        return self.__data__
+        
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+        if name == '__data__':
+            super().__setattr__('__set__', self.__data__.keys())
+    
+    def __bool__(self) -> bool:
+        return bool(self.__data__)
+
+    def __len__(self) -> int:
+        return self.__data__.__len__()
+
+    def __iter__(self):
+        return self.__data__.__iter__()
+
+    def __contains__(self, o) -> int:
+        return self.__data__.__contains__(o)
+
+    def copy(self):
+        return self.__class__(self)
+    
+    __copy__ = copy
+
+    def __deepcopy__(self, memo=None):
+        return self.__class__(deepcopy(self, memo))
+
+    def __and__(self, other):
+        if not isinstance(other, Iterable):
+            return NotImplemented
+        return self.__class__(value for value in other if value in self)
+
+    __rand__ = __and__
+
     def __or__(self, other):
         if not isinstance(other, Iterable):
             return NotImplemented
-        return self._from_iterable(e for s in (self, other) for e in s)
 
-    def __ror__(self, other):
-        if not isinstance(other, Iterable):
-            return NotImplemented
-        return self._from_iterable(e for s in (other, self) for e in s)
+        return self.__class__(e for s in (self, other) for e in s)
+
+    __ror__ = __or__
+
+    def __reversed__(self):
+        return self.__data__.__reversed__()
 
     def __sub__(self, other):
         if not isinstance(other, (Set, Mapping)):
             if not isinstance(other, Iterable):
                 return NotImplemented
-            other = self._from_iterable(other)
-        return self._from_iterable(value for value in self if value not in other)
+            other = self.__class__(other)
+        return self.__class__(value for value in self if value not in other)
 
     def __rsub__(self, other):
         if not isinstance(other, Iterable):
             return NotImplemented
-        return self._from_iterable(value for value in other if value not in self)
+        return self.__class__(value for value in other if value not in self)
 
     def __xor__(self, other):
         if not isinstance(other, Set):
             if not isinstance(other, Iterable):
                 return NotImplemented
-            other = self._from_iterable(other)
+            other = self.__class__(other)
         return (self - other) | (other - self)
 
     def __rxor__(self, other):
         if not isinstance(other, Set):
             if not isinstance(other, Iterable):
                 return NotImplemented
-            other = self._from_iterable(other)
+            other = self.__class__(other)
         return (other - self) | (self - other)
 
+    def __le__(self, other):
+        return self.__set__ <= other 
+
+    def __lt__(self, other):
+        if not isinstance(other, Set):
+            return NotImplemented
+        return len(self) < len(other) and self.__le__(other)
+
+    def __gt__(self, other):
+        if not isinstance(other, Set):
+            return NotImplemented
+        return len(self) > len(other) and self.__ge__(other)
+
+    def __ge__(self, other):
+        return self.__set__.__ge__(other)
+
+    def __eq__(self, other):
+        return self.__set__.__eq__(other)
+
+    def __str__(self):
+        return  f'{{{", ".join(repr(k) for k in self.__set__)}}}'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({", ".join(repr(k) for k in self.__set__)})'
+
+    t.overload
+    def __getitem__(self, key: int) -> _TK:
+        ...
+    t.overload
+    def __getitem__(self: _TV, key: slice) -> _TV:
+        ...
+    def __getitem__(self: _TV, key: t.Union[int, slice]) -> t.Union[_TK, _TV]:
+        if isinstance(key, int):
+            try:
+                return next(self._islice_(key, key+1))
+            except StopIteration:
+                raise IndexError(f'index {key} out of range')
+        elif isinstance(key, slice):
+            return self.__class__(self._islice_(key.start, key.stop, key.step))
+        raise ValueError(key)        
+
+    at = __getitem__
+
+    def index(self, value, start=0, stop=None):
+        '''S.index(value, [start, [stop]]) -> integer -- return first index of value.
+           Raises ValueError if the value is not present.
+
+           Supporting start and stop arguments is optional, but
+           recommended.
+        '''
+        for i, v in self._islice_(start, stop, enumerate=True):
+            if v is value or v == value:
+                return i
+        
+        raise ValueError(value)
+
+    @t.overload
+    def _islice_(self, start=0, stop=None, step=None, *, reverse: t.Union[float, bool]=0.501) -> _TK:
+        ...
+    @t.overload
+    def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=False, reverse: t.Union[float, bool]=0.501) -> _TK:
+        ...
+    @t.overload
+    def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=True, reverse: t.Union[float, bool]=0.501) -> tuple[int, _TK]:
+        ...
+    def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=False, reverse: t.Union[float, bool]=None):
+        size = len(self)
+
+        if start is not None and start < 0:
+            start = max(size + start, 0)
+        
+        if stop is None:
+            stop = size
+        elif stop < 0:
+            stop += size
+
+        step = step or 1
+        reverse = -1 if reverse is True else 0 if reverse is False \
+            else reverse if reverse is not None \
+                else -1 if step < 0 else 0.50001 
+
+        step = abs(step)
+        _1 = 1 if step > 0 else -1
+        n = start or 0
+        x = 0
+
+        if reverse and start > size * reverse:
+            n, stop = 1 + size - stop, size - (n or 1)
+            for val in reversed(self):
+                x += 1
+                if x == n:
+                    yield (size - x, val) if enumerate is True else val
+                    n += step
+                    if n > stop:
+                        break
+            
+        else:
+            for val in self:
+                if x == n:
+                    yield (x, val) if enumerate is True else val
+                    n += step
+                    if n >= stop:
+                        break
+                x += 1
+        
+    def count(self, value):
+        'S.count(value) -> integer -- return number of occurrences of value'
+        return 1 if value in self else 0
+
+    @classmethod
+    def _from_iterable(cls, it):
+        '''Construct an instance of the class from any iterable input.
+
+        Must override this method if the class constructor signature
+        does not accept an iterable for an input.
+        '''
+        return cls(it)
+
+    def isdisjoint(self, other):
+        'Return True if two sets have a null intersection.'
+        return self.__set__.isdisjoint(other)
+
+    def clear(self):
+        """This is slow (creates N new iterators!) but effective."""
+        self.__data__.clear()
+
+    def _hash(self):
+        """Compute the hash value of a set.
+
+        Note that we don't define __hash__: not all sets are hashable.
+        But if you define a hashable set type, its __hash__ should
+        call this function.
+
+        This must be compatible __eq__.
+
+        All sets ought to compare equal if they contain the same
+        elements, regardless of how they are implemented, and
+        regardless of the order of the elements; so there's not much
+        freedom for __eq__ or __hash__.  We match the algorithm used
+        by the built-in frozenset type.
+        """
+        MAX = sys.maxsize
+        MASK = 2 * MAX + 1
+        n = len(self)
+        h = 1927868237 * (n + 1)
+        h &= MASK
+        for x in self:
+            hx = hash(x)
+            h ^= (hx ^ (hx << 16) ^ 89869747)  * 3644798167
+            h &= MASK
+        h = h * 69069 + 907133923
+        h &= MASK
+        if h > MAX:
+            h -= MASK + 1
+        if h == -1:
+            h = 590923713
+        return h
+
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def __modify_schema__(cls, field_schema: dict[str, t.Any]) -> None:
+        assign(field_schema, type='array')
+
+    @classmethod
+    def validate(cls, v):
+        if v is None:
+            return None
+        elif type(v) is cls:
+            return v.copy()
+        elif not isinstance(v, Iterable) or isinstance(v, str):
+            return cls((v,))
+        else:
+            return cls(v)
     
     
 @export()
-class FrozenKeyedSet(_dictset[_T_Keyed], Set[_T_Keyed], t.Generic[_T_Keyed]):
+@Set.register
+class frozenorderedset(_orderedsetabc[_TK]):
     
     __slots__ = ()
     
-    def _attr_error(name=''):
-        def err(self):
-            raise AttributeError(f'{name} on immutable {self.__class__}')
-        err.__name__ = name or 'err'
-        return err
+    # def _attr_error(name=''):
+        # def err(self):
+            # raise AttributeError(f'{name} on immutable {self.__class__}')
+        # err.__name__ = name or 'err'
+        # return err
 
-    update = _attr_error('update')
-    pop = _attr_error('pop')
-    add = _attr_error('add')
-    discard = _attr_error('discard')
-    del _attr_error
+    # update = _attr_error('update')
+    # pop = _attr_error('pop')
+    # add = _attr_error('add')
+    # discard = _attr_error('discard')
+    # del _attr_error
+
+    __hash__ = _orderedsetabc._hash
+
 
 
 @export()
-class KeyedSet(_dictset[_T_Keyed], MutableSet[_T_Keyed], t.Generic[_T_Keyed]):
+@MutableSet.register
+class orderedset(_orderedsetabc[_TK], t.Generic[_TK]):
     
     __slots__ = ()
 
     def add(self, value):
         """Add an element."""
-        self[value] = value
+        self.__data__[value] = value
 
     def discard(self, value):
         """Remove an element.  Do not raise an exception if absent."""
         try:
-            del self[value]
+            self.remove(value)
         except KeyError:
             pass
 
-    def update(self, *iterables: Iterable[_T_Keyed]):
+    def remove(self, value):
+        """Remove an element. If not a member, raise a KeyError."""
+        del self.__data__[value]
+
+    def update(self, *iterables: Iterable[_TK]):
         """Add an element."""
-        super().update((i, i) for it in iterables for i in it)
+        for it in iterables:
+            self.__data__.update((i, None) for i in it)
     
-    def pop(self, val: _T_Keyed=_empty, *default):
+    def pop(self, val: _TK = _empty, default=_empty):
         """Return the popped value.  Raise KeyError if empty."""
         if val is _empty:
-            return self.popitem()[0]
+            if self.__data__:
+                return self.__data__.popitem()[0]
+            elif default is _empty:
+                raise ValueError
+            else:
+                return default
         else:
-            return self.pop(val, *default)
-     
+            try:
+                del self.__data__[val]
+            except KeyError:
+                if default is _empty:
+                    raise ValueError(val)
+                return default
+            else:
+                return val
 
+    def __ior__(self, it):
+        self.update(it)
+        return self
 
+    def __iand__(self, it):
+        for value in (self - it):
+            self.discard(value)
+        return self
+
+    def __ixor__(self, it):
+        if it is self:
+            self.clear()
+        else:
+            if not isinstance(it, Set):
+                it = self._from_iterable(it)
+            for value in it:
+                if value in self:
+                    self.discard(value)
+                else:
+                    self.add(value)
+        return self
+
+    def __isub__(self, it):
+        if it is self:
+            self.clear()
+        else:
+            for value in it:
+                self.discard(value)
+        return self
 
 
 

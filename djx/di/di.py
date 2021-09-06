@@ -68,8 +68,8 @@ injector: Injector = Proxy(current, callable=False)
 
 
 @export()
-def proxy(abstract: T_Injectable, *, callable: bool=None) -> T_Injectable: # -> Proxy[T_Injected]:
-    def resolve():
+def proxy(abstract: Injectable[T_Injected], *, callable: bool=None) -> T_Injected: # -> Proxy[T_Injected]:
+    def resolve() -> T_Injected:
         return current()[abstract]
     
     return Proxy(resolve, callable=callable)
@@ -230,6 +230,7 @@ class InjectedProperty(t.Generic[T_Injected]):
         self.cache = bool(cache)
         self._dep = Dependency(dep, *(scope and (str(scope),) or ()))
         self.__name__ = name
+        self.finj = current
         self._register()
 
     @property
@@ -255,21 +256,23 @@ class InjectedProperty(t.Generic[T_Injected]):
         dep = self._dep
         if dep.depends is not None:
             is_provided(dep) or alias(dep, dep.depends, scope=dep.scope)
-            if dep.scope in {ANY_SCOPE, None}:
-                self.finj = current
-            else:
-                self.finj = partial(at, dep.scope)
+            # if dep.scope in {ANY_SCOPE, None}:
+            #     self.finj = current
+            # else:
+            #     self.finj = partial(at, dep.scope)
 
     def __get__(self, obj, typ=None) -> T_Injected:
         if obj is None:
             return self
         try:
-            if self.cache:
-                if (val := obj.__dict__.get(self.__name__, ...)) is not ...:
-                    return val
-                val = self.finj().make(self._dep)
-            else:
+            if not self.cache:
                 return self.finj().make(self._dep)
+
+            try:
+                return obj.__dict__[self.__name__]
+            except KeyError:
+                val = self.finj().make(self._dep)
+
         except InjectorKeyError as e:
             if self._default is ...:
                 raise AttributeError(self) from e
@@ -285,6 +288,8 @@ class InjectedProperty(t.Generic[T_Injected]):
 
 
 
+injected_property = export(InjectedProperty, name='injected_property')
+
 
 
 
@@ -297,6 +302,9 @@ class InjectedClassVar(InjectedProperty[T_Injected]):
 
 if t.TYPE_CHECKING:
     InjectedClassVar = t.ClassVar[T_Injected]
+
+
+injected_class_property = export(InjectedClassVar, name='injected_class_property')
 
 
 

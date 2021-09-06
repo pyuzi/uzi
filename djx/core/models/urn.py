@@ -133,6 +133,7 @@ class ModelUrnObjectCache(TTLCache):
 
 
 
+
 @export()
 class ModelUrn(str, t.Generic[_T_Model]):
     """Globally unique id for db models across the database.

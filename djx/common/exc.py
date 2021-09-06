@@ -8,6 +8,16 @@ from djx.common.utils import export, class_property, cached_class_property, text
 
 from cachetools.keys import hashkey
 
+try:
+    from django.core.exceptions import ImproperlyConfigured as _BaseImproperlyConfigured
+except ImportError:
+    _BaseImproperlyConfigured = Exception
+
+
+class ImproperlyConfigured(_BaseImproperlyConfigured):
+    """Your app is somehow improperly configured"""
+    ...
+
 
 class ErrorFormatter(Formatter):
 

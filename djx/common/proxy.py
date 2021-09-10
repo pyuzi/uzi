@@ -53,13 +53,13 @@ class _ProxyLookup(t.Generic[_TP]):
         if hasattr(f, "__get__"):
             # A Python function, can be turned into a bound method.
 
-            def bind_f(instance, obj):
+            def bind_f(obj):
                 return f.__get__(obj, type(obj))
 
         elif f is not None:
             # A C function, use partial to bind the first argument.
 
-            def bind_f(instance, obj):
+            def bind_f(obj):
                 return partial(f, obj)
 
         else:
@@ -79,10 +79,12 @@ class _ProxyLookup(t.Generic[_TP]):
                 return self.class_value
 
             return self
-
+    
         obj: _TP = instance.__proxy_target__
+        # if obj is NotImplemented:
+        #     if self.fallback:
         if self.bind_f is not None:
-            return self.bind_f(instance, obj)
+            return self.bind_f(obj)
 
         return getattr(obj, self.name)
 
@@ -129,6 +131,16 @@ def _l_to_r_op(op):
 
 class ProxyType(type):
     pass
+
+
+_proxy_attrs = frozenset((
+    '__proxy_target_func__',  
+    '__proxy_target_val__', 
+    '__proxy_target__',
+    '__proxy_wrapped__',
+    '__call__'
+))
+
 
 
 class Proxy(t.Generic[_TP], metaclass=ProxyType):
@@ -209,8 +221,13 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
     def __repr__(self):
         return f'{type(self).__name__}({self.__proxy_target__!r})'
 
-    def __repr__(self):
-        return f'{type(self).__name__}({self.__proxy_target__!r})'
+    def __getattribute__(self, name):
+        if name in _proxy_attrs:
+            return super().__getattribute__(name)
+        return getattr(super().__getattribute__('__proxy_target__'), name)
+
+        # raise AttributeError(name)
+
 
     # __repr__ = _ProxyLookup(
     #     repr, fallback=lambda self: f"<{type(self).__name__} unbound>"
@@ -226,7 +243,7 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
     __ge__ = _ProxyLookup(operator.ge)
     __hash__ = _ProxyLookup(hash)  # type: ignore
     __bool__ = _ProxyLookup(bool, fallback=lambda self: False)
-    __getattr__ = _ProxyLookup(getattr)
+    # __getattr__ = _ProxyLookup(getattr)
     # __getattribute__ triggered through __getattr__
     __setattr__ = _ProxyLookup(setattr)
     __delattr__ = _ProxyLookup(delattr)

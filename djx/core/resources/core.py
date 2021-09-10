@@ -48,7 +48,7 @@ _T_Key = t.TypeVar('_T_Key', str, int, t.SupportsInt, Hashable)
 
 
 @export
-class Resource(Hashable):
+class ResourceType(Hashable):
 
     @property
     @abstractmethod
@@ -63,7 +63,7 @@ class Resource(Hashable):
         return NotImplemented
 
 
-Resource.register(Model)
+ResourceType.register(Model)
 
 
 

@@ -8,6 +8,7 @@ from enum import (
     Flag as BaseFlag,
 )
 from itertools import chain
+from types import MappingProxyType
 import warnings
 import typing as t
 
@@ -70,7 +71,6 @@ class _MemberData:
 
 
 class EnumMeta(BaseEnumMeta):
-
 
     def __new__(mcs, name, bases, attrs, fields=None, **kwds):
 
@@ -173,11 +173,20 @@ class EnumMeta(BaseEnumMeta):
                 frozen=True
             )
 
-    def choices(cls):
+    def _choices_(cls):
         empty = ((None, cls.__empty__),) if hasattr(cls, '__empty__') else ()
         return empty + tuple((m.value, m.label) for m in cls)
 
+    choices = _choices_
 
+    @property
+    def __values__(cls):
+        """
+        Returns a mapping of values value->member.
+
+        Note that this is a read-only view of the internal mapping.
+        """
+        return MappingProxyType(cls._value2member_map_)
 
 
 

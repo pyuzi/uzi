@@ -334,7 +334,7 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
             getattr(self, f, None)
 
         if self.__allowextra__:
-            skip = set(dir(self))
+            skip = set(dir(self)) | self.__fields__
             for k in self.__raw__.keys():
                 if k not in skip:
                     if isinstance(k, str) and not k.startswith('_'):

@@ -241,11 +241,10 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.content.__getitem__(key)
         if res is not None:
-            assert not (args or kwds) or not getattr(res, 'cache', False), (
-                    f'{res} takes no arguments. Some given in {key}'
-                )
-
             if res.value is not Void:
+                assert not(args or kwds), (
+                        f'{res} takes no arguments. Some where given for {key}'
+                    )
                 return res.value
             else:
                 return res.__call__(*args, **kwds)

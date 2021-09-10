@@ -211,9 +211,6 @@ class ModelConfig(BaseMetadata[_T_Model]):
         self.get_query_annotations.cache_clear()
         return True
 
-    def __ready__(self):
-        self._setup_timestamps()
-    
     def make_created_at_field(self):
         return MomentField(auto_now_add=True, editable=False)
 
@@ -252,12 +249,16 @@ class ModelConfig(BaseMetadata[_T_Model]):
                 )
 
     def _setup_timestamps(self):
-        fields = set(self.target._meta.fields or ())
-        for ts, name  in self.timestamp_fields.items():
-            if name and name not in fields:
-                field = getattr(self, f'make_{ts}_field')()
-                field and field.contribute_to_class(self.target, name)
+        if not self.target._meta.proxy:
+            bases = [self.target._meta, *(b._meta for b in self.target.__bases__ if issubclass(b, m.Model))]
+            fields = set(f.name for b in bases for f in b.local_fields)
+            for ts, name  in self.timestamp_fields.items():
+                if name and name not in fields:
+                    field = getattr(self, f'make_{ts}_field')()
+                    field and field.contribute_to_class(self.target, name)
 
+    def _class_prepared(self):
+        self._setup_timestamps()
 
 
 
@@ -267,6 +268,11 @@ def _natural_key_q(self: ModelConfig, val, lookup='exact'):
     return reduce(or_, seq, m.Q())
 
 
+
+@m.signals.class_prepared.connect
+def _on_model_prepered(sender, **kwds):
+    if issubclass(sender, Model):
+        sender.__config__._class_prepared()
 
 @export()
 class Manager(m.Manager, t.Generic[_T_Model]):

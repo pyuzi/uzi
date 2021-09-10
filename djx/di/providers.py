@@ -150,6 +150,10 @@ class ConcreteResolver(abc.Resolver[T], Generic[T, T_Injectable]):
     def clone(self, *args, **kwds):
         return super().clone(self.concrete, *args, **kwds)
 
+    def __repr__(self) -> str: 
+        bound, value = self.bound, self.value
+        return f'{self.__class__.__name__}({self.concrete!r}, {bound=!s}, {value=!r})'
+    
 
 
 

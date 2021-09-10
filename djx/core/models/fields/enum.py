@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def _enum_choices(enum):
     if isinstance(enum, EnumMeta):
-        return enum.choices()
+        return enum._choices_()
     elif issubclass(enum, BaseEnum):
         return tuple((m.value, m.name) for m in enum)
     else: 

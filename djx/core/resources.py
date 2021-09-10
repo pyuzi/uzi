@@ -57,7 +57,7 @@ class ResourceType(Hashable):
 
     @classmethod
     def __subclasshook__(cls, C):
-        if cls is Resource:
+        if cls is ResourceType:
             return hasattr(C, '__hash__') and hasattr(C, '__eq__') and hasattr(C, 'Urn') and hasattr(C, 'urn')
 
         return NotImplemented
@@ -70,7 +70,7 @@ ResourceType.register(Model)
 _config_lookup = partial(lookup_property, source='config', read_only=True)
 
 
-
+@export()
 class SchemaConfig(OrmSchema, t.Generic[_T_Resource]):
 
     class Config(BaseConfig):

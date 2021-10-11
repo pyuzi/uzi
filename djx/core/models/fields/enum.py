@@ -15,7 +15,7 @@ def _enum_choices(enum):
     if isinstance(enum, EnumMeta):
         return enum._choices_()
     elif issubclass(enum, BaseEnum):
-        return tuple((m.value, m.name) for m in enum)
+        return tuple((m._value_, m.name) for m in enum)
     else: 
         return None
 
@@ -84,40 +84,28 @@ class IntEnumField(EnumFieldMixin, models.IntegerField):
 @export()
 class IntFlagField(IntEnumField):
     """IntFlagField object."""
-
-    # def get_lookup(self, lookup_name):
-    #     if lookup_name == 'exact':
-    #         lookup_name = 'band'
-    #     elif lookup_name == 'eq':
-    #         lookup_name = 'exact'
-
-    #     return super().get_lookup(lookup_name)
-
-
-@export()
-class EnumFlagField(IntFlagField):
-
     _base_enum_type = BaseIntFlag
 
 
 
 
-@export()
-class IntFlagField(models.IntegerField):
-    """IntEnumField object."""
 
-    # def get_lookup(self, lookup_name):
-    #     if lookup_name == 'exact':
-    #         lookup_name = 'band'
-    #     elif lookup_name == 'eq':
-    #         lookup_name = 'exact'
+# @export()
+# class IntFlagField(models.IntegerField):
+#     """IntEnumField object."""
 
-    #     return super().get_lookup(lookup_name)
+#     # def get_lookup(self, lookup_name):
+#     #     if lookup_name == 'exact':
+#     #         lookup_name = 'band'
+#     #     elif lookup_name == 'eq':
+#     #         lookup_name = 'exact'
+
+#     #     return super().get_lookup(lookup_name)
 
 
-@export()
-class EnumFlagField(EnumFieldMixin, IntFlagField):
+# @export()
+# class EnumFlagField(EnumFieldMixin, IntFlagField):
 
-    _base_enum_type = BaseIntFlag
+#     _base_enum_type = BaseIntFlag
 
 

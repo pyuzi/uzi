@@ -1,6 +1,6 @@
 import pytest
 
-from ..utils.saferef import saferef, strong_ref, weakref, ReferenceType
+from ..saferef import saferef, StrongRef, weakref, ReferenceType
 
 
 
@@ -25,12 +25,12 @@ class RefTests:
         assert isinstance(r1, ReferenceType)
         assert t1 is r1()
         assert r1 is saferef(t1)
-        assert r1 == strong_ref(t1)
+        assert r1 == StrongRef(t1)
 
         t2 = dict()
         r2 = saferef(t2)
 
-        assert isinstance(r2, strong_ref)
+        assert isinstance(r2, StrongRef)
         assert isinstance(r2, ReferenceType)
         assert t2 is r2()
         assert r2 == saferef(t2)

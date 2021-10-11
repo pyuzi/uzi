@@ -1,32 +1,31 @@
-from collections.abc import Mapping, Callable, Iterable
-from collections import ChainMap
+from collections.abc import Callable
+from functools import cache
 from itertools import chain
-from operator import or_
 import typing as t
 
 
-from functools import cache, cached_property, partial, reduce
+from django.apps import apps
 from django.db import models as m
-from django.core.exceptions import FieldDoesNotExist
-from django.contrib.postgres.fields import ArrayField
 
-from django.db.models.functions import Now
-from django.db.models.query import Prefetch
+from mptt.models import MPTTModel, MPTTModelBase, TreeManager
 
-from djx.common.collections import fallbackdict
-from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
-from djx.common.moment import Moment, moment
+from django.db.models.base import ModelBase, ModelState, DEFERRED
+from djx.common.collections import orderedset
+
+from djx.common.metadata import get_metadata_class
+from djx.common.moment import Moment
+from djx.common.proxy import proxy
 
 
 from djx.common.utils import (
-    export, class_property, class_only_method, cached_class_property
+    export, class_property, cached_class_property
 )
-from djx.common.utils.data import assign
-from djx.core.models.moment import MomentField
 
 from .urn import ModelUrn
-from .alias import aliased
 
+
+from .config import ModelConfig
+from . import AppModel, aliased
 
 
 _T_Model = t.TypeVar('_T_Model', bound='Model', covariant=True)
@@ -36,250 +35,25 @@ _T_Config = t.TypeVar('_T_Config', bound='ModelConfig', covariant=True)
 from . import _patch as __
 
 
-@export()
-class ModelConfig(BaseMetadata[_T_Model]):
 
-    @property
-    def modelmeta(self):
-        return self.target._meta
-
-    @metafield[bool](inherit=True)
-    def timestamps(self, value, base=None) -> bool:
-        return bool(base) if value is None else bool(value)
-
-    @metafield[bool](inherit=True)
-    def soft_deletes(self, value, base=None) -> bool:
-        return bool(base) if value is None else bool(value)
+if t.TYPE_CHECKING:
     
-    @metafield[dict[str,str]](inherit=True)
-    def timestamp_fields(self, value, base=None):
-        base = fallbackdict(None, base or ())
-        rv = dict(base,
-            created_at=base['created_at'] or self.timestamps, 
-            updated_at=base['updated_at'] or self.timestamps, 
-            deleted_at=base['deleted_at'] or self.soft_deletes,
-            is_deleted=base['is_deleted'] or bool(base['deleted_at']) or self.soft_deletes,
-            will_delete=base['will_delete'] or bool(base['deleted_at']) or self.soft_deletes,
-        )
+    class ModelState(ModelState):
+        orig: dict[str, t.Any]
 
-        value and rv.update(value)
-        return { k: k if v is True else v for k,v in rv.items() }
+    @export()
+    class QuerySet(m.QuerySet[_T_Model], t.Generic[_T_Model]):
 
-    @metafield[dict](inherit=True)
-    def select_related(self, value, base=None):
-        if value:
-            if isinstance(value, str):
-                value = { value: value }
-            elif not isinstance(value, Mapping):
-                value = map(lambda v: (v,v), value)
-        
-        return assign(dict(), base, value)
+        model: type[_T_Model]
 
-    @metafield[dict](inherit=True)
-    def prefetch_related(self, value, base=None):
-        if value:
-            if isinstance(value, str):
-                value = { value: value }
-            elif not isinstance(value, Mapping):
-                value = map(lambda v: (v,v), value)
-        
-        return assign(dict(), base, value)
-
-    @cached_property[dict]
-    def alias_query_vars(self) -> dict:
-        
-        val = dict()
-
-        for i, b in enumerate(reversed(self.target.mro())):
-            if issubclass(b, m.Model):
-                for k, v in b.__dict__.items():
-                    if isinstance(v, aliased):
-                        val.setdefault(k, (i, v._order))
-
-        return val
+        def get(self, *args, **kwds) -> _T_Model:
+            ...
     
-    @metafield[tuple[str]](inherit=True)
-    def natural_keys(self, value, base=None):
-        value = value or base
-        if value is None:
-            value = ()
-        elif isinstance(value, str):
-            value = value,
-        else:
-            value = tuple(value)
-        return value
+    @export()
+    class Manager(m.Manager[_T_Model], t.Generic[_T_Model]):
+
+        model: type[_T_Model]
     
-    @metafield[Callable[[t.Any], m.Q]](inherit=True)
-    def natural_key_lookup(self, value, base=None):
-        fn = value or base
-        assert fn is None or callable(fn)
-        
-        if fn is None or (isinstance(fn, partial) and fn.func is _natural_key_q):
-            fn = partial(_natural_key_q, self)
-        return fn
-
-    # @metafield[Callable[[t.Any], str]]('which_natural_key_fields', inherit=True)
-    # def _which_natural_key_fields(self, value, base=None):
-    #     return value or base
-
-    def which_natural_key_fields(self, value, *, strict: bool=None):
-        return self.which_valid_fields(value, self.natural_keys or (), strict=strict)
-
-    @cache
-    def has_field(self, name):
-        return self.get_field(name, default=None) is not None
-
-    def get_field(self, name, *, default=...):
-        try:
-            return self.modelmeta.get_field(name)
-        except FieldDoesNotExist:
-            if default is ...:
-                raise
-            return default
-
-    def which_valid_fields(self, value, fields: Iterable[str]=None, *, strict: bool=None):
-        found = bool(strict)
-        if fields is None:
-            fields = self.target._meta.fields
-            found = True if strict is None else found
-
-        for n in fields:
-            f: m.Field = self.target._meta.get_field(n)
-            try:
-                f.run_validators(f.to_python(value))
-            except Exception as e:
-                continue
-            else:
-                found = True
-                yield n
-
-        if not found:
-            yield from fields
-
-    @cache
-    def get_alias_fields(self) -> dict[str, 'aliased']:
-        attrs = map(
-            (lambda x: (isinstance(v := getattr(self.target, x, ...), aliased)) and v or None),
-            self.alias_query_vars
-        )
-
-        return { 
-            a.attrname : a
-            for a in sorted(filter(None, attrs), key=lambda x: self.alias_query_vars[x.attrname])
-        }
-    
-    @cache
-    def get_query_aliases(self) -> dict[str, t.Any]:
-        return { 
-            a.name : a.expr(self.target)
-            for a in self.get_alias_fields().values()
-        }
-    
-    @cache
-    def get_query_annotations(self) -> dict[str, t.Any]:
-        return { 
-            a.name : m.F(a.name)
-            for a in self.get_alias_fields().values() if a.annotate
-        }
-
-    def _initialize_queryset(self, qs: m.QuerySet, manager):
-
-        if rel := self.select_related:
-            qs = qs.select_related(*rel.values())
-            
-        if rel := self.prefetch_related:
-            qs = qs.prefetch_related(*rel.values())
-        
-        if aliases := self.get_query_aliases():
-            qs = qs.alias(**aliases)
-            if annot := self.get_query_annotations():
-                qs = qs.annotate(**annot)
-
-        return qs
-        
-    # def get_aliased_query_var(self, name):
-    #     return
-        
-    def add_aliased_attr(self, aka: 'aliased'):
-
-        if aka.name in self.alias_query_vars:
-            return
-
-        del self.alias_query_vars
-        self.get_alias_fields.cache_clear()
-        self.get_query_aliases.cache_clear()
-        self.get_query_annotations.cache_clear()
-        return True
-
-    def make_created_at_field(self):
-        return MomentField(auto_now_add=True, editable=False)
-
-    def make_updated_at_field(self):
-        return MomentField(auto_now=True, editable=False)
-
-    def make_deleted_at_field(self):
-        return MomentField(null=True, default=None, db_index=True, editable=False)
-
-    def make_is_deleted_field(self):
-        look = self.timestamp_fields['deleted_at']
-        aka = self.timestamp_fields['is_deleted']
-        if look and aka not in self.alias_query_vars:
-            def is_deleted(self):
-                val: Moment = getattr(self, look, None)
-                return val is not None and val <= moment.now(val.tzinfo)
-
-            return aliased(m.Case(
-                        m.When(m.Q(**{ f'{look}__lte': Now() }), m.Value(True)),
-                        default=m.Value(False)
-                    ), fget=is_deleted
-                )
-
-    def make_will_delete_field(self):
-        look = self.timestamp_fields['deleted_at']
-        aka = self.timestamp_fields['will_delete']
-        if look and aka not in self.alias_query_vars:
-            def will_delete(self):
-                val: Moment = getattr(self, look, None)
-                return val is not None and val > moment.now(val.tzinfo)
-
-            return aliased(m.Case(
-                        m.When(m.Q(**{ f'{look}__gte': Now() }), m.Value(True)),
-                        default=m.Value(False)
-                    ), fget=will_delete
-                )
-
-    def _setup_timestamps(self):
-        if not self.target._meta.proxy:
-            bases = [self.target._meta, *(b._meta for b in self.target.__bases__ if issubclass(b, m.Model))]
-            fields = set(f.name for b in bases for f in b.local_fields)
-            for ts, name  in self.timestamp_fields.items():
-                if name and name not in fields:
-                    field = getattr(self, f'make_{ts}_field')()
-                    field and field.contribute_to_class(self.target, name)
-
-    def _class_prepared(self):
-        self._setup_timestamps()
-
-
-
-def _natural_key_q(self: ModelConfig, val, lookup='exact'):
-    fields = self.which_natural_key_fields(val, strict=False)
-    seq = (m.Q(**{f'{f}__{lookup}': val }) for f in fields)
-    return reduce(or_, seq, m.Q())
-
-
-
-@m.signals.class_prepared.connect
-def _on_model_prepered(sender, **kwds):
-    if issubclass(sender, Model):
-        sender.__config__._class_prepared()
-
-@export()
-class Manager(m.Manager, t.Generic[_T_Model]):
-
-    model: type[_T_Model]
-    
-    if t.TYPE_CHECKING:
         def get(self, *args, **kwds) -> _T_Model:
             ...
 
@@ -288,13 +62,119 @@ class Manager(m.Manager, t.Generic[_T_Model]):
 
         def get_by_natural_key(self, key) -> _T_Model:
             ...
+else:
+    QuerySet = export(m.QuerySet)
+    Manager = export(m.Manager)
 
+
+
+_pending_models = orderedset()
+
+
+def _prepare_pending_models():
+    global _pending_models
+    
+    pending = _pending_models
+    if apps.models_ready:
+        _pending_models = None
+
+    for model in pending:
+        if not model.__config__.is_prepared:
+            model.__config__._prepare_()
+
+
+
+def _prepare_model(model: type['Model']):
+    global _pending_models
+
+    if apps.models_ready or _pending_models is None:
+        if not model.__config__.is_prepared:
+            model.__config__._prepare_()
+    else:
+        _pending_models.add(model)
+    
+
+
+
+
+class ModelType(ModelBase):
+
+    __config__: 'ModelConfig'
+    __create_new__: t.Union[Callable[[type[_T_Model], tuple, dict], _T_Model], bool]
+
+
+    def __new__(mcls, name, bases, attrs):
+        attrs.update(__config__=None)
+        cls = super().__new__(mcls, name, bases, attrs)
+        cls._setup_model_config_()
+        _prepare_model(cls)
+        return cls
+
+    def _setup_model_config_(self) -> 'ModelConfig':
+        if self.__config__ is None:
+            conf_cls = get_metadata_class(self, '__config_class__', base=ModelConfig, name='Config')
+            self.__config__ = conf_cls(self, '__config__', self.__dict__.get('Config'))
+        return self.__config__
+
+    def __call__(self, *args, **kwds):
+
+        debug(
+            __create_new__=self, 
+            argset=args[:4]
+        )
+
+        if args:
+            rec = self._from_args(args, **kwds)
+        else:
+            rec = self._from_kwargs(**kwds)
+        rec._commit_values_()
+        return rec
+
+        # if not args:
+        #     if _kw := self.__config__.the_inital_kwrags:
+        #         kwds = {**_kw, **kwds}
+        
+        # # debug(_create_new_=self, inital_kwargs=self.__config__.the_inital_kwrags, args=args and args[:2], kwds=kwds)
+        # rec: _T_Model = super().__call__(*args, **kwds)
+        # return rec
+
+
+    def _from_args(self, args, **kwds) -> _T_Model:
+        return super().__call__(*args, **kwds)
+
+    def _from_kwargs(self, **kwds) -> _T_Model:
+        
+        # debug(
+        #     __create_new__=self, 
+        #     polymorphic_values=conf.polymorphic_values, 
+        #     argset=argmap
+        # )
+
+        if init := self.__config__.the_inital_kwrags:
+            kwds = dict(init, **kwds)
+
+        return super().__call__(**kwds)
+
+    def _from_db(self: type[_T_Model], db, field_names, values) -> _T_Model:
+        concrete_fields = self._meta.concrete_fields
+        if len(values) != len(concrete_fields):
+            values_iter = iter(values)
+            values = (
+                next(values_iter) if f.attname in field_names else DEFERRED
+                for f in concrete_fields
+            )
+        
+        new = self.__call__(*values)
+        new._state.adding = False
+        new._state.db = db
+        return new
 
 
 
 @export()
-class Model(m.Model):
-
+class Model(m.Model, metaclass=ModelType):
+    class Config:
+        ...
     class Meta:
         abstract = True
 
@@ -311,15 +191,11 @@ class Model(m.Model):
         is_deleted: bool
         will_delete: bool
         
+        _state: 'ModelState'
 
-    def __init_subclass__(cls, **kwds) -> None:
-        cls._setup_model_config_()
-        return super().__init_subclass__(**kwds)
-
-    @class_only_method
-    def _setup_model_config_(cls):
-        conf_cls = get_metadata_class(cls, '__config_class__', base=ModelConfig, name='Config')
-        return conf_cls(cls, '__config__', cls.__dict__.get('Config'))
+    @classmethod
+    def from_db(cls: type[_T_Model], db, field_names, values):
+        return cls._from_db(db, field_names, values)
 
     @class_property
     def Urn(cls) -> type[ModelUrn]:
@@ -332,17 +208,55 @@ class Model(m.Model):
     if t.TYPE_CHECKING:
         Urn: t.ClassVar[type[ModelUrn]]
 
+    def save(self, *args, **kwds):
+        if hasattr(self, '_on_polymorphic_save_'):
+            self._on_polymorphic_save_()
+        super().save(*args, **kwds)
+        self._commit_values_()
+
+    def is_dirty(self, *keys):
+        return next(self._dirty(*keys), False) is not False
+
+    def dirty(self, *keys: str):
+        return self._dirty(*keys)
+
+    def _dirty(self, *keys: str):
+        dct = self.__dict__
+        orig = self._state.orig
+        for key in (keys or (k for k in dct if k[:1] != '_')):
+            if key in dct:
+                if key in orig:
+                    if dct[key] != orig[key]:
+                        yield key
+                else:
+                    yield key
+            elif key in orig:
+                yield key
+
+    def _commit_values_(self, *keys):
+        dct = self.__dict__
+        self._state.orig = {k: dct[k] for k in dct if k[:1] != '_'}
+
+    def __getstate__(self):
+        """Hook to allow choosing the attributes to pickle."""
+        state = super().__getstate__()
+        state['_state'].orig = None
+        return state
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        self._commit_values_()
+    
 
 
+        
+        
+@export()
+class MPTTModelType(ModelType, MPTTModelBase):
+    pass
 
 
-try:
-    from mptt.models import MPTTModel
-except ImportError:
-    MPTTModel = m.Model
-
-
-class MPTTModel(Model, MPTTModel):
+class MPTTModel(Model, MPTTModel, metaclass=MPTTModelType):
 
     class Config:
         ...
@@ -353,38 +267,4 @@ class MPTTModel(Model, MPTTModel):
 
 
 
-try:
-    from polymorphic.models import PolymorphicModel
-except ImportError:
-    PolymorphicModel = m.Model
-
-@export()
-class PolymorphicModel(Model, PolymorphicModel):
-
-    class Meta:
-        abstract = True
-
-
-
-
-try:
-    from mptt.models import MPTTModel as BaseMPTTModel
-    from polymorphic_tree.models import PolymorphicMPTTModel
-except ImportError:
-    PolymorphicMPTTModel = BaseMPTTModel = m.Model
-
-
-
-@export()
-class PolymorphicMPTTModel(Model, PolymorphicMPTTModel, BaseMPTTModel):
-
-    class Meta:
-        abstract = True
-
-
-
-
-if t.TYPE_CHECKING:
-    from .alias import aliased
-
-from . import AppModel
+from .polymorphic import PolymorphicModel, PolymorphicMPTTModel, PolymorphicModelConfig

@@ -243,6 +243,7 @@ class InjectedProperty(t.Generic[T_Injected]):
 
     def __set_name__(self, owner, name):
         self.__name__ = name
+
         if self.depends is None:
             dep = t.get_type_hints(owner).get(name)
             if dep is None:

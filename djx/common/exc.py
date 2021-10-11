@@ -14,6 +14,10 @@ except ImportError:
     _BaseImproperlyConfigured = Exception
 
 
+
+# from pydantic.error_wrappers import ValidationError
+
+
 class ImproperlyConfigured(_BaseImproperlyConfigured):
     """Your app is somehow improperly configured"""
     ...
@@ -35,8 +39,8 @@ class ErrorFormatter(Formatter):
 class BaseError(Exception):
     ctx: dict[str, t.Any]
 
-    error_type: str = None
-    http_status_code: int
+    error_code: str = None
+    status_code: int
     msg_template: t.ClassVar[str]
 
     formatter: t.ClassVar[Formatter] = ErrorFormatter()
@@ -52,18 +56,21 @@ class BaseError(Exception):
         self.ctx = fallbackdict(self.default_ctx, ctx)
 
     @cached_class_property
-    def type(cls):
-        return cls.error_type or text.snake(cls.__name__)
+    def code(cls):
+        return cls.error_code or text.snake(cls.__name__)
 
     @property
     def msg(self):
         return str(self)
 
+    def errors(self, *loc: t.Any):
+        return [self.dict(*loc)]
+
     def dict(self, *loc: t.Any):
         data = dict(
             loc=(loc + self.loc) or None,
             msg=self.msg,
-            type=self.type,
+            type=self.code,
             ctx=self.ctx or None
         )
         return {k:v for k,v in data.items() if v is not None}
@@ -95,7 +102,7 @@ class BaseError(Exception):
 @export()
 class ValidationError(BaseError):
     
-    error_type = 'value_error'
+    error_code = 'value_error'
     msg_template = 'invalid value.'
 
 
@@ -109,13 +116,13 @@ class DataError(BaseError):
 @export()
 class DataTypeError(DataError, TypeError):
     
-    error_type = 'type_error'
+    error_code = 'type_error'
 
     
 @export()
 class DataValueError(DataError, ValueError):
     
-    error_type = 'value_error'
+    error_code = 'value_error'
 
     
 
@@ -137,14 +144,14 @@ class ResourceError(BaseError):
 
 @export()
 class DoesNotExistError(ResourceError):
-    http_status_code = 400
+    status_code = 400
     msg_template = '{resource} does not exist.'
 
 
 
 @export()
 class NotFoundError(ResourceError):
-    http_status_code = 404
+    status_code = 404
     msg_template = '{resource} not found.'
     
     

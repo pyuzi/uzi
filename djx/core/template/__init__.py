@@ -17,7 +17,7 @@ from djx.common.collections import orderedset, fallback_chain_dict, fallbackdict
 from djx.common.imports import ImportRef
 from djx.common.proxy import unproxy
 from djx.common.utils.data import assign, delitem, getitem
-from djx.common.utils.saferef import ReferenceType, saferef
+from djx.common.saferef import ReferenceType, saferef
 
 from djx.core import settings
 from djx.core.abc import Renderable

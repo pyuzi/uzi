@@ -1,18 +1,18 @@
-from collections import ChainMap
+from collections import ChainMap, UserString as _BaseUserStr
 from inspect import signature
 import sys
 from copy import deepcopy
 from functools import cache, wraps
 from itertools import chain
-from types import GenericAlias
+from types import GenericAlias, new_class
 import typing as t
 from collections.abc import (
     Hashable, Mapping, MutableMapping, MutableSet, Iterable, Set, Sequence, MutableSequence, 
     Callable, KeysView, ItemsView, ValuesView, Iterator, Sized, Reversible
 )
-import warnings
 
-from djx.common.utils.saferef import saferef
+from djx.common.saferef import saferef
+from djx.common.utils.data import result
 
 
 
@@ -47,6 +47,18 @@ _FallbackType =  t.Union[_FallbackCallable[_TK, _TV], _FallbackMap[_TK, _TV], _T
 _TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 
 
+
+@export()
+class result_dict(dict[_TK, _TV]):
+
+    __slots__ = ()
+
+    def __getitem__(self, k: _TK) -> _TK:
+        return result(super().__getitem__(k))
+
+
+
+
 @export()
 @FluentMapping.register
 class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
@@ -71,7 +83,7 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
     @fallback.setter
     def fallback(self, fb: _FallbackType[_TK, _TV]):
         if fb is None:
-            fb = self._default_fallback
+            fb = self._default_fallback or _none_fn
 
         if fb is None:
             # self._fb, self._fbfunc = None, _none_fn
@@ -93,10 +105,12 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
         return self._fbfunc
 
     def __missing__(self, k: _TK) -> _TV:
-        if self._fbfunc is None:
-            return self.fallback_func(k)
+        fn = self._fbfunc
+        if fn is None:
+            return None
+            # return self.fallback_func(k)
         else:
-            return self._fbfunc(k)
+            return fn(k)
     
     def __reduce__(self):
         return self.__class__, (self._fb, super().copy())
@@ -118,6 +132,66 @@ def _has_self_arg(val):
     sig = signature(val(), follow_wrapped=False)
     return 'self' in sig.parameters
 
+
+@export()
+class result_fallback_dict(result_dict[_TK, _TV], fallbackdict[_TK, _TV]):
+
+    __slots__ = ()
+
+
+@export()
+class fallback_default_dict(fallbackdict[_TK, _TV]):
+
+    def __missing__(self, k: _TK) -> _TV:
+        return self.setdefault(k, super().__missing__(k))
+
+
+@export()
+class result_fallback_default_dict(result_dict[_TK, _TV], fallback_default_dict[_TK, _TV]):
+    
+    __slots__ = ()
+
+
+class none_dict(dict[_TK, None], t.Generic[_TK]):
+
+    __slots__ = ()
+
+    __instance = None
+
+    def __new__(cls):
+        if cls.__instance is None:
+            cls.__instance = super().__new__(cls)
+        return cls.__instance
+    
+    def __len__(self) -> 0:
+        return 0
+    
+    def __copy__(self) -> 0:
+        return self
+    
+    copy = __copy__
+
+    def __reduce__(self) -> 0:
+        return self.__class__,
+
+    def __contains__(self, key: _TK) -> False:
+        return False
+
+    def __bool__(self) -> False:
+        return False
+
+    def __getitem__(self, key: _TK) -> None:
+        return None
+
+    def __setitem__(self, k: _TK, v) -> None:
+        raise TypeError(f'{self.__class__.__name__} is imutable')
+
+    def __delitem__(self, k) -> None:
+        raise TypeError(f'{self.__class__.__name__} is imutable')
+
+    def __iter__(self):
+        if False:
+            yield None
 
 @export()
 class fallback_chain_dict(fallbackdict[_TK, _TV]):
@@ -151,6 +225,7 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
                 self._fb = fb()
                 self._fbfunc = fb.__getitem__
             elif fb is None:
+                self._fb = none_dict()
                 self._fbfunc = _none_fn
             else:
                 self._fb = fb(self)
@@ -171,15 +246,24 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
     @property
     def parent(self):                          # like Django's Context.pop()
         'New ChainMap from maps[1:].'
-        return self.__class__(*self.maps[1:])
+        return self.fallback
 
     def __iter__(self):
-        yield from dict.fromkeys(
-            (k for s in (self.fallback.__iter__(), super().__iter__()) for k in s)
-        ).__iter__()
+        seen = set()
+        for k in self.fallback.__iter__():
+            yield k
+            seen.add(k)
+        
+        for k in super().__iter__():
+            if k not in seen:
+                yield k
+        
+        # yield from dict.fromkeys(
+        #     (k for s in (self.fallback.__iter__(), super().__iter__()) for k in s)
+        # ).__iter__()
 
     def __len__(self):
-        return super().__len__() + len(self.fallback.keys() - super().keys())
+        return super().__len__() + len(self.fallback.keys() - self.ownkeys())
 
     def __bool__(self) -> bool:
         return super().__len__() > 0 or bool(self.fallback)
@@ -190,6 +274,9 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
     def __ne__(self, o):
         return not self.__eq__(o)
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}({super().__repr__()}, fallback={self.fallback!r})'
+    
     def extend(self, *args, **kwds):                # like Django's Context.push()
         '''New ChainMap with a new map followed by all previous maps.
         If no map is provided, an empty dict is used.
@@ -206,10 +293,29 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
         return ValuesView[_TV](self)
 
 
+    if t.TYPE_CHECKING:
+            
+        def ownkeys(self) -> KeysView[_TK]:
+            ...
+
+        def ownitems(self) -> ItemsView[tuple[_TK, _TV]]:
+            ...
+
+        def ownvalues(self) -> ValuesView[_TV]:
+            ...
+
+    ownkeys = dict[_TK, _TV].keys
+    ownitems = dict[_TK, _TV].items
+    ownvalues = dict[_TK, _TV].values
 
 
 
 
+
+@export()
+class result_fallback_chain_dict(result_dict[_TK, _TV], fallback_chain_dict[_TK, _TV]):
+
+    __slots__ = ()
 
 
 
@@ -252,16 +358,17 @@ class SizedReversible(Sized, Reversible):
 
 
 
+_dict_keys = type(dict[_TK]().keys())
 
 @Sequence.register
-class _orderedsetabc:
+class _orderedsetabc(t.Generic[_TK]):
 
     __slots__ = '__data__', '__set__'
 
     __data__: dict[_TK, _TK]
-    __set__: Set[_TK]
+    __set__: _dict_keys
 
-    __class_getitem__ = classmethod(GenericAlias)
+    # __class_getitem__ = classmethod(GenericAlias)
 
     # def __class_getitem__(cls, params):
     #     return GenericAlias(cls, tuple(params) if isinstance(params, (tuple, list)) else (params,))
@@ -281,7 +388,10 @@ class _orderedsetabc:
         self.__data__ = state
         
     def __getstate__(self):
-        return self.__data__
+        return self.__data__.copy()
+        
+    def __reduce__(self):
+        return self.__class__, (), self.__getstate__()
         
     def __setattr__(self, name, value):
         super().__setattr__(name, value)
@@ -294,8 +404,8 @@ class _orderedsetabc:
     def __len__(self) -> int:
         return self.__data__.__len__()
 
-    def __iter__(self):
-        return self.__data__.__iter__()
+    def __iter__(self) -> Iterator[_TK]:
+        yield from self.__set__
 
     def __contains__(self, o) -> int:
         return self.__data__.__contains__(o)
@@ -305,65 +415,89 @@ class _orderedsetabc:
     
     __copy__ = copy
 
-    def __deepcopy__(self, memo=None):
-        return self.__class__(deepcopy(self, memo))
+    # def __deepcopy__(self, memo=None):
+    #     return self.__class__(deepcopy(self, memo))
 
     def __and__(self, other):
-        if not isinstance(other, Iterable):
-            return NotImplemented
-        return self.__class__(value for value in other if value in self)
+        if not isinstance(other, (Set, Mapping)):
+            if not isinstance(other, Iterable):
+                return NotImplemented
+            other = set(other)
 
-    __rand__ = __and__
+        return self.__class__(v for v in self if v in other)
+
+    def __rand__(self, other):
+        if not isinstance(other, (Set, Mapping)):
+            if not isinstance(other, Iterable):
+                return NotImplemented
+            other = dict.fromkeys(other)
+
+        return self.__class__(v for v in other if v in self)
+
 
     def __or__(self, other):
         if not isinstance(other, Iterable):
             return NotImplemented
+        rv = self.__class__(self)
+        rv.__data__.update(other  if isinstance(other, Mapping) else dict.fromkeys(other))
+        return rv
 
-        return self.__class__(e for s in (self, other) for e in s)
+    def __ror__(self, other):
+        if not isinstance(other, Iterable):
+            return NotImplemented
 
-    __ror__ = __or__
+        rv = self.__class__(other)
+        rv.__data__.update(self.__data__)
+        return rv
 
-    def __reversed__(self):
-        return self.__data__.__reversed__()
+    def __reversed__(self) -> Iterator[_TK]:
+        return self.__set__.__reversed__()
 
     def __sub__(self, other):
         if not isinstance(other, (Set, Mapping)):
             if not isinstance(other, Iterable):
                 return NotImplemented
-            other = self.__class__(other)
-        return self.__class__(value for value in self if value not in other)
+            other = set(other)
+        return self.__class__(v for v in self if v not in other)
 
     def __rsub__(self, other):
-        if not isinstance(other, Iterable):
-            return NotImplemented
-        return self.__class__(value for value in other if value not in self)
 
-    def __xor__(self, other):
-        if not isinstance(other, Set):
+        if not isinstance(other, (Set, Mapping)):
             if not isinstance(other, Iterable):
                 return NotImplemented
-            other = self.__class__(other)
-        return (self - other) | (other - self)
+            other = dict.fromkeys(other)
+
+        return self.__class__(v for v in other if v not in self)
+    
+    def __xor__(self, other):
+        
+        if not isinstance(other, (Set, Mapping)):
+            if not isinstance(other, Iterable):
+                return NotImplemented
+            other = dict.fromkeys(other)
+
+        rv = self.__class__(v for v in self if v not in other)
+        rv.__data__.update(dict.fromkeys(v for v in other if v not in self))
+        return rv
 
     def __rxor__(self, other):
-        if not isinstance(other, Set):
+        if not isinstance(other, (Set, Mapping)):
             if not isinstance(other, Iterable):
                 return NotImplemented
-            other = self.__class__(other)
-        return (other - self) | (self - other)
+            other = dict.fromkeys(other)
+
+        rv = self.__class__(v for v in other if v not in self)
+        rv.__data__.update(dict.fromkeys(v for v in self if v not in other))
+        return rv
 
     def __le__(self, other):
-        return self.__set__ <= other 
+        return self.__set__.__le__(other)
 
     def __lt__(self, other):
-        if not isinstance(other, Set):
-            return NotImplemented
-        return len(self) < len(other) and self.__le__(other)
+        return self.__set__.__lt__(other)
 
     def __gt__(self, other):
-        if not isinstance(other, Set):
-            return NotImplemented
-        return len(self) > len(other) and self.__ge__(other)
+        return self.__set__.__gt__(other)
 
     def __ge__(self, other):
         return self.__set__.__ge__(other)
@@ -371,11 +505,12 @@ class _orderedsetabc:
     def __eq__(self, other):
         return self.__set__.__eq__(other)
 
-    def __str__(self):
-        return  f'{{{", ".join(repr(k) for k in self.__set__)}}}'
+    # def __str__(self):
+    #     return  f'{{{", ".join(repr(k) for k in self.__set__)}}}'
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({", ".join(repr(k) for k in self.__set__)})'
+        items = tuple(self)
+        return f'{self.__class__.__name__}({items})'
 
     t.overload
     def __getitem__(self, key: int) -> _TK:
@@ -390,7 +525,7 @@ class _orderedsetabc:
             except StopIteration:
                 raise IndexError(f'index {key} out of range')
         elif isinstance(key, slice):
-            return self.__class__(self._islice_(key.start, key.stop, key.step))
+            return self.__class__(self._islice_(key.start or 0, key.stop, key.step))
         raise ValueError(key)        
 
     at = __getitem__
@@ -560,7 +695,7 @@ class orderedset(_orderedsetabc[_TK], t.Generic[_TK]):
 
     def add(self, value):
         """Add an element."""
-        self.__data__[value] = value
+        self.__data__[value] = None
 
     def discard(self, value):
         """Remove an element.  Do not raise an exception if absent."""
@@ -575,8 +710,9 @@ class orderedset(_orderedsetabc[_TK], t.Generic[_TK]):
 
     def update(self, *iterables: Iterable[_TK]):
         """Add an element."""
-        for it in iterables:
-            self.__data__.update((i, None) for i in it)
+        self.__data__.update(dict.fromkeys(k for it in iterables for k in it))
+        # for it in iterables:
+        #     self.__data__.update((i, None) for i in it)
     
     def pop(self, val: _TK = _empty, default=_empty):
         """Return the popped value.  Raise KeyError if empty."""
@@ -602,29 +738,34 @@ class orderedset(_orderedsetabc[_TK], t.Generic[_TK]):
         return self
 
     def __iand__(self, it):
-        for value in (self - it):
-            self.discard(value)
+        self.__data__ = dict.fromkeys(self.__set__ & it)
+        # for value in (self.__set__ - it):
+        #     self.discard(value)
         return self
 
     def __ixor__(self, it):
         if it is self:
             self.clear()
         else:
-            if not isinstance(it, Set):
-                it = self._from_iterable(it)
-            for value in it:
-                if value in self:
-                    self.discard(value)
-                else:
-                    self.add(value)
+            self.__data__ = dict.fromkeys(self.__set__ ^ it)
+
+            # if not isinstance(it, Set):
+            #     it = dict.fromkeys(it).keys()
+
+            # for value in it:
+            #     if value in self:
+            #         self.discard(value)
+            #     else:
+            #         self.add(value)
         return self
 
     def __isub__(self, it):
         if it is self:
             self.clear()
         else:
-            for value in it:
-                self.discard(value)
+            self.__data__ = dict.fromkeys(self.__set__ - it)
+            # for value in it:
+                # self.discard(value)
         return self
 
 
@@ -657,6 +798,9 @@ class PriorityStack(dict[_T_Stack_K, list[_T_Stack_V]], t.Generic[_T_Stack_K, _T
     def copy(self):
         return self.__class__(self.stackfactory, ((k, self[k:][:]) for k in self))
     
+    def __reduce__(self):
+        return self.__class__, (self.stackfactory, dict((k, self[k:][:]) for k in self))
+    
     __copy__ = copy
 
     def extend(self):
@@ -667,8 +811,7 @@ class PriorityStack(dict[_T_Stack_K, list[_T_Stack_V]], t.Generic[_T_Stack_K, _T
     
     def insert(self, k: _T_Stack_K, index: t.Optional[int], val: _T_Stack_V, *, sort=True):
         stack = super().setdefault(k, self.stackfactory())
-        index = len(stack) if index is None else index % len(stack) 
-        stack.insert(index, val)
+        stack.insert(len(stack) if index is None else index, val)
         sort and stack.sort()
     
     def append(self, k: _T_Stack_K, val: _T_Stack_V, *, sort=True):
@@ -745,14 +888,46 @@ class FluentPriorityStack(PriorityStack[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
 _TypeOfTypedDict = type(t.TypedDict('_Type', {}, total=False))
 
 
+
+
+
 @export()
-class AttributeMapping(MutableMapping):
+class AttributeMapping(MutableMapping[_TK, _TV], t.Generic[_TK, _TV]):
 
     __slots__ = ('__weakref__', '__dict__')
-    
-    __dict_class__: t.ClassVar[type[Mapping]] = dict 
 
-    def __createdict___(self, args):
+    __dict_class__: t.ClassVar[type[dict[_TK, _TV]]] = dict 
+    __dict__: dict[_TK, _TV]
+
+    
+    __type_cache: t.Final[dict[type[Mapping], type['AttributeMapping']]] = fallbackdict()
+
+    def __init_subclass__(cls) -> None:
+        if typ := cls.__dict_class__:
+            if issubclass(cls, cls.__type_cache.get(typ) or cls):
+                cls.__type_cache[typ] = cls
+        super().__init_subclass__()
+
+    def __class_getitem__(cls, params):
+        if isinstance(params, (tuple, list)):
+            typ = params[0]
+        else:
+            typ = params
+        
+        if isinstance(typ, type): 
+            if issubclass(typ, cls.__dict_class__):
+                kls = cls.__type_cache.get(typ)
+                if kls is None:
+                    bases = cls, 
+                    kls = new_class(
+                            f'{typ}{cls.__name__}', bases, None, 
+                            lambda ns: ns.update(__dict_class__=typ)
+                        )
+                cls = kls
+            
+        return GenericAlias(cls, params)
+
+    def __createdict___(self, args) -> tuple[dict[_TK, _TV], tuple]:
         cls = self.__class__.__dict_class__
         if not args:
             return cls(), args
@@ -786,10 +961,10 @@ class AttributeMapping(MutableMapping):
     # def __setattr__(self, key, value):
     #     self.__dict__[key] = value
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: _TK, value: _TV):
         self.__dict__[key] = value
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: _TK)-> _TV:
         try:
             return self.__dict__[key]
         except KeyError:
@@ -833,7 +1008,299 @@ class AttributeMapping(MutableMapping):
         
         
         
-    
+
+_T_Str = t.TypeVar('_T_Str', bound=str)
+
+
+
+################################################################################
+### UserString
+@export()################################################################################
+
+
+@_BaseUserStr.register
+class UserString(Sequence, t.Generic[_T_Str]):
+
+    __slots__ = '_str',
+
+    __str_class__: t.ClassVar[type[_T_Str]] = str
+
+    _str: _T_Str
+
+    __type_cache: t.Final[dict[type[_T_Str], type['UserString']]] = fallbackdict()
+
+    def __init_subclass__(cls) -> None:
+        if typ := cls.__dict__.get('__str_class__'):
+            if issubclass(cls, cls.__type_cache[typ] or cls):
+                cls.__type_cache[typ] = cls
+
+    def __class_getitem__(cls, params):
+        if isinstance(params, (tuple, list)):
+            typ = params[0]
+        else:
+            typ = params
+        
+        if isinstance(typ, type): 
+            if issubclass(typ, cls.__str_class__):
+                kls = cls.__type_cache[typ]
+                if kls is None:
+                    # bases = super().__class_getitem__(cls, params),
+                    bases = cls, 
+                    kls = new_class(
+                            f'{typ}{cls.__name__}', bases, None, 
+                            lambda ns: ns.update(__str_class__=typ)
+                        )
+                
+                cls = kls
+            
+        return super().__class_getitem__(cls, params)
+
+    def __init__(self, seq):
+        strcls = self.__str_class__
+        if isinstance(seq, strcls):
+            self._str = seq
+        elif isinstance(seq, UserString):
+            self._str = strcls(seq._str)
+        else:
+            self._str = strcls(seq)
+
+    def __str__(self):
+        return self._str[:]
+
+    def __repr__(self):
+        return repr(self._str)
+
+    def __int__(self):
+        return int(self._str)
+
+    def __float__(self):
+        return float(self._str)
+
+    def __complex__(self):
+        return complex(self._str)
+
+    def __hash__(self):
+        return hash(self._str)
+
+    def __getnewargs__(self):
+        return (self._str[:],)
+
+    def __eq__(self, string):
+        if isinstance(string, UserString):
+            return self._str == string._str
+        return self._str == string
+
+    def __lt__(self, string):
+        if isinstance(string, UserString):
+            return self._str < string._str
+        return self._str < string
+
+    def __le__(self, string):
+        if isinstance(string, UserString):
+            return self._str <= string._str
+        return self._str <= string
+
+    def __gt__(self, string):
+        if isinstance(string, UserString):
+            return self._str > string._str
+        return self._str > string
+
+    def __ge__(self, string):
+        if isinstance(string, UserString):
+            return self._str >= string._str
+        return self._str >= string
+
+    def __contains__(self, char):
+        if isinstance(char, UserString):
+            char = char._str
+        return char in self._str
+
+    def __len__(self):
+        return len(self._str)
+
+    def __getitem__(self, index):
+        return self.__class__(self._str[index])
+
+    def __add__(self, other):
+        if isinstance(other, UserString):
+            return self.__class__(self._str + other._str)
+        elif isinstance(other, str):
+            return self.__class__(self._str + other)
+        return self.__class__(self._str + self.__str_class__(other))
+
+    def __radd__(self, other):
+        if isinstance(other, str):
+            return self.__class__(other + self._str)
+        return self.__class__(self.__str_class__(other) + self._str)
+
+    def __mul__(self, n):
+        return self.__class__(self._str * n)
+
+    __rmul__ = __mul__
+
+    def __mod__(self, args):
+        return self.__class__(self._str % args)
+
+    def __rmod__(self, template):
+        return self.__class__(self.__str_class__(template) % self)
+
+    # the following methods are defined in alphabetical order:
+    def capitalize(self):
+        return self.__class__(self._str.capitalize())
+
+    def casefold(self):
+        return self.__class__(self._str.casefold())
+
+    def center(self, width, *args):
+        return self.__class__(self._str.center(width, *args))
+
+    def count(self, sub, start=0, end=sys.maxsize):
+        if isinstance(sub, UserString):
+            sub = sub._str
+        return self._str.count(sub, start, end)
+
+    def removeprefix(self, prefix, /):
+        if isinstance(prefix, UserString):
+            prefix = prefix._str
+        return self.__class__(self._str.removeprefix(prefix))
+
+    def removesuffix(self, suffix, /):
+        if isinstance(suffix, UserString):
+            suffix = suffix._str
+        return self.__class__(self._str.removesuffix(suffix))
+
+    def encode(self, encoding='utf-8', errors='strict'):
+        encoding = 'utf-8' if encoding is None else encoding
+        errors = 'strict' if errors is None else errors
+        return self._str.encode(encoding, errors)
+
+    def endswith(self, suffix, start=0, end=sys.maxsize):
+        return self._str.endswith(suffix, start, end)
+
+    def expandtabs(self, tabsize=8):
+        return self.__class__(self._str.expandtabs(tabsize))
+
+    def find(self, sub, start=0, end=sys.maxsize):
+        if isinstance(sub, UserString):
+            sub = sub._str
+        return self._str.find(sub, start, end)
+
+    def format(self, /, *args, **kwds):
+        return self._str.format(*args, **kwds)
+
+    def format_map(self, mapping):
+        return self._str.format_map(mapping)
+
+    def index(self, sub, start=0, end=sys.maxsize):
+        return self._str.index(sub, start, end)
+
+    def isalpha(self):
+        return self._str.isalpha()
+
+    def isalnum(self):
+        return self._str.isalnum()
+
+    def isascii(self):
+        return self._str.isascii()
+
+    def isdecimal(self):
+        return self._str.isdecimal()
+
+    def isdigit(self):
+        return self._str.isdigit()
+
+    def isidentifier(self):
+        return self._str.isidentifier()
+
+    def islower(self):
+        return self._str.islower()
+
+    def isnumeric(self):
+        return self._str.isnumeric()
+
+    def isprintable(self):
+        return self._str.isprintable()
+
+    def isspace(self):
+        return self._str.isspace()
+
+    def istitle(self):
+        return self._str.istitle()
+
+    def isupper(self):
+        return self._str.isupper()
+
+    def join(self, seq):
+        return self._str.join(seq)
+
+    def ljust(self, width, *args):
+        return self.__class__(self._str.ljust(width, *args))
+
+    def lower(self):
+        return self.__class__(self._str.lower())
+
+    def lstrip(self, chars=None):
+        return self.__class__(self._str.lstrip(chars))
+
+    maketrans = str.maketrans
+
+    def partition(self, sep):
+        return self._str.partition(sep)
+
+    def replace(self, old, new, maxsplit=-1):
+        if isinstance(old, UserString):
+            old = old._str
+        if isinstance(new, UserString):
+            new = new._str
+        return self.__class__(self._str.replace(old, new, maxsplit))
+
+    def rfind(self, sub, start=0, end=sys.maxsize):
+        if isinstance(sub, UserString):
+            sub = sub._str
+        return self._str.rfind(sub, start, end)
+
+    def rindex(self, sub, start=0, end=sys.maxsize):
+        return self._str.rindex(sub, start, end)
+
+    def rjust(self, width, *args):
+        return self.__class__(self._str.rjust(width, *args))
+
+    def rpartition(self, sep):
+        return self._str.rpartition(sep)
+
+    def rstrip(self, chars=None):
+        return self.__class__(self._str.rstrip(chars))
+
+    def split(self, sep=None, maxsplit=-1):
+        return self._str.split(sep, maxsplit)
+
+    def rsplit(self, sep=None, maxsplit=-1):
+        return self._str.rsplit(sep, maxsplit)
+
+    def splitlines(self, keepends=False):
+        return self._str.splitlines(keepends)
+
+    def startswith(self, prefix, start=0, end=sys.maxsize):
+        return self._str.startswith(prefix, start, end)
+
+    def strip(self, chars=None):
+        return self.__class__(self._str.strip(chars))
+
+    def swapcase(self):
+        return self.__class__(self._str.swapcase())
+
+    def title(self):
+        return self.__class__(self._str.title())
+
+    def translate(self, *args):
+        return self.__class__(self._str.translate(*args))
+
+    def upper(self):
+        return self.__class__(self._str.upper())
+
+    def zfill(self, width):
+        return self.__class__(self._str.zfill(width))
+
 
 
     

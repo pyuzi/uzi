@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import sys
+import types
 
 
 import typing as t
 from collections.abc import Callable
 from warnings import warn
 from threading import RLock
-from functools import partial, update_wrapper, wraps, cache, cached_property
+from functools import (
+    update_wrapper, wraps, cache, 
+    cached_property as base_cached_property
+)
 
 
 
@@ -20,6 +24,16 @@ _T = t.TypeVar('_T')
 
 
 def export(obj: _T =..., /, *, name=None, exports=None, module=None) -> _T:
+    
+    if module is None:
+        try:
+            mod = sys._getframe(1).f_globals.get('__name__')
+        except (AttributeError, ValueError):
+            pass
+        else:
+            if mod:
+                module = mod
+
     def add_to_all(_obj: _T) -> _T:
         _module = sys.modules[module or _obj.__module__]
         _exports = exports or getattr(_module, '__all__', None)
@@ -49,16 +63,16 @@ class class_only_method(classmethod):
 
 
 
-class class_only_property(classmethod):
+class class_only_property(classmethod, t.Generic[_T]):
     """Creates a classmethod available only to the class. Raises AttributeError
     when called from an instance of the class.
     """
 
-    def __init__(self, func, name=None):
+    def __init__(self, func: Callable[[t.Any], _T], name=None):
         super().__init__(func)
         self.__name__ = name or func.__name__
 
-    def __get__(self, obj, cls):
+    def __get__(self, obj, cls) -> _T:
         if obj is not None:
             raise AttributeError(
                 f"{cls.__name__}.{self.__name__} is available "
@@ -121,10 +135,12 @@ class cached_class_property(class_property[_T]):
 
 
 
+if t.TYPE_CHECKING:
+    base_cached_property = property[_T]
+    
 
 
-
-class cached_property(cached_property, t.Generic[_T]):
+class cached_property(base_cached_property[_T]):
     """Transforms a method into property whose value is computed once. 
     The computed value is then cached as a normal attribute for the life of the 
     instance::
@@ -583,4 +599,92 @@ def deprecated(alt=None, version=None, *, message=None, onload=False, once=False
         return wrapper
 
     return decorator
+
+
+
+
+
+def with_metaclass(meta, *bases, **ns):
+    """Create a base class with a metaclass."""
+    # This requires a bit of explanation: the basic idea is to make a dummy
+    # metaclass for one level of class instantiation that replaces itself with
+    # the actual metaclass.
+    class metaclass(type):
+
+        def __new__(cls, name, this_bases, d):
+            if sys.version_info[:2] >= (3, 7):
+                # This version introduced PEP 560 that requires a bit
+                # of extra care (we mimic what is done by __build_class__).
+                resolved_bases = types.resolve_bases(bases)
+                if resolved_bases is not bases:
+                    d['__orig_bases__'] = bases
+            else:
+                resolved_bases = bases
+            return meta(name, resolved_bases, d)
+
+        @classmethod
+        def __prepare__(cls, name, this_bases):
+            return meta.__prepare__(name, bases)
+    return type.__new__(metaclass, 'temporary_class', (), {})
+
+    # seen = {meta}
+    # tbases = (t for b in bases if (t := b.__class__) in seen or seen.add(t))
+    # class metaclass(meta, *tbases):
+
+    #     def __new__(cls, name, this_bases, d):
+    #         if sys.version_info[:2] >= (3, 7):
+    #             # This version introduced PEP 560 that requires a bit
+    #             # of extra care (we mimic what is done by __build_class__).
+    #             resolved_bases = types.resolve_bases(bases)
+    #             if resolved_bases is not bases:
+    #                 d['__orig_bases__'] = bases
+    #         else:
+    #             resolved_bases = bases
+    #         return super().__new__(cls, name, resolved_bases, d)
+
+    #     @classmethod
+    #     def __prepare__(cls, name, this_bases):
+    #         return meta.__prepare__(name, bases)
+
+    # return type.__new__(metaclass, 'temporary_class', (), {})
+
+
+    # seen = {meta}
+    # tbases = (t for b in bases if (t := b.__class__) in seen or seen.add(t))
+    # class metaclass(meta, *tbases):
+    #     pass
+
+    # if not ns.get('__module__'):
+    #     try:
+    #         mod = sys._getframe(1).f_globals.get('__name__')
+    #     except (AttributeError, ValueError):
+    #         pass
+    #     else:
+    #         mod and ns.setdefault('__module__', mod)
+
+    # return metaclass('temporary_class', bases, ns) 
+
+    # class metaclass(type):
+    #     def __new__(cls, name, this_bases, d):
+    #         return meta(name, bases, d)
+
+    # return type.__new__(metaclass, "temporary_class", (), ns)
+
+
+def add_metaclass(metaclass):
+    """Class decorator for creating a class with a metaclass."""
+    def wrapper(cls):
+        orig_vars = cls.__dict__.copy()
+        slots = orig_vars.get('__slots__')
+        if slots is not None:
+            if isinstance(slots, str):
+                slots = [slots]
+            for slots_var in slots:
+                orig_vars.pop(slots_var)
+        orig_vars.pop('__dict__', None)
+        orig_vars.pop('__weakref__', None)
+        if hasattr(cls, '__qualname__'):
+            orig_vars['__qualname__'] = cls.__qualname__
+        return metaclass(cls.__name__, cls.__bases__, orig_vars)
+    return wrapper
 

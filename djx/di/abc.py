@@ -21,6 +21,7 @@ from typing import (
 from djx.common.utils import cached_class_property, cached_property, class_property, export, text
 
 from djx.common.abc import Orderable
+from djx.common.typing import GenericAlias as _GenericAlias
 
 
 
@@ -147,6 +148,7 @@ class InjectableType(ABCMeta):
 
 
 
+
 @export()
 class Injectable(SupportsIndentity, Generic[T_Injected], metaclass=InjectableType):
 
@@ -158,7 +160,7 @@ class Injectable(SupportsIndentity, Generic[T_Injected], metaclass=InjectableTyp
 
         excl = {type, Callable, None}
         typs = tuple(t for t in cls._typ_cache if t not in excl)
-        if isinstance(param, (type, GenericAlias, TypeVar)):
+        if isinstance(param, (type, _GenericAlias, GenericAlias, TypeVar)):
             ptyp = param
         else:
             ptyp = type(param)
@@ -167,6 +169,9 @@ class Injectable(SupportsIndentity, Generic[T_Injected], metaclass=InjectableTyp
 
         return rv
 
+    # def __subclasshook__(cls, o):
+    #     if cls is Injectable:
+    #         return 
 
 
 Injectable.register(str)
@@ -176,6 +181,7 @@ Injectable.register(TypeVar)
 Injectable.register(MethodType)
 Injectable.register(FunctionType)
 Injectable.register(GenericAlias)
+Injectable.register(_GenericAlias)
 
 
 

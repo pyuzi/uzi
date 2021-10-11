@@ -8,15 +8,15 @@ from weakref import WeakSet
 from typing import (
     Annotated, Any, Callable, ClassVar, ForwardRef, 
     Generic, Literal, Optional, Type, TypeVar, 
-    TYPE_CHECKING,
-    Union, get_args, get_origin
+    TYPE_CHECKING, Union
 )
 from collections.abc import Iterator, Mapping
 
 from djx.common.utils import export
+from djx.common.typing import get_origin, get_args, eval_type
+from djx.common.imports import ImportRef
 
-
-from .abc import Injector, T_Injectable
+from .abc import Injector, T_Injectable, Injectable
 
 
 _empty = ins.Parameter.empty
@@ -66,10 +66,21 @@ def ordered_id():
     return __last_id
 
 
+__builtin_values = None
+
+def builtin_values():
+    global __builtin_values
+
+    if __builtin_values is None:
+        __builtin_values = frozenset(__builtins__.values())
+
+    return __builtin_values
+
+# ins.isbuiltin()
 
 def annotated_deps(obj) -> Union[list, Any]:
-    from .providers import Dependency
-    if is_injectable(obj):
+    from .providers import Dependency, is_provided
+    if is_provided(obj):
         return obj
     elif isinstance(obj, Dependency):
         return obj.deps[0]
@@ -81,36 +92,40 @@ def annotated_deps(obj) -> Union[list, Any]:
 
 
 
-@export()
-def is_injectable(obj) -> bool:
-    from .providers import is_provided
-    return is_provided(obj)
 
 
 
 
 @export()
-# @cache
-def signature(callable: Callable[..., Any], *, follow_wrapped=True) -> 'InjectableSignature':
-    return InjectableSignature.from_callable(callable, follow_wrapped=follow_wrapped)
+def signature(callable: Callable[..., Any], *, follow_wrapped=True, evaltypes=True) -> 'InjectableSignature':
+    sig = InjectableSignature.from_callable(callable, follow_wrapped=follow_wrapped)
 
+    if not isinstance(sig, InjectableSignature):
+        sig = InjectableSignature(sig.parameters.values(), sig.return_annotation)
 
-def _get_injector():
-    from . import injector
-    return injector
+    if evaltypes:
+        if follow_wrapped:
+            callable = ins.unwrap(callable, stop=(lambda f: hasattr(f, "__signature__")))
+        
+        gns = getattr(callable, '__globals__', None) \
+            or getattr(ImportRef(callable).module(None), '__dict__', None)
+
+        return sig.evaluate_annotations(gns)
+        
+    return sig
 
 
 
 @export()
 class Parameter(ins.Parameter):
     
-    __slots__ = ('_depends',)
+    __slots__ = ('_dependency', '_type',)
     
     def __init__(self, name, kind, *, default=_empty, annotation=_empty):
         
         super().__init__(name, kind, default=default, annotation=annotation)
 
-        self._depends = annotated_deps(self._annotation) or None
+        self._dependency = annotated_deps(self._annotation) or None
 
     @property
     def default(self):
@@ -121,19 +136,26 @@ class Parameter(ins.Parameter):
     #     return bool(self._depends)
 
     @property
-    def depends(self):
-        return self._depends
+    def dependency(self):
+        return self._dependency
 
     @property
     def is_dependency(self):
-        return self._depends is not None
+        return self._dependency is not None
 
     def __repr__(self):
-        deps = f', <Depends: {self.depends}>' if self.depends else ''
+        deps = f', <Depends: {self.dependency}>' if self.dependency else ''
         return f'<{self.__class__.__name__} {self}{deps}>'
 
-
-
+    def __reduce__(self):
+        return (type(self),
+                (self._name, self._kind),
+                {'_default': self._default,
+                 '_annotation': self._annotation})
+    
+    def __setstate__(self, state):
+        self._default = state['_default']
+        self._annotation = state['_annotation']
 
 
 @export()
@@ -155,9 +177,9 @@ class BoundArguments(ins.BoundArguments):
                 new_arguments.append((name, arguments[name]))
             except KeyError:
 
-                if param.depends:
+                if param.dependency:
                     try:
-                        new_arguments.append((name, injector[param.depends]))
+                        new_arguments.append((name, injector[param.dependency]))
                     except KeyError:
                         pass
                     else:
@@ -188,9 +210,9 @@ class BoundArguments(ins.BoundArguments):
                     arg = values[param_name]
                 elif param_name in self.arguments:
                     arg = self.arguments[param_name]
-                elif param.depends is not None:
+                elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -206,9 +228,9 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.positional_parameters.items():
                 if param_name in values:
                     arg = values[param_name]
-                elif param.depends is not None:
+                elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -224,9 +246,9 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.positional_parameters.items():
                 if param_name in self.arguments:
                     arg = self.arguments[param_name]
-                elif param.depends is not None:
+                elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -240,9 +262,9 @@ class BoundArguments(ins.BoundArguments):
         elif deps and not values and not self.arguments:
 
             for param_name, param in self._signature.positional_parameters.items():
-                if param.depends is not None:
+                if param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -277,9 +299,9 @@ class BoundArguments(ins.BoundArguments):
                     arg = values[param_name]
                 elif param_name in self.arguments:
                     arg = self.arguments[param_name]
-                elif param.depends is not None:
+                elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         continue    
                 else:
@@ -294,9 +316,9 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.keyword_parameters.items():
                 if param_name in values:
                     arg = values[param_name]
-                elif param.depends is not None:
+                elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         continue    
                 else:
@@ -311,9 +333,9 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.keyword_parameters.items():
                 if param_name in self.arguments:
                     arg = self.arguments[param_name]
-                elif param.depends is not None:
+                elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         continue    
                 else:
@@ -326,9 +348,9 @@ class BoundArguments(ins.BoundArguments):
 
         elif deps and not self.arguments and not values:
             for param_name, param in self._signature.keyword_parameters.items():
-                if param.depends is not None:
+                if param.dependency is not None:
                     try:
-                        arg = inj.make(param.depends)
+                        arg = inj.make(param.dependency)
                     except KeyError:
                         continue    
                 else:
@@ -444,6 +466,19 @@ class InjectableSignature(ins.Signature):
                 }
             return self._kw_deps
 
+    def evaluate_annotations(self, globalns, localns=None):
+        eval = lambda an: eval_type(an, globalns, localns)
+        params = (
+                p.replace(annotation=eval(p.annotation)) 
+                    for p in self.parameters.values()
+            )
+        
+        return self.replace(
+                parameters=params, 
+                return_annotation=eval(self.return_annotation)
+            )
+
+
     def inject(self, _injector: Injector, *args: Any, **kwargs: Any) -> BoundArguments:
         rv = self.bind_partial(*args, **kwargs)
         rv.apply_injected(_injector)
@@ -468,3 +503,10 @@ class InjectableSignature(ins.Signature):
         
         
 
+
+if TYPE_CHECKING:
+    class Signature(InjectableSignature):
+        __slots__ = ()
+
+else:
+    Signature = InjectableSignature

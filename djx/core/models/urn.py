@@ -194,7 +194,7 @@ class ModelUrn(str, t.Generic[_T_Model]):
                 key = params, cls.fieldname
 
             if isinstance(key[0], t.TypeVar):
-                return super().__class_getitem__(cls, params)
+                return super().__class_getitem__(params)
 
             if isinstance(key[0], str):
                 key = _namespace_map[key[0]], key[1]
@@ -309,14 +309,23 @@ class ModelUrn(str, t.Generic[_T_Model]):
         return self[len(self.origin)+1:]
 
     @class_only_method
-    @cache
     def _is_related_type(cls, typ: type['ModelUrn']) -> bool:
-        return typ.model is None or cls._is_related_model(typ.model)
+        if typ is cls:
+            return True
+        elif typ.model is None:
+            return issubclass(typ, cls)
+
+        return cls._is_related_model(typ.model)
 
     @class_only_method
-    @cache
+    # @cache
     def _is_related_model(cls, typ: type[m.Model]) -> bool:
-        return cls.model is None or issubclass(typ, cls.model) or issubclass(cls.model, typ)
+        model = unproxy(cls.model)
+        if model is None:
+            return True
+        elif issubclass((typ := unproxy(typ)), model) or issubclass(model, typ):
+            return True
+        return False
 
     @class_only_method
     def _get_key_from_object(cls, obj):

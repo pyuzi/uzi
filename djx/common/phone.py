@@ -166,9 +166,9 @@ class PhoneStr(str):
 
         if (cls, fmt) not in cls.__fmttypes:
             ftype = type(
-                f'{text.camel(fmt.name)}Str', 
+                f'{text.uppercamel(fmt.name)}PhoneStr', 
                 (cls,), 
-                dict(_fmt=fmt, _cache=WeakKeyDictionary())
+                dict(_fmt=fmt, __module__=__name__, _cache=WeakKeyDictionary())
             )
             cls.__fmttypes.setdefault((cls, fmt), ftype)
         return cls.__fmttypes[(cls, fmt)]
@@ -181,6 +181,8 @@ class PhoneStr(str):
         
         if isinstance(phone, PhoneStr):
             return phone.to(fmt)
+        elif isinstance(phone, str):
+            phone = to_phone(phone)
         
         if fmt is PhoneFormat.PLAIN:
             val = phone.to(PhoneFormat.RFC3966)
@@ -236,6 +238,48 @@ class PhoneStr(str):
     
     def __json__(self):
         return str(self)
+
+
+if t.TYPE_CHECKING:
+
+    @export()
+    class MsisdnPhoneStr(PhoneStr[PhoneFormat.MSISDN]):
+        ...
+
+
+    @export()
+    class NationalPhoneStr(PhoneStr[PhoneFormat.NATIONAL]):
+        ...
+
+
+
+# @export()
+# class MobilePhoneStr(PhoneStr[PhoneFormat.MSISDN]):
+#     ...
+
+# E164            = base.PhoneNumberFormat.E164
+#     INTERNATIONAL   = base.PhoneNumberFormat.INTERNATIONAL
+#     NATIONAL        = base.PhoneNumberFormat.NATIONAL
+#     RFC3966         = base.PhoneNumberFormat.RFC3966
+#     LOCAL           = auto()
+#     MSISDN          = auto()
+#     PLAIN           = auto()
+
+_g = globals()
+for fmt in PhoneFormat:
+    cls = PhoneStr[fmt]
+    _g.setdefault(cls.__name__, export(cls))
+
+
+
+
+
+
+
+
+
+
+
 
 
 

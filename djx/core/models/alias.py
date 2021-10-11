@@ -24,7 +24,10 @@ from collections.abc import Callable
 
 
 from djx.common.utils import cached_property, export
-from djx.common.utils.data import DataPath, getitem, setdefault
+from djx.common.utils.data import DataPath, getitem, setdefault, setitem
+
+
+from .util import LookupDataPath
 
 _T = t.TypeVar('_T')
 
@@ -73,38 +76,49 @@ def _creation_order():
 
     
 @export()
-class aliased(cached_property[_T], t.Generic[_T]):
+class aliased(cached_property[_T], property, t.Generic[_T]):
 
     fget: Callable[[t.Any], _T]
+    fget = None
+    _fset = None
+    fset = None
+    _fdel = None
+    fdel = None
 
-    if t.TYPE_CHECKING:
-        def __new__(cls: property[_T], 
-                    expr: t.Any=None, 
-                    fload: Callable[[t.Any], _T]=None, 
-                    fget: Callable[[t.Any], _T]=None, 
-                    fset: Callable[[t.Any, t.Any], None]=None, 
-                    fdel: Callable[[t.Any], None]=None, 
-                    *, name: str=None, 
-                    lookup_path: t.Union[str, list]=...,
-                    static: bool=None, 
-                    annotate: bool=None) -> _T:
-            ...
+    # if t.TYPE_CHECKING:
+    #     def __new__(cls: property[_T], 
+    #                 expr: Callable[[t.Any], _T]=None, 
+    #                 fload: Callable[[t.Any], _T]=None, 
+    #                 fget: Callable[[t.Any], _T]=None, 
+    #                 fset: Callable[[t.Any, t.Any], None]=None, 
+    #                 fdel: Callable[[t.Any], None]=None, 
+    #                 *, name: str=None, 
+    #                 lookup_path: t.Union[str, list]=...,
+    #                 static: bool=None, 
+    #                 annotate: bool=None) -> property[_T]:
+    #         ...
 
     def __init__(self, 
                 expr: t.Any=None, 
-                fload: Callable[[t.Any], _T]=None, 
-                fget: Callable[[t.Any], _T]=None, 
-                fset: Callable[[t.Any, t.Any], None]=None, 
-                fdel: Callable[[t.Any], None]=None, 
-                *, name: str=None, 
+                loader: Callable[[t.Any], _T]=None, 
+                *, getter: t.Union[t.Literal[True], Callable[[t.Any], _T]]=None, 
+                setter: t.Union[t.Literal[True], Callable[[t.Any, t.Any], None]]=None, 
+                deleter: Callable[[t.Any], None]=None, 
+                name: str=None, 
                 lookup_path: t.Union[str, list]=...,
                 static: bool=None, 
-                annotate: bool=None) -> None:
-    
-        super().__init__(fload, fset, fdel)
+                annotate: bool=None, 
+                readonly=False) -> None:
+        assert not annotate or (getter or setter) is not True
+        if getter is True:
+            getter = self._get_lookup_attr_value
+        
+        if setter is True:
+            setter = self._set_lookup_attr_value
+
+        super().__init__(loader, setter, deleter, readonly=readonly)
 
         self._order = _creation_order()
-
         if name is not None:
             self.name = name
         
@@ -116,10 +130,14 @@ class aliased(cached_property[_T], t.Generic[_T]):
         
         self.static = True if static is None else bool(static)
         self.express(expr)
-        self.getter(fget)
+        self.getter(getter)
+
+    @property
+    def attname(self):
+        return self.attrname
 
     @cached_property
-    def lookup_path(self) -> DataPath:
+    def lookup_path(self) -> LookupDataPath:
         if self.expr is None:
             raise AttributeError('lookup_path: expr not set.')
         
@@ -129,15 +147,13 @@ class aliased(cached_property[_T], t.Generic[_T]):
         
         if not isinstance(expr, str):
             return None
-    
-        ld = len(expr) - len(expr.lstrip('_'))
-        rd = len(expr) - len(expr.rstrip('_'))
-        return DataPath('_'*ld + expr[ld:-rd].replace('__', '.') + '_'*rd)
+
+        return LookupDataPath(expr)
 
     
     @lookup_path.setter
     def lookup_path(self, value):
-        self.__dict__['lookup_path'] = value if value is None else DataPath(value)
+        self.__dict__['lookup_path'] = value if value is None else LookupDataPath(value)
 
     @cached_property
     def annotate(self) -> bool:
@@ -172,7 +188,10 @@ class aliased(cached_property[_T], t.Generic[_T]):
             return self.fget(obj)
 
     def _get_lookup_attr_value(self, obj):
-        return getitem(obj, self.lookup_path)
+        return self.lookup_path.get(obj)
+
+    def _set_lookup_attr_value(self, obj, val):
+        self.lookup_path.set(obj, val)
 
     def _load_alias_from_db(self, obj):
         if obj._state.adding:
@@ -210,7 +229,7 @@ class aliased(cached_property[_T], t.Generic[_T]):
     def contribute_to_class(self, cls: type['Model'], name):
         setattr(cls, name, self)
         self.__set_name__(cls, name)
-        cls.__config__.add_aliased_attr(self)
+        cls.__config__ and cls.__config__.set_aliased_attr(self)
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}({self.attrname!r})'

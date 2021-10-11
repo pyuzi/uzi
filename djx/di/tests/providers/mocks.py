@@ -11,7 +11,7 @@ from ...providers import (
 from ... import Depends, Scope, InjectedClassVar, InjectedProperty, Injector, abc
 from ...inspect import ordered_id
 
-from djx.common.utils.saferef import strong_ref as symbol
+from djx.common.saferef import StrongRef as symbol
 
 
 abc.Injectable.register(symbol)

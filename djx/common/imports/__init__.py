@@ -9,8 +9,8 @@ from importlib.util import find_spec
 
 from collections.abc import Mapping, Sequence, Set, Iterator
 
-from .utils.data import getitem
-from .utils import class_property
+from ..utils.data import getitem
+from ..utils import class_property
 
 
 __all__ = [
@@ -216,6 +216,28 @@ class InvalidImportName(ImportName):
         
 
 
+def _resolve_module(mod, pkg=None, start=2, stop=None, step=1):
+
+    if pkg is None:
+        for x in range(start, stop or start+(step*8)):
+            frm = sys._getframe(x)
+            # if getitem(frm, 'f_globals.__name__', __name__) == __name__:
+            #     continue
+
+            if pkg := getitem(frm, 'f_globals.__package__', None):
+                if pkg != __package__:
+                    break
+    if pkg:
+        mn = mod.partition('.')[2]
+        parts = pkg.split('.')
+        dots = -(len(mn) - len(mn := mn.lstrip('.'))) or len(parts)
+        mod = '.'.join(parts[:dots]) + f'.{mn}'
+
+    return mod
+
+
+
+
 class ModuleName(ImportName):
 
     __slots__ = ()
@@ -226,7 +248,13 @@ class ModuleName(ImportName):
 
     @classmethod
     def _parse_raw(cls, mod: str, qual: None=None) -> 'ModuleName':
-        return str.__new__(cls, mod)
+        self = str.__new__(cls, mod)
+        if self[:1] == '.':
+            mod = _resolve_module(mod)
+            if mod != self:
+                self = str.__new__(cls, mod)
+        return self
+
 
     @property
     def _module(self):
@@ -534,7 +562,7 @@ class PlaceHolderImporter(object):
                 # we swallow it and try the next choice.  The skipped frame
                 # is the one from __import__ above which we don't care about
                 if self.is_important_traceback(realname, tb):
-                    reraise(exc_type, exc_value, tb.tb_next)
+                    _reraise(exc_type, exc_value, tb.tb_next)
                 continue
             module = sys.modules[fullname] = sys.modules[realname]
             if '.' not in modname:
@@ -578,7 +606,7 @@ class PlaceHolderImporter(object):
 
 
 
-def reraise(tp, value, tb=None):
+def _reraise(tp, value, tb=None):
     if value.__traceback__ is not tb:
         raise value.with_traceback(tb)
     raise value

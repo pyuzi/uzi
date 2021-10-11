@@ -10,4 +10,4 @@ __version__ = ".".join(map(str, version))
 
 
 from .abc import settings
-
+from .util import app_is_installed

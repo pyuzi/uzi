@@ -45,9 +45,10 @@ INSTALLED_APPS = [
     # "django_extensions",
     "djx.spaces",
     "djx.ledgers",
-    "djx.xtags",
+    # "djx.xtags",
     "djx.schemas",
     "djx.keydb",
+    "djx.contacts",
     # "example_app",
 ]
 

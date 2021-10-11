@@ -8,36 +8,68 @@ __all__ = [
 ]
 
 
-class VoidType(type):
+class VoidType:
 
-    __type: ClassVar[VoidType] = None
+    __slots__ = '__name__',
 
-    def __new__(mcls, name, bases, dct):
-        if VoidType.__type is None:
-            VoidType.__type = super().__new__(mcls, name, bases, dct)
-            return VoidType.__type
+    __value__: ClassVar[VoidType] = None
 
-        raise TypeError(f'{mcls.__name__} already defined')
+    @classmethod
+    def __init_subclass__(cls) -> None:
+        cls.__value__ = None
+
+    # def __new__(mcls, name, bases, dct):
+    #     if mcls.__value__ is None:
+    #         mcls.__value__ = super().__new__(mcls, name, bases, dct)
+    #         return mcls.__value__
+
+    #     raise TypeError(f'{mcls.__name__} already defined {mcls.__value__}')
         
-    def __call__(self, *args, **kwds):
-        raise TypeError(f'{type(self).__name__} is not callable7')
+    def __new__(cls):
+        # if cls.__value__ is None:
+            # cls.__value__ = super().__new__(cls)
+            # cls.__value__.__name__ = name
+        return cls.__value__
+
+    # def __call__(self, *args, **kwds):
+    #     raise TypeError(f'{type(self).__name__} is not callable7')
+    
+    @classmethod
+    def _makenew__(cls, name):
+        if cls.__value__ is None:
+            cls.__value__ = object.__new__(cls)
+            cls.__value__.__name__ = name
+
+        return cls.__value__
 
     def __bool__(self):
         return False
 
     def __str__(self):
-        return self.__name__
+        return ''
 
     def __repr__(self):
-        return f'{self}'
+        return f'{self.__name__}'
 
     def __json__(self):
         return None
+    
+    def __reduce__(self):
+        return self.__class__, ()
+    
+    def __eq__(self, x):
+        return x is self
+
+    def __hash__(self):
+        return hash((self.__class__, id(self)))
 
     def validate(cls, v, **kwargs):
-        if v in {Void, None}:
-            return Void
-        ValueError('must be void')
+        val = cls.__value__
+        if v is val or v is None:
+            return val
+
+        ValueError(f'must be {val!r}')
+
 
     def __get_validators__(cls):
         yield cls.validate
@@ -47,4 +79,14 @@ class VoidType(type):
 
 
 
-Void = VoidType('Void', (), {})
+
+
+class MissingType(VoidType):
+    ...
+
+
+
+Void = VoidType._makenew__('Void')
+Missing = MissingType._makenew__('Missing')
+
+

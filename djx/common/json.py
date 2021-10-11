@@ -170,6 +170,15 @@ def dumps(obj: Jsonable, default: t.Callable[[t.Any], Jsonable]=None, opts: Json
     
 
 
+@export()
+def dumpstr(obj: Jsonable, default: t.Callable[[t.Any], Jsonable]=None, opts: JsonOpt=0) -> str:
+    """Serialize ``obj`` to a JSON formatted ``bytes``
+    Uses ``orjson`` if available or falls back to the standard ``json`` library.
+    """
+    return dumps(obj, default, opts | JsonOpt.DECODE)
+    
+
+
 # @export()
 # def dumps(obj: Jsonable, *, default: t.Callable[[t.Any], Jsonable]=None, flags: JsonOpt=0):
 #     """Serialize ``obj`` to a JSON formatted ``bytes`` or ``str``.
@@ -179,11 +188,19 @@ def dumps(obj: Jsonable, default: t.Callable[[t.Any], Jsonable]=None, opts: Json
 
 
 
-
-@export()
-def loads(s: t.Union[str, bytes, bytearray]):
-    """Unserialize a JSON object from a string ``s``.
-    Uses ``orjson`` if available or falls back to the standard ``json`` library.
-    """
-    return orjson.loads(s)
+if t.TYPE_CHECKING:
+    @export()
+    def loads(s: t.AnyStr):
+        """Unserialize a JSON object from a string ``s``.
+        Uses ``orjson`` if available or falls back to the standard ``json`` library.
+        """
+        
+    @export()
+    def loadstr(s: t.AnyStr):
+        """Unserialize a JSON object from a string ``s``.
+        Uses ``orjson`` if available or falls back to the standard ``json`` library.
+        """
+else:
+    loads = export(orjson.loads)
+    loadstr = export(loads, name='loadstr')
 

@@ -33,8 +33,8 @@ def humanize(value):
 	if not value:
 		return str(value)
 	text = re.sub('(.)([A-Z][a-z]+)', r'\1 \2', str(value))
-	text = re.sub('([a-z0-9])([A-Z])', r'\1 \2', text)
-	return re.sub('_+', ' ', text)
+	text = re.sub('([a-z0-9.])([A-Z])', r'\1 \2', text)
+	return re.sub(r'_+', ' ', text)
 
 
 def finish(text, finish, n=1):
@@ -124,11 +124,12 @@ def is_slug(text, *, allow: str='', sep: str = '-', pathlike=False) -> bool:
 	"""
 	return not slug_re(sep, allow, pathlike).search(text)
 	
-def snake(text, /, *, sep='_'):
-	sep is None and (sep := '_')
-	text = re.sub(r'(.)([A-Z][a-z]+)', f'\\1{sep}\\2', text)
+def snake(text, /, *, sep='_', ignore: str =''):
+	sep = sep or '_'
+	ignore = re.escape(sep + ignore)
+	text = re.sub(f'([^\s{ignore}])' + r'([A-Z][a-z]+)', f'\\1{sep}\\2', text)
 	text = re.sub(r'([a-z0-9])([A-Z])', f'\\1{sep}\\2', text).lower()
-	return re.sub(f'[^0-9a-z{re.escape(sep)}]+', sep, text)
+	return re.sub(f'[^0-9a-z{ignore}]+', sep, text)
 
 
 def camel(val: str) -> str:

@@ -33,10 +33,13 @@ class JSONField(m.JSONField):
         except json.JSONDecodeError:
             return _RawJson(value)
 
+    # def get_db_prep_value(self, value, connection, prepared: bool):
+    #     return super().get_db_prep_value(value, connection, prepared)
+
     def get_prep_value(self, value):
         if value is None or isinstance(value, _RawJson):
             return value
-        return json.dumps(value).decode()
+        return json.dumpstr(value)
 
     def validate(self, value, model_instance):
 
@@ -68,25 +71,26 @@ class JSONObjectDescriptor(DeferredAttribute):
 
     field: 'JSONObjectField'
     
-    def __get__(self, obj, cls=None):
-        if obj is None:
-            return self
+    # def __get__(self, obj, cls=None):
+    #     if obj is None:
+    #         return self
 
-        name = self.field.attname
-        try:
-            return obj.__dict__[name]
-        except KeyError:
-            self.__set__(obj, super().__get__(obj, cls))
-            return obj.__dict__[name]
+    #     name = self.field.attname
+    #     try:
+    #         return obj.__dict__[name]
+    #     except KeyError:
+    #         # self.__set__(obj, super().__get__(obj, cls))
+    #         # return obj.__dict__[name]
+    #         return super().__get__(obj, cls)
 
     def __set__(self, obj, val):
-        obj.__dict__[self.field.attname] = self.field.coerce_value(val,try_default=True)
+        obj.__dict__[self.field.attname] = self.field.coerce_value(val, try_default=True)
 
-    def __delete__(self, obj):
-        try:
-            del obj.__dict__[self.field.attname]
-        except KeyError:
-            pass
+    # def __delete__(self, obj):
+    #     try:
+    #         del obj.__dict__[self.field.attname]
+    #     except KeyError:
+    #         pass
         
 
 
@@ -113,9 +117,10 @@ class JSONObjectField(JSONField, t.Generic[_T_JSONObject]):
     def default_object_factory(self):
         try:
             from djx.schemas.tools import object_parser
-            return object_parser(self.object_type)
         except ImportError:
             return self.object_type
+        else:
+            return object_parser(self.object_type)
 
     def deconstruct(self):
         name, path, args, kwargs = super().deconstruct()

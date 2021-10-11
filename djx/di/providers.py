@@ -13,8 +13,8 @@ from typing import (
     Generic, Literal, NamedTuple, Optional, Protocol, Type, TypeVar, Union, overload
 )
 
-
-from djx.common.utils import export, Void, saferef
+from djx.common.saferef import SafeRefSet
+from djx.common.utils import export, Void
 from .inspect import BoundArguments, ordered_id
 from . import abc
 from .abc import Injectable, Scope, ScopeAlias, T_Injectable, T_Injected, T_Injector, T_Provider, T, T_Scope, T_Resolver
@@ -25,10 +25,11 @@ T_ScopeAlias = TypeVar('T_ScopeAlias', str, ScopeAlias)
 
 
 
-_provided = set()
+_provided = SafeRefSet()
 
 def is_provided(obj) -> bool:
-    return saferef(obj) in _provided # or (isinstance(obj, type) and issubclass(obj, abc.Injector))
+    return obj in _provided
+    # return saferef(obj) in _provided # or (isinstance(obj, type) and issubclass(obj, abc.Injector))
 
 
 
@@ -285,6 +286,7 @@ class FuncParamsResolver(FuncResolver):
         return super().clone(*args, **kwds)
 
 
+WeakSet
 
 _readony_options = MappingProxyType(fallbackdict())
 
@@ -317,7 +319,7 @@ class Provider(abc.Provider[T, T_Injectable, T_Resolver, T_Scope]):
         self.options = fallbackdict(None, options)
 
         self.set_concrete(concrete)
-        _provided.add(saferef(self.abstract))
+        _provided.add(self.abstract)
 
     def set_concrete(self, concrete) -> None:
         self.concrete = concrete
@@ -468,10 +470,10 @@ class Depends:
 
     __slots__ = ()
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls):
         raise TypeError("Type Depends cannot be instantiated.")
 
-    def __class_getitem__(cls, params: Union[T, tuple[T, ...]]) -> Annotated[T, Dependency]:
+    def __class_getitem__(cls, params: Union[T, tuple[T, ...]]) -> Annotated[T, 'Dependency']:
         scope = None
         if not isinstance(params, tuple):
             deps = ((tp := params),)

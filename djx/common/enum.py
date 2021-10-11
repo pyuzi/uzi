@@ -6,11 +6,16 @@ from enum import (
     IntEnum as BaseIntEnum,
     IntFlag as BaseIntFlag,
     Flag as BaseFlag,
+    unique,
+    auto,
 )
+from functools import cache
 from itertools import chain
 from types import MappingProxyType
 import warnings
 import typing as t
+
+from djx.common.utils.data import assign
 
 from .utils import export, text
 
@@ -175,7 +180,7 @@ class EnumMeta(BaseEnumMeta):
 
     def _choices_(cls):
         empty = ((None, cls.__empty__),) if hasattr(cls, '__empty__') else ()
-        return empty + tuple((m.value, m.label) for m in cls)
+        return empty + tuple((m._value_, m.label) for m in cls)
 
     choices = _choices_
 
@@ -218,6 +223,11 @@ class IntEnum(BaseIntEnum, metaclass=EnumMeta):
     value: t.Any
 
 
+class BitInt(int):
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return f"b'{abs(self):b}' ({self:d})"
 @export()
 class IntFlag(BaseIntFlag, metaclass=EnumMeta):
     __slots__ = ()
@@ -225,6 +235,18 @@ class IntFlag(BaseIntFlag, metaclass=EnumMeta):
     name: str
     label: str
     value: t.Any
+
+    def __repr__(self) -> str:
+        b = f"{{:0>{_bit_width(self.__class__)}}}".format(f'{abs(self._value_):b}')
+        return f'<b{b!r}: {super().__repr__()}>'
+        
+
+
+
+@cache
+def _bit_width(cls: type[IntFlag]):
+    return len(f'{sorted(cls._value2member_map_, reverse=True)[0]:b}')
+    
 
 @export()
 class StrEnum(str, Enum):

@@ -33,8 +33,18 @@ def get_queryset(self: Manager):
 
 
 
+# def by_natural_key(self: Manager, key):
+#     return self.filter(self.model.__config__.natural_key_lookup(key))
+
+
+# BaseManager.by_natural_key = by_natural_key
+
+
+
+
 def get_by_natural_key(self: Manager, key):
     return self.filter(self.model.__config__.natural_key_lookup(key)).get()
+    # return self.by_natural_key(key).get()
 
 
 BaseManager.get_by_natural_key = get_by_natural_key

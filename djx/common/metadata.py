@@ -1,7 +1,7 @@
 import re
 from abc import ABCMeta
 
-import copy as _copy
+from copy import copy as _copy, deepcopy
 import logging
 import typing as t
 
@@ -11,7 +11,8 @@ from collections import ChainMap
 from collections.abc import Mapping, Callable
 from threading import RLock
 
-from djx.common.collections import orderedset
+from djx.common.collections import fallbackdict, orderedset
+from djx.common.utils import text
 from djx.common.utils.data import assign
 
 
@@ -35,7 +36,7 @@ def get_metadata_class(cls: t.Type[T], attr: str,
                         mro: t.Optional[t.Tuple[t.Type, ...]] = None, 
                         name: t.Optional[str] = None, 
                         dct: t.Optional[t.Mapping] = None, 
-                        set_final: t.Optional[bool] = False) -> t.Type['BaseMetadata[T]']:
+                        set_final: t.Optional[bool] = False) -> type['BaseMetadata[T]']:
     
     rv = final_attr and getattr(cls, final_attr, None)
     if not rv:
@@ -73,23 +74,25 @@ def _get_creation_order():
 
 _TF = t.TypeVar('_TF')
 
+
 @export
-class metafield(property, t.Generic[_TF]):
+class metafield(t.Generic[_TF]):
     """Descriptor for meta fields.
     """
 
     __slots__ = (
-        '__name__', '__objclass__', 'doc', 'field',
+        '__name__', '__objclass__', '__weakref__', 'doc', 'field',
         'fload', 'fget', 'fset', 'fdel', '_creation_order',
-        'access', 'inherit', 'default', 'lock',
+        'inherit', 'default', 'lock', 'alias'
     )
 
     def __init__(self, fload=None, field=None, fget=None, fset=None, fdel=None,
-                name=None, default=None, inherit=True, doc=None):
+                name=None, default=None, inherit=True, doc=None, alias: t.Union[bool, str]=None):
         self.fload = self.fget = self.fset = self.fdel = None
 
         self.__name__ = name
         self.__objclass__ = None
+        self.alias = alias
         self.doc = doc
 
         if isinstance(fload, str):
@@ -98,7 +101,6 @@ class metafield(property, t.Generic[_TF]):
             fload = None
         else:
             self.field = field
-
 
         self.loader(fload)
         self.getter(fget)
@@ -115,6 +117,29 @@ class metafield(property, t.Generic[_TF]):
     def __doc__(self):
         return self.doc
 
+    def __repr__(self):
+        attrs = ', '.join(f'{k}={getattr(self, k)!r}' for k in (
+            'field', 'alias', 'inherit'
+        ))
+        return f"{self.__class__.__name__}({self.__name__!r}, {attrs})" 
+
+    def __getstate__(self):
+        return { k: getattr(self, k) for k in (
+            '__name__', 'doc', 'field',
+            'fload', 'fget', 'fset', 'fdel',
+            'inherit', 'default', 'alias'
+        )}
+
+    def __setstate__(self, state):
+        keys = {'__name__', 'doc', 'field',
+                            'fload', 'fget', 'fset', 'fdel',
+                            'inherit', 'default', 'alias'}
+        for k in state.keys() & keys:
+            setattr(self, k, state[k])
+        self.__objclass__ = None
+        self._creation_order = _get_creation_order()
+        self.lock = RLock()
+
     def loader(self, func):
         if func is None or callable(func):
             old = self.fload
@@ -129,23 +154,24 @@ class metafield(property, t.Generic[_TF]):
     def getter(self, func):
         if func is None or callable(func):
             self.fget = func
-        else:
-            raise TypeError('Expected callable or None. Got %s.' % type(func))
+            return self
+
+        raise TypeError('Expected callable or None. Got %s.' % type(func))
 
     def setter(self, func):
         if func is None or callable(func):
             self.fset = func
-        else:
-            raise TypeError('Expected callable or None. Got %s.' % type(func))
+            return self
+        raise TypeError('Expected callable or None. Got %s.' % type(func))
 
     def deletter(self, func):
         if func is None or callable(func):
             self.fdel = func
-        else:
-            raise TypeError('Expected callable or None. Got %s.' % type(func))
+            return self
+        raise TypeError('Expected callable or None. Got %s.' % type(func))
 
     def contribute_to_class(self, owner, name=None):
-        assert name is None or self.__name__ == name, (
+        assert (name is None or self.__name__ is None) or self.__name__ == name, (
                 f'attribute __name__ must be set to bind {type(self)}'
             )
 
@@ -153,11 +179,46 @@ class metafield(property, t.Generic[_TF]):
             assert issubclass(owner, self.__objclass__), (
                 f'can only contribute to subclasses of {self.__objclass__}. {owner} given.'
             )
+        
+        if name:
+            setattr(owner, name, self)
+            self.__set_name__(owner, name)
+
+    def __set_name__(self, owner, name):
+        if self.__objclass__ is None:
+            self.__objclass__ = owner
+            self.__name__ = name
+        elif self.__objclass__ is owner:
+            self.__name__ = name
+        else:
+            raise RuntimeError(f'__set_name__. metafield already bound.')
+        
+        if not self.field:
+            self.field = name
+            
+        if self.alias is True:
+            if self.field == name:
+                self.alias = False
+            else:
+                self.alias = name
+        elif self.alias == self.field:
+            self.alias = False
+
+    def __call__(self, fload: t.Callable[..., _TF]) -> 'metafield[_TF]':
+        assert self.fload is None, ('metafield option already has a loader.')
+        self.loader(fload)
+        return self
 
     def __load__(self, obj) -> t.Union[_TF, t.Any]:
         try:
-            rv = obj.__raw__[self.field or self.__name__]
-        except (AttributeError, KeyError):
+            # rv = obj.__raw__[self.field or self.__name__]
+            rv = obj.__raw__[self.field]
+        except KeyError:
+            if self.alias:
+                rv = obj.__raw__.get(self.alias, Void)
+            else:
+                rv = Void
+        except AttributeError:
             rv = Void
 
         try:
@@ -171,92 +232,142 @@ class metafield(property, t.Generic[_TF]):
                     rv = base.get(self.__name__, self.default)
                 else:
                     rv = self.default
+
+            if self.fset is not None:
+                self.fset(obj, rv)
+                rv = NotImplemented
         else:
             if not self.inherit or base is None:
                 args = ()
-            elif self.field in base:
-                args = (base[self.field],)
-            elif self.__name__ in base:
-                args = (base[self.__name__],)
             else:
-                args = ()
-            rv = self.fload(obj, self.default if rv is Void else rv, *args)
+                try:
+                    args = base[self.__name__],
+                except KeyError:
+                    args = ()
 
-        obj.__dict__[self.__name__] = rv
+            rv = self.fload(obj, self.default if rv is Void else rv, *args)
+        
+        if rv is not NotImplemented:
+            obj.__dict__[self.__name__] = rv
+        
+        obj.__fieldset__.add(self.__name__)
+
         return rv
 
-    def __set_name__(self, owner, name):
-        if self.__objclass__ is None:
-            self.__objclass__ = owner
-            self.__name__ = name
-        elif self.__objclass__ is owner:
-            self.__name__ = name
-        else:
-            raise RuntimeError(f'__set_name__. metafield already bound.')
 
-    def __call__(self, fload: t.Callable[..., _TF]) -> 'metafield[_TF]':
-        assert self.fload is None, ('metafield option already has a loader.')
-        self.loader(fload)
-        return self
-
-    def __get__(self, obj, cls) -> _TF:
+    def __get__(self, obj: 'BaseMetadata', cls) -> _TF:
         if obj is None:
             return self
 
+        fget = self.fget
+        if self.__name__ in obj.__fieldset__:
+            if fget is not None:
+                return fget(obj)
+            else:
+                try:
+                    return obj.__dict__[self.__name__]
+                except KeyError:
+                    raise AttributeError(self.__name__)
+
         with self.lock:
-            try:
-                rv = obj.__dict__[self.__name__]
-            except KeyError:
-                rv = self.__load__(obj)
-            return rv if self.fget is None else self.fget(obj, rv)
+            
+            rv = self.__load__(obj)
+            
+            if fget is None:
+                if rv is NotImplemented:
+                    raise AttributeError(self.__name__)
+                
+                return rv
+
+            return fget(obj)
+
+            # return rv if self.fget is None else self.fget(obj, rv)
+            # return rv if self.fget is None else self.fget(obj)
 
     def __set__(self, obj, value):
         with self.lock:
+            if self.__name__ not in obj.__fieldset__:
+                self.__load__(obj)
+            
             if self.fset is not None:
-                obj.__dict__[self.__name__] = self.fset(obj, value)
+                # obj.__dict__[self.__name__] = self.fset(obj, value)
+                self.fset(obj, value)
             elif self.fload is not None:
                 if self.inherit:
-                    obj.__dict__[self.__name__] = self.fload(obj, value, obj.__dict__.get(self.__name__))
+                    val = self.fload(obj, value, obj.__dict__.get(self.__name__))
                 else:
-                    obj.__dict__[self.__name__] = self.fload(obj, value)
+                    val = self.fload(obj, value)
+                
+                if val is not NotImplemented:
+                    obj.__dict__[self.__name__] = val
             else:
                 obj.__dict__[self.__name__] = value
+
+            # obj.__fieldset__.add(self.__name__)
+
 
     def __delete__(self, obj):
         if self.fdel is not None:
             self.fdel(obj)
         obj.__dict__.pop(self.__name__, None)
+        obj.__fieldset__.discard(self.__name__)
 
 
-
+if t.TYPE_CHECKING:
+    
+    class metafield(property[_TF], metafield[_TF], t.Generic[_TF]):
+        
+        def __get__(self, obj, cls) -> _TF:
+            ...
 
 class MetadataType(ABCMeta):
 
+    __fields__: orderedset
+    __fieldaliases__: fallbackdict
+    __fieldset__: orderedset[str]
+
     def __new__(mcls, name, bases, dct):
-        super_new = super(MetadataType, mcls).__new__
-
-        # dct['__fields__'] = orderedset()
-
-        cls = super_new(mcls, name, bases, dct)
+        cls = super().__new__(mcls, name, bases, dct)
         cls.register_metafields()
+
+        # debug(f'{cls.__module__}:{cls.__qualname__}', {f: getattr(cls, f) for f in cls.__fields__})
         return cls
 
     def register_metafields(self):
         self.__fields__= fieldset = orderedset()
+        self.__fieldaliases__ = aliases = fallbackdict(lambda k: k)
         for name, field in self._iter_metafields():
             field.contribute_to_class(self, name)
             fieldset.add(name)
-            field.field and fieldset.add(field.field)
+            # field.field and fieldset.add(field.field)
+            if field.alias:
+                aliases[field.alias] = name
         
     def _iter_metafields(self):
-        fields = ((k,v) for k in dir(self)
-                    for v in (getattr(self, k),) 
-                        if isinstance(v, metafield)
-                )
+        seen = set(self.__dict__)
+        for b in reversed(self.mro()[1:]):
+            for n in b.__fields__ if isinstance(b, MetadataType) else dir(b):
+                if n not in seen:
+                    f = getattr(self, n, None)
+                    if isinstance(f, metafield):
+                        seen.add(n)
+                        yield n, deepcopy(f)
 
-        mro = list(self.mro())
-        mro.append(None)
-        yield from sorted(fields, key=lambda kv: (mro.index(kv[1].__objclass__)+1)*kv[1]._creation_order)
+        for n in self.__dict__:
+            f = getattr(self, n)
+            if isinstance(f, metafield):
+                yield n, f
+
+
+        # fields = (
+        #     (k,v) for b in self.mro()
+        #         for k in b.__dict__
+        #             if isinstance(v := getattr(self, k, None), metafield)
+        # )
+
+        # return fields
+        # mro.append(None)
+        # yield from sorted(fields, key=lambda kv: (mro.index(kv[1].__objclass__)+1, kv[1]._creation_order))
 
         
 
@@ -280,15 +391,22 @@ TT = t.TypeVar('TT')
 @export
 class BaseMetadata(t.Generic[T], metaclass=MetadataType):
 
+    # __slots__ =(
+    #     '__name__', '__raw__', '__base__', 'target', '__allowextra__',
+    #     '__dict__', '__weakref__'
+    # )
     __fields__: orderedset
+    __fieldaliases__: dict[str, str]
 
     __name__: str
-    __allowextra__: bool = False
+    __allowextra__: t.ClassVar[bool] = False
 
     target: t.Type[T]
 
     def __init__(self, target = None, name=None, raw=None, base=None, *, allowextra=None):
         self.target = None
+
+        self.__fieldset__ = set()
 
         # debug(name, raw, base)
         self.__raw__ = _to_dict(raw, default=dict())
@@ -329,34 +447,39 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
             self.__base__ = self._base_from_target(self.target, name)
 
         self.__name__ = name
+        fieldset = self.__fieldset__
+        fieldset.clear()
 
         for f in self.__fields__:
             getattr(self, f, None)
 
         if self.__allowextra__:
-            skip = set(dir(self)) | self.__fields__
-            for k in self.__raw__.keys():
-                if k not in skip:
-                    if isinstance(k, str) and not k.startswith('_'):
-                        setattr(self, k, self.__raw__[k])
-                        skip.add(k)
+            skip = set(dir(self)) | fieldset | self.__fields__ | self.__fieldaliases__.keys()
+            for k in self.__raw__.keys() - skip:
+                if isinstance(k, str) and k[0] != '_':
+                    fieldset.add(k)
+                    setattr(self, k, self.__raw__[k])
 
-            for k in self.__base__.keys():
-                if k not in skip:
-                    if isinstance(k, str) and not k.startswith('_'):
-                        setattr(self, k, self.__base__[k])
+            for k in self.__base__.keys() - (skip | fieldset):
+                if isinstance(k, str) and k[0] != '_':
+                    fieldset.add(k)
+                    setattr(self, k, self.__base__[k])
 
-        self.__ready__()
-        # name and setattr(self.target, name, self)
-
-    def __ready__(self):
+        self.__loaded__()
         del self.__raw__
         del self.__base__
-    
+        self.__ready__()
+
+    def __loaded__(self):
+        pass
+
+    def __ready__(self):
+        pass
+
     def copy(self, **replace):
         if not self._metadataloaded_:
             raise RuntimeError(f'{self.__class__.__name__} not loaded')
-        rv = _copy.copy(self)
+        rv = _copy(self)
         replace and rv.__dict__.update(replace)
         return rv
 
@@ -367,66 +490,56 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
         
     def __setstate__(self, val):
         self.__dict__.update(val)
+    
+    def __getattr__(self, alias):
+        name = self.__fieldaliases__[alias]
+        if name is alias:
+            # return NotImplemented
+            raise AttributeError(alias)
+        
+        return getattr(self, name)
 
     @classmethod
     def _base_from_target(cls, target, attr):
         if isinstance(target, type):
             maps = (getattr(b, attr, None) for b in target.__bases__)
-            maps = (_to_dict(b, skip=None) for b in maps if isinstance(b, BaseMetadata))
+            maps = (b for b in maps if isinstance(b, BaseMetadata))
             return ChainMap({}, *maps)
         return getattr(target.__class__, attr, {})
-        
-
-    # def contribute_to_class(self, owner, name=None):
-    #     name and owner and setattr(owner, name, self) 
-    #     self.__set_name__(owner, name)
 
     def get(self, key, default=None):
-        return getattr(self, key, default)
-
+        try:
+            return self[key]
+        except KeyError:
+            return default
+        
     def update(self, *args, **kwds):
         assign(self, *args, kwds)
 
     def __iter__(self):
-        yield from self.__dict__.items()
+        yield from self.__dict__
 
     def __contains__(self, key):
-        return key in self.__fields__ and hasattr(self, key)
+        # return self.__fieldset__.__contains__(key) and hasattr(self, key)
+        return isinstance(key, str) and hasattr(self, key)
             
     def __getitem__(self, key):
+        # if isinstance(key, str):
+            # if True or not text.is_dunder(key):
         try:
-            if self.__allowextra__ or key in self.__fields__:
-                return getattr(self, key)
-            else:
-                raise KeyError(key)
+            return getattr(self, key)
         except AttributeError:
-            raise KeyError(key)
+            raise KeyError()
         
     def __setitem__(self, key, value):
-        if self.__allowextra__ or key in self.__fields__:
-            setattr(self, key, value)
-        else:
-            raise KeyError(key)
+        setattr(self, key, value)
+    
+    # def __repr__(self) -> str:
+    #     # attrs = dict((k, self.__dict__[k]) for k in self.__dict__ if not text.is_dunder(k))
+    #     print(self.__fieldset__)
+    #     attrs = { k : self.get(k, ...) for k in self.__fieldset__ }
+    #     return f'{self.__class__.__name__}({self.target.__name__}, {attrs})'
     
     def __repr__(self) -> str:
-        # fields = ", ".join(f'{f}={getattr(self, f)!r}' for f in sorted(self.__fields__))
-        return f'{self.__class__.__name__}({self.target.__name__}, {self.__dict__!r})'
-
-
-
-# class metadata(type):
-
-# 	def __new__(mcls, name, bases, dct, **kw):
-# 		fields = dct['__type__'] = set()
-
-# 		for k,v in dct.items():
-# 			if isinstance(v, metafield):
-# 				fields.add(k)
-# 				v.__name__ = k
-
-# 		for base in bases:
-# 			if isinstance(base, MetadataType):
-# 				fields |= base.__fields__
-
-# 		return super(MetadataType, mcls).__new__(mcls, name, bases, dct)
+        return f'{self.__class__.__name__}({self.target})'
 

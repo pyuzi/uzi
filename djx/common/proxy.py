@@ -5,7 +5,6 @@ import operator
 import typing as t
 from functools import cache, partial
 
-from .utils import saferef
 
 
 _TP = t.TypeVar('_TP', covariant=True)
@@ -13,7 +12,6 @@ _T_Fget = t.Callable[[], _TP]
 
 
 _notset = object()
-_notset_ref = saferef(None)
 
 
 
@@ -30,6 +28,7 @@ def isproxytype(typ: type[t.Any], cls: t.Union[type[Proxy], tuple[type[Proxy]]] 
 
 
 _set_own_attr = object.__setattr__
+_notset_ref = lambda: None
 
 
 class _ProxyLookup(t.Generic[_TP]):
@@ -134,11 +133,23 @@ class ProxyType(type):
 
 
 _proxy_attrs = frozenset((
-    '__proxy_target_func__',  
+    '__proxy_func__',  
     '__proxy_target_val__', 
     '__proxy_target__',
-    '__proxy_wrapped__',
-    '__call__'
+    # '__call__',
+    # '__iadd__',
+    # '__isub__',
+    # '__imul__ ',
+    # '__imatmul__ ',
+    # '__itruediv__ ',
+    # '__ifloordiv__ ',
+    # '__imod__ ',
+    # '__ipow__ ',
+    # '__ilshift__ ',
+    # '__irshift__ ',
+    # '__iand__ ',
+    # '__ixor__ ',
+    # '__ior__ ',
 ))
 
 
@@ -153,12 +164,13 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
     """
 
     __slots__ = (
-        '__proxy_target_func__',  
+        '__proxy_func__',  
         '__proxy_target_val__', 
         '__weakref__',
     )
 
-    __proxy_target_func__: _T_Fget[_TP]
+    __proxy_func__: _T_Fget[_TP]
+    
 
     @t.overload
     def __new__(cls, fget: _T_Fget[_TP], /, *, cache: bool=None, weak: bool=None, callable: bool=None, **kwds) -> _TP: 
@@ -178,7 +190,6 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
                             else CachedProxy if cache is True \
                                 else CallableProxy if callable is True\
                                     else SimpleProxy
-        
         if fget is ...:
             def decorate(fget):
                 return cls(fget)
@@ -192,7 +203,7 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
             return super().__new__(cls)
 
     def __init__(self, fget: _T_Fget[_TP], /, *, cached: bool=None, weak: bool=None, callable: bool=None) -> None:
-        _set_own_attr(self, '__proxy_target_func__', fget)
+        _set_own_attr(self, '__proxy_func__', fget)
 
     @classmethod
     def _clone_proxy_from(cls, obj, **kwds):
@@ -200,17 +211,17 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
             return obj
         return NotImplemented  
 
+    @classmethod
+    def __proxy_class__(cls):
+        return cls
+
     @property
     def __proxy_target__(self) -> _TP:
         """Return the current object.  This is useful if you want the real
         object behind the proxy at a time for performance reasons or because
         you want to pass the object into a different context.
         """
-        return self.__proxy_target_func__()
-
-    @property
-    def __proxy_wrapped__(self) -> _T_Fget[_TP]:
-        return self.__proxy_target_func__
+        return self.__proxy_func__()
 
 #
     __doc__ = _ProxyLookup(  # type: ignore
@@ -219,19 +230,19 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
     # __del__ should only delete the proxy
 
     def __repr__(self):
-        return f'{type(self).__name__}({self.__proxy_target__!r})'
+        return f'{type(self).__name__}({self.__proxy_target__})'
 
-    def __getattribute__(self, name):
+    # def __getattribute__(self, name):
+    #     if name in _proxy_attrs:
+    #         return super().__getattribute__(name)
+    #     return getattr(super().__getattribute__('__proxy_target__'), name)
+
+    def __getattr__(self, name):
         if name in _proxy_attrs:
-            return super().__getattribute__(name)
-        return getattr(super().__getattribute__('__proxy_target__'), name)
+            raise AttributeError(name)
+        
+        return getattr(self.__proxy_target__, name)
 
-        # raise AttributeError(name)
-
-
-    # __repr__ = _ProxyLookup(
-    #     repr, fallback=lambda self: f"<{type(self).__name__} unbound>"
-    # )
     __str__ = _ProxyLookup(str)
     __bytes__ = _ProxyLookup(bytes)
     __format__ = _ProxyLookup()  # type: ignore
@@ -344,7 +355,7 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
 ###
 
 
-class SimpleProxy(Proxy):
+class SimpleProxy(Proxy[_TP]):
 
     __slots__ = ()
 
@@ -352,7 +363,8 @@ class SimpleProxy(Proxy):
 
 
 
-class CachedProxy(Proxy):
+
+class CachedProxy(Proxy[_TP]):
 
     __slots__ = ()
 
@@ -360,7 +372,7 @@ class CachedProxy(Proxy):
 
     def __init__(self, fget: _T_Fget[_TP], /, **kwds) -> None:
         _set_own_attr(self, '__proxy_target_val__', _notset)
-        _set_own_attr(self, '__proxy_target_func__', fget)
+        _set_own_attr(self, '__proxy_func__', fget)
 
     @property
     def __proxy_target__(self) -> _TP:
@@ -369,13 +381,13 @@ class CachedProxy(Proxy):
         you want to pass the object into a different context.
         """
         if self.__proxy_target_val__ is _notset:
-            _set_own_attr(self, '__proxy_target_val__', self.__proxy_target_func__())
+            _set_own_attr(self, '__proxy_target_val__', self.__proxy_func__())
 
         return self.__proxy_target_val__
 
 
 
-class WeakProxy(CachedProxy):
+class WeakProxy(CachedProxy[_TP]):
 
     __slots__ = ()
 
@@ -383,7 +395,7 @@ class WeakProxy(CachedProxy):
 
     def __init__(self, fget: _T_Fget[_TP], /, **kwds) -> None:
         _set_own_attr(self, '__proxy_target_val__', _notset_ref)
-        _set_own_attr(self, '__proxy_target_func__', fget)
+        _set_own_attr(self, '__proxy_func__', fget)
 
     @property
     def __proxy_target__(self) -> _TP:
@@ -393,7 +405,7 @@ class WeakProxy(CachedProxy):
         """
         rv = self.__proxy_target_val__()
         if rv is None:
-            _set_own_attr(self, '__proxy_target_val__', saferef(self.__proxy_target_func__()))
+            _set_own_attr(self, '__proxy_target_val__', saferef(self.__proxy_func__()))
             return self.__proxy_target_val__()
     
         return rv
@@ -405,29 +417,43 @@ class WeakProxy(CachedProxy):
 
 
 
+class ValueProxy(Proxy[_TP]):
+
+    __slots__ = '__proxy_target__',
+
+    def __init__(self, value: _TP, /, **kwds) -> None:
+        _set_own_attr(self, '__proxy_target__', value)
+
+    @property
+    def __proxy_func__(self):
+        val = self.__proxy_target__
+        return lambda: val
+
+
 
 
 class CallableProxy(Proxy[_TP]):
 
     __slots__ = ()
 
-    @property
-    def __wrapped__(self):
-        return self.__proxy_target_func__
-
     def __call__(self) -> _TP:
         return self.__proxy_target__
 
 
-
-
-class CachedCallableProxy(CachedProxy, CallableProxy):
+class CallableValueProxy(ValueProxy[_TP], CallableProxy[_TP]):
 
     __slots__ = ()
 
 
 
-class WeakCallableProxy(WeakProxy, CallableProxy):
+
+class CachedCallableProxy(CachedProxy[_TP], CallableProxy[_TP]):
+
+    __slots__ = ()
+
+
+
+class WeakCallableProxy(WeakProxy[_TP], CallableProxy[_TP]):
 
     __slots__ = ()
 
@@ -466,3 +492,6 @@ if t.TYPE_CHECKING:
 else:
     
     proxy = Proxy
+
+
+from .saferef import saferef

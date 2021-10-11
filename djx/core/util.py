@@ -1,6 +1,7 @@
 from functools import cache
 
-from djx.common.utils import setdefault
+from djx.common.utils import setdefault, getitem
+from djx.common.imports import ModuleImportRef
 
 
 @cache
@@ -36,4 +37,12 @@ def _load_django_settings():
 
 
 
+@cache
+def app_is_installed(module_name):
+    if ModuleImportRef(module_name)(None):
+        from . import settings
+        if apps := getitem(settings, 'INSTALLED_APPS', None):
+            return module_name in apps
+        return True
+    return False
 

@@ -22,6 +22,9 @@ NOTHING = object()
 _T = t.TypeVar('_T')
 
 
+def noop(*a, **kw):
+    pass
+
 
 def export(obj: _T =..., /, *, name=None, exports=None, module=None) -> _T:
     

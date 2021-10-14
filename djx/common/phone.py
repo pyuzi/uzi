@@ -19,7 +19,7 @@ from djx.di import di
 from .collections import fallbackdict
 from .enum import IntEnum, StrEnum
 from .locale import locale
-from .utils import cached_property, text, export
+from .utils import cached_property, text, export, class_property
 
 _T_Phone = t.TypeVar('_T_Phone', bound='PhoneNumber', covariant=True)
 _T_PhoneStr = t.TypeVar('_T_PhoneStr', bound='PhoneStr', covariant=True)
@@ -115,7 +115,6 @@ class FormatSpec(StrEnum):
 
 
 @export()
-@unique
 class PhoneFormat(IntEnum):
     E164            = base.PhoneNumberFormat.E164
     INTERNATIONAL   = base.PhoneNumberFormat.INTERNATIONAL
@@ -123,7 +122,11 @@ class PhoneFormat(IntEnum):
     RFC3966         = base.PhoneNumberFormat.RFC3966
     LOCAL           = auto()
     MSISDN          = auto()
-    PLAIN           = auto()
+    default         = E164
+
+    @property
+    def spec(self):
+        return FormatSpec[self.name]
 
     @property
     def spec(self):
@@ -174,19 +177,17 @@ class PhoneStr(str):
         return cls.__fmttypes[(cls, fmt)]
 
     def __new__(cls: type[_T_PhoneStr], phone: t.Union[_T_Phone, 'PhoneStr'], fmt: PhoneFormat=None) -> _T_PhoneStr:
-        if cls._fmt is None:
-            cls = cls[PhoneFormat.PLAIN if fmt is None else  fmt]
-        
-        fmt = cls._fmt
-        
-        if isinstance(phone, PhoneStr):
-            return phone.to(fmt)
+        if isinstance(phone, cls):
+            return phone.to(cls._fmt if fmt is None else fmt)
         elif isinstance(phone, str):
             phone = to_phone(phone)
+
+        if cls._fmt is None:
+            cls = cls[phone._default_fmt if fmt is None else fmt]
+
+        fmt = cls._fmt
         
-        if fmt is PhoneFormat.PLAIN:
-            val = phone.to(PhoneFormat.RFC3966)
-        elif fmt is PhoneFormat.MSISDN:
+        if fmt is PhoneFormat.MSISDN:
             val = phone.to(PhoneFormat.E164)[1:]
         elif fmt is PhoneFormat.LOCAL:
             if locale.territory == phone.region:
@@ -208,8 +209,14 @@ class PhoneStr(str):
     def phone(self):
         return self.__phone
 
-    def to(self, fmt: PhoneFormat):
-        if fmt == self._fmt:
+    def to(self, fmt: PhoneFormat=None):
+        if fmt is None or fmt == self._fmt:
+            return self
+        else:
+            return self.phone.to(fmt)
+
+    def format(self, fmt: FormatSpec=None):
+        if fmt is None or fmt == self._fmt:
             return self
         else:
             return self.phone.to(fmt)
@@ -217,11 +224,7 @@ class PhoneStr(str):
     @classmethod
     def validate(cls, v, **kwargs):
         if not isinstance(v, cls):
-            if isinstance(v, (PhoneStr, PhoneNumber)):
-                v = v.to(cls._fmt)
-            else:
-                v = PhoneNumber.coerce(v, **kwargs).to(cls._fmt)
-        
+            v = cls(PhoneNumber.validate(v, **kwargs))
         return v
 
     @classmethod
@@ -238,42 +241,6 @@ class PhoneStr(str):
     
     def __json__(self):
         return str(self)
-
-
-if t.TYPE_CHECKING:
-
-    @export()
-    class MsisdnPhoneStr(PhoneStr[PhoneFormat.MSISDN]):
-        ...
-
-
-    @export()
-    class NationalPhoneStr(PhoneStr[PhoneFormat.NATIONAL]):
-        ...
-
-
-
-# @export()
-# class MobilePhoneStr(PhoneStr[PhoneFormat.MSISDN]):
-#     ...
-
-# E164            = base.PhoneNumberFormat.E164
-#     INTERNATIONAL   = base.PhoneNumberFormat.INTERNATIONAL
-#     NATIONAL        = base.PhoneNumberFormat.NATIONAL
-#     RFC3966         = base.PhoneNumberFormat.RFC3966
-#     LOCAL           = auto()
-#     MSISDN          = auto()
-#     PLAIN           = auto()
-
-_g = globals()
-for fmt in PhoneFormat:
-    cls = PhoneStr[fmt]
-    _g.setdefault(cls.__name__, export(cls))
-
-
-
-
-
 
 
 
@@ -299,6 +266,7 @@ class PhoneNumber(base.PhoneNumber):
     }
 
     _fmt_cls = PhoneStr
+    _default_fmt: t.ClassVar[PhoneFormat] = PhoneFormat.default
 
     def __init__(self, number: t.Union[str, int, _T_Phone]=None, /, **kwargs):
         
@@ -352,17 +320,17 @@ class PhoneNumber(base.PhoneNumber):
         return self.__class__(self)
     __copy__ = copy
 
-    def isvalid(self):
-        return self.valid
+    # def isvalid(self):
+    #     return self.valid
 
-    def isinvalid(self):
-        return not self.valid
+    # def isinvalid(self):
+    #     return not self.valid
 
-    def ispossible(self):
-        return self.possible
+    # def ispossible(self):
+    #     return self.possible
 
-    def isimpossible(self):
-        return not self.possible
+    # def isimpossible(self):
+    #     return not self.possible
 
     def freeze(self):
         self._frozen = True
@@ -372,31 +340,33 @@ class PhoneNumber(base.PhoneNumber):
         self._frozen = False
         return self
 
-    def e164(self):
-        return self.to(PhoneFormat.E164)
+    # def e164(self):
+    #     return self.to(PhoneFormat.E164)
 
-    def international(self):
-        return self.to(PhoneFormat.INTERNATIONAL)
+    # def international(self):
+    #     return self.to(PhoneFormat.INTERNATIONAL)
     
-    def local(self):
-        return self.to(PhoneFormat.LOCAL)
+    # def local(self):
+    #     return self.to(PhoneFormat.LOCAL)
 
-    def msisdn(self):
-        return self.to(PhoneFormat.MSISDN)
+    # def msisdn(self):
+    #     return self.to(PhoneFormat.MSISDN)
 
-    def national(self):
-        return self.to(PhoneFormat.NATIONAL)
+    # def national(self):
+    #     return self.to(PhoneFormat.NATIONAL)
 
-    def plain(self):
-        return self.to(PhoneFormat.PLAIN)
+    # def plain(self):
+    #     return self.to(PhoneFormat.default)
 
-    def rfc3966(self):
-        return self.to(PhoneFormat.RFC3966)
+    # def rfc3966(self):
+    #     return self.to(PhoneFormat.RFC3966)
 
-    def uri(self):
-        return self.to(PhoneFormat.RFC3966)
+    # def uri(self):
+    #     return self.to(PhoneFormat.RFC3966)
 
-    def to(self, fmt: Format):
+    def to(self, fmt: Format = None):
+        if fmt is None:
+            fmt = self._default_fmt
         return self._fmt_cls(self, fmt)
 
     def __len__(self):
@@ -420,16 +390,9 @@ class PhoneNumber(base.PhoneNumber):
             return True
         elif isinstance(other, base.PhoneNumber):
             return super().__eq__(other)
-        elif isinstance(other, PhoneStr):
-            return self.to(other._fmt) == other
-        elif isinstance(other, str):
-            return self.plain() == other \
-                or self.e164() == other \
-                or self.msisdn() == other \
-                or self.uri() == other
         else:
-            return NotImplemented
-
+            return to_phone(other, silent=True) == self
+        
     def __setattr__(self, name, value):
         if self._frozen and name != '_frozen':
             raise TypeError(f'{self} is frozen and thus immutable.')
@@ -441,26 +404,25 @@ class PhoneNumber(base.PhoneNumber):
         super().__delattr__(name)
 
     def __str__(self):
-        return self.uri()
+        return self._fmt_cls(self, self._default_fmt)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self.uri()}')"
+        return f"{self.__class__.__name__}('{self!s}')"
     
     def __json__(self):
-        return self.plain()
-#
+        return str(self)
+
     @classmethod
     def __get_validators__(cls):
-        yield cls.coerce
-        # yield cls.check_validity
+        yield cls.validate
 
     @classmethod
     def __modify_schema__(cls, field_schema: dict[str, t.Any]) -> None:
-        example = cls(base.example_number_for_type(locale.territory, PhoneType.MOBILE)).international()
+        example = cls(base.example_number_for_type(locale.territory, PhoneType.MOBILE)).to(PhoneFormat.INTERNATIONAL)
         field_schema.update(type='string', format=f'phone-number', example=example)
 
     @classmethod
-    def coerce(cls, v, **kwargs):
+    def validate(cls, v, **kwargs):
         if not isinstance(v, cls):
             try:
                 val = to_phone(v, _phone_class=cls)
@@ -469,27 +431,12 @@ class PhoneNumber(base.PhoneNumber):
             else:
                 field = kwargs.get('field')
                 as_valid = getattr(field, 'as_valid', False)
-                if not (as_valid or val.isvalid()):
+                if not (as_valid or val.valid):
                     raise ValueError(f'must be an valid phone number.')
                 return val
         # print(f'xxxxxxxxx coerce {cls} {type(val)=} {val}')
         return v
 
-    # @classmethod
-    # def check_validity(cls, val: _T_Phone):
-    #     print(f'xxxxxxxxx check_validity {type(val)=} {val!r}')
-    #     if val.isinvalid():
-    #         raise ValueError(f'must be an valid phone number.')
-    #     return val
-    
-    # @classmethod
-    # def check_possibility(cls, val: _T_Phone):
-    #     print(f'xxxxxxxxx check_possibility {type(val)=} {val!r}')
-    #     if val.isimpossible():
-    #         raise ValueError(f'must be an valid phone number.')
-    #     return val
-    
-    
 
 
 def __cache_key(number, region=..., freeze=True, check_region=True, phone_class=None):
@@ -528,7 +475,7 @@ def to_phone(number: t.Any, *, region: str=..., silent: bool=False, _phone_class
     _phone_class = _phone_class or PhoneNumber 
     if isinstance(number, _phone_class):
         return number if number.frozen else number.copy()
-    elif isinstance(number, base.PhoneNumber):
+    elif isinstance(number, (base.PhoneNumber, PhoneNumber)):
         return _phone_class(number)
     
     if isinstance(number, int):
@@ -546,3 +493,39 @@ def to_phone(number: t.Any, *, region: str=..., silent: bool=False, _phone_class
         
 
     
+# if t.TYPE_CHECKING:
+
+#     @export()
+#     class MsisdnPhoneStr(PhoneStr[PhoneFormat.MSISDN]):
+#         ...
+
+
+#     @export()
+#     class PlainPhoneStr(PhoneStr[PhoneFormat.default]):
+#         ...
+
+#     @export()
+#     class NationalPhoneStr(PhoneStr[PhoneFormat.NATIONAL]):
+#         ...
+
+
+
+# @export()
+# class MobilePhoneStr(PhoneStr[PhoneFormat.MSISDN]):
+#     ...
+
+# E164            = base.PhoneNumberFormat.E164
+#     INTERNATIONAL   = base.PhoneNumberFormat.INTERNATIONAL
+#     NATIONAL        = base.PhoneNumberFormat.NATIONAL
+#     RFC3966         = base.PhoneNumberFormat.RFC3966
+#     LOCAL           = auto()
+#     MSISDN          = auto()
+#     PLAIN           = auto()
+
+_g = globals()
+for fmt in PhoneFormat:
+    cls = PhoneStr[fmt]
+    _g.setdefault(cls.__name__, export(cls))
+
+
+

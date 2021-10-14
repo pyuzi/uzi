@@ -137,9 +137,9 @@ class aliased(cached_property[_T], property, t.Generic[_T]):
         return self.attrname
 
     @cached_property
-    def lookup_path(self) -> LookupDataPath:
+    def lookup_expr_path(self) -> LookupDataPath:
         if self.expr is None:
-            raise AttributeError('lookup_path: expr not set.')
+            raise AttributeError('lookup_expr_path: expr not set.')
         
         expr = self.expr.raw
         if isinstance(expr, m.F):
@@ -149,7 +149,10 @@ class aliased(cached_property[_T], property, t.Generic[_T]):
             return None
 
         return LookupDataPath(expr)
-
+    
+    @cached_property
+    def lookup_path(self) -> LookupDataPath:
+        return self.lookup_expr_path
     
     @lookup_path.setter
     def lookup_path(self, value):
@@ -213,8 +216,11 @@ class aliased(cached_property[_T], property, t.Generic[_T]):
 
     getter = __call__
 
-    def loader(self, func):
+    def loader(self: 'property[_T]', func: Callable[[t.Any], _T]) -> _T:
         return super().getter(func)
+    
+    if t.TYPE_CHECKING:
+        loader = __call__
 
     def express(self, expr):
         if isinstance(expr, AliasExpression):

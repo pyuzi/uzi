@@ -1,16 +1,19 @@
 from collections.abc import Callable
 from functools import cache
 from itertools import chain
+from types import MappingProxyType
 import typing as t
 
 
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models as m
+from django.db.models.fields.reverse_related import ForeignObjectRel
 
 from mptt.models import MPTTModel, MPTTModelBase, TreeManager
 
 from django.db.models.base import ModelBase, ModelState, DEFERRED
-from djx.common.collections import orderedset
+from djx.common.collections import fallbackdict, frozendict, orderedset
 
 from djx.common.metadata import get_metadata_class
 from djx.common.moment import Moment
@@ -39,7 +42,8 @@ from . import _patch as __
 if t.TYPE_CHECKING:
     
     class ModelState(ModelState):
-        orig: dict[str, t.Any]
+        original: dict[str, t.Any]
+        saving: bool
 
     @export()
     class QuerySet(m.QuerySet[_T_Model], t.Generic[_T_Model]):
@@ -117,43 +121,26 @@ class ModelType(ModelBase):
         return self.__config__
 
     def __call__(self, *args, **kwds):
-
-        debug(
-            __create_new__=self, 
-            argset=args[:4]
-        )
-
         if args:
-            rec = self._from_args(args, **kwds)
+            rec = self._create_from_args_(*args, **kwds)
         else:
-            rec = self._from_kwargs(**kwds)
-        rec._commit_values_()
+            rec = self._create_from_kwargs_(**kwds)
+        rec.push_state()
         return rec
 
-        # if not args:
-        #     if _kw := self.__config__.the_inital_kwrags:
-        #         kwds = {**_kw, **kwds}
-        
-        # # debug(_create_new_=self, inital_kwargs=self.__config__.the_inital_kwrags, args=args and args[:2], kwds=kwds)
-        # rec: _T_Model = super().__call__(*args, **kwds)
-        # return rec
+    if t.TYPE_CHECKING:
+        def _create_from_args_(self, *args, **kwds) -> _T_Model:
+            ...
+            
+    _create_from_args_ = ModelBase.__call__
 
-
-    def _from_args(self, args, **kwds) -> _T_Model:
-        return super().__call__(*args, **kwds)
-
-    def _from_kwargs(self, **kwds) -> _T_Model:
-        
-        # debug(
-        #     __create_new__=self, 
-        #     polymorphic_values=conf.polymorphic_values, 
-        #     argset=argmap
-        # )
-
+    def _create_from_kwargs_(self, **kwds) -> _T_Model:
         if init := self.__config__.the_inital_kwrags:
             kwds = dict(init, **kwds)
 
-        return super().__call__(**kwds)
+        # debug(_create_from_kwargs_=self, the_inital_kwrags=init, kwds=kwds)
+
+        return ModelBase.__call__(self, **kwds)
 
     def _from_db(self: type[_T_Model], db, field_names, values) -> _T_Model:
         concrete_fields = self._meta.concrete_fields
@@ -168,6 +155,19 @@ class ModelType(ModelBase):
         new._state.adding = False
         new._state.db = db
         return new
+
+
+
+
+class _originals(frozendict):
+
+    __slots__ = ()
+
+    def __missing__(self, k):
+        if isinstance(k, str):
+            return ...
+        raise KeyError(k)
+
 
 
 
@@ -208,44 +208,174 @@ class Model(m.Model, metaclass=ModelType):
     if t.TYPE_CHECKING:
         Urn: t.ClassVar[type[ModelUrn]]
 
+# __init__
+    # def __init__(self, *args, **kwargs):
+    #     # Alias some things as locals to avoid repeat global lookups
+    #     cls = self.__class__
+    #     opts = self._meta
+    #     _setattr = setattr
+    #     _DEFERRED = DEFERRED
+    #     if opts.abstract:
+    #         raise TypeError('Abstract models cannot be instantiated.')
+
+    #     m.signals.pre_init.send(sender=cls, args=args, kwargs=kwargs)
+
+    #     # Set up the storage for instance state
+    #     self._state = ModelState()
+
+    #     # There is a rather weird disparity here; if kwargs, it's set, then args
+    #     # overrides it. It should be one or the other; don't duplicate the work
+    #     # The reason for the kwargs check is that standard iterator passes in by
+    #     # args, and instantiation for iteration is 33% faster.
+    #     if len(args) > len(opts.concrete_fields):
+    #         # Daft, but matches old exception sans the err msg.
+    #         raise IndexError("Number of args exceeds number of fields")
+
+    #     if not kwargs:
+    #         fields_iter = iter(opts.concrete_fields)
+    #         # The ordering of the zip calls matter - zip throws StopIteration
+    #         # when an iter throws it. So if the first iter throws it, the second
+    #         # is *not* consumed. We rely on this, so don't change the order
+    #         # without changing the logic.
+    #         for val, field in zip(args, fields_iter):
+    #             if val is _DEFERRED:
+    #                 continue
+    #             _setattr(self, field.attname, val)
+    #     else:
+    #         # Slower, kwargs-ready version.
+    #         fields_iter = iter(opts.fields)
+    #         for val, field in zip(args, fields_iter):
+    #             if val is _DEFERRED:
+    #                 continue
+    #             _setattr(self, field.attname, val)
+    #             kwargs.pop(field.name, None)
+
+    #     # Now we're left with the unprocessed fields that *must* come from
+    #     # keywords, or default.
+
+    #     for field in fields_iter:
+    #         is_related_object = False
+    #         # Virtual field
+    #         if field.attname not in kwargs and field.column is None:
+    #             continue
+    #         if kwargs:
+    #             if isinstance(field.remote_field, ForeignObjectRel):
+    #                 try:
+    #                     # Assume object instance was passed in.
+    #                     rel_obj = kwargs.pop(field.name)
+    #                     is_related_object = True
+    #                 except KeyError:
+    #                     try:
+    #                         # Object instance wasn't passed in -- must be an ID.
+    #                         val = kwargs.pop(field.attname)
+    #                     except KeyError:
+    #                         val = field.get_default()
+    #             else:
+    #                 try:
+    #                     val = kwargs.pop(field.attname)
+    #                 except KeyError:
+    #                     # This is done with an exception rather than the
+    #                     # default argument on pop because we don't want
+    #                     # get_default() to be evaluated, and then not used.
+    #                     # Refs #12057.
+    #                     val = field.get_default()
+    #         else:
+    #             val = field.get_default()
+
+    #         if is_related_object:
+    #             # If we are passed a related instance, set it using the
+    #             # field.name instead of field.attname (e.g. "user" instead of
+    #             # "user_id") so that the object gets properly cached (and type
+    #             # checked) by the RelatedObjectDescriptor.
+    #             if rel_obj is not _DEFERRED:
+    #                 _setattr(self, field.name, rel_obj)
+    #         else:
+    #             if val is not _DEFERRED:
+    #                 _setattr(self, field.attname, val)
+
+    #     if kwargs:
+    #         property_names = opts._property_names
+
+    #         debug(property_names)
+
+    #         for prop in tuple(kwargs):
+    #             try:
+    #                 # Any remaining kwargs must correspond to properties or
+    #                 # virtual fields.
+    #                 if prop in property_names or opts.get_field(prop):
+    #                     if kwargs[prop] is not _DEFERRED:
+    #                         _setattr(self, prop, kwargs[prop])
+    #                     del kwargs[prop]
+    #             except (AttributeError, FieldDoesNotExist) as e:
+    #                 debug(prop, property_names, e)
+                
+    #                 pass
+            
+    #         # debug(kwargs, property_names)
+
+    #         for kwarg in kwargs:
+    #             raise TypeError("%s() got an unexpected keyword argument '%s'" % (cls.__name__, kwarg))
+
+    #     # super().__init__()
+        
+    #     m.signals.post_init.send(sender=cls, instance=self)
+#
+
     def save(self, *args, **kwds):
-        if hasattr(self, '_on_polymorphic_save_'):
-            self._on_polymorphic_save_()
-        super().save(*args, **kwds)
-        self._commit_values_()
+        state = self._state
+        state.saving = True
+        try:
+            super().save(*args, **kwds)
+        except:
+            raise
+        else:
+            self.push_state()
+        finally:
+            state.saving = False
 
     def is_dirty(self, *keys):
-        return next(self._dirty(*keys), False) is not False
+        return any(self.get_dirty(*keys))
 
-    def dirty(self, *keys: str):
-        return self._dirty(*keys)
+    def get_original(self, key: str=..., default=...):
+        if key is ...:
+            return self._state.original
 
-    def _dirty(self, *keys: str):
+        val = self._state.original[key]
+        if val is ... is (val := default):
+            raise KeyError(key)
+        return val
+
+    def get_dirty(self, *keys: str):
         dct = self.__dict__
-        orig = self._state.orig
-        for key in (keys or (k for k in dct if k[:1] != '_')):
-            if key in dct:
-                if key in orig:
-                    if dct[key] != orig[key]:
-                        yield key
-                else:
-                    yield key
-            elif key in orig:
+        get = dct.get
+        get_orig = self._state.original.__getitem__
+        track = self.__config__.tracked_attrs
+
+        if keys:
+            track = track & keys 
+
+        for key in track:
+            if get(key, ...) != get_orig(key):
                 yield key
 
-    def _commit_values_(self, *keys):
+    def push_state(self):
         dct = self.__dict__
-        self._state.orig = {k: dct[k] for k in dct if k[:1] != '_'}
+        track = self.__config__.tracked_attrs
+        
+        state = self._state
+        state.saving = False
+        state.original = _originals((k, dct.get(k, ...)) for k in track)
+        return self
 
     def __getstate__(self):
         """Hook to allow choosing the attributes to pickle."""
         state = super().__getstate__()
-        state['_state'].orig = None
+        delattr(state['_state'], 'original')
         return state
 
     def __setstate__(self, state):
         super().__setstate__(state)
-        self._commit_values_()
+        self.push_state()
     
 
 

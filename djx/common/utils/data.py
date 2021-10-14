@@ -87,7 +87,7 @@ def result(obj: _R) -> _R: ...
 
 @export()
 def result(obj, *args):
-    if isinstance(obj, (FunctionType, MethodType)):
+    if isinstance(obj, (FunctionType, MethodType, DataPath)):
         return obj(*args)
     return obj
 
@@ -506,6 +506,9 @@ class DataPath(t.Generic[_R]):
 
     def get(self, obj: _O, default=missing) -> _R:
         return getitem(obj, self, default)
+
+    def __call__(self, obj: _O, *, default=missing) -> _R:
+        return result(self.get(obj, default))
 
     def pop(self, obj: _O, default=missing) -> _R:
         return popitem(obj, self, default)

@@ -15,7 +15,7 @@ class PhoneNumberField(models.CharField):
 
     description = "A phone number"
     default_phone_cls = None
-    default_format = PhoneFormat.PLAIN
+    default_format = PhoneFormat.default
 
     def __init__(self, *args, 
             format: PhoneFormat = None, 

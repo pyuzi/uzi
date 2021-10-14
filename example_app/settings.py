@@ -43,7 +43,7 @@ INSTALLED_APPS = [
     'polymorphic',
     'mptt',
     # "django_extensions",
-    "djx.spaces",
+    # "djx.spaces",
     "djx.ledgers",
     # "djx.xtags",
     "djx.schemas",

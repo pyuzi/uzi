@@ -48,13 +48,30 @@ _TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 
 
 
+
 @export()
-class result_dict(dict[_TK, _TV]):
+class frozendict(dict[_TK, _TV]):
 
     __slots__ = ()
 
-    def __getitem__(self, k: _TK) -> _TK:
-        return result(super().__getitem__(k))
+    def __delitem__(self, v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def __setitem__(self, k, v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def setdefault(self, k, v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def pop(self, k, v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def popitem(self, *v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def update(self, *v, **kw):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
 
 
 
@@ -133,10 +150,6 @@ def _has_self_arg(val):
     return 'self' in sig.parameters
 
 
-@export()
-class result_fallback_dict(result_dict[_TK, _TV], fallbackdict[_TK, _TV]):
-
-    __slots__ = ()
 
 
 @export()
@@ -145,11 +158,6 @@ class fallback_default_dict(fallbackdict[_TK, _TV]):
     def __missing__(self, k: _TK) -> _TV:
         return self.setdefault(k, super().__missing__(k))
 
-
-@export()
-class result_fallback_default_dict(result_dict[_TK, _TV], fallback_default_dict[_TK, _TV]):
-    
-    __slots__ = ()
 
 
 class none_dict(dict[_TK, None], t.Generic[_TK]):
@@ -312,13 +320,6 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
 
 
 
-@export()
-class result_fallback_chain_dict(result_dict[_TK, _TV], fallback_chain_dict[_TK, _TV]):
-
-    __slots__ = ()
-
-
-
 
 
 
@@ -394,9 +395,9 @@ class _orderedsetabc(t.Generic[_TK]):
         return self.__class__, (), self.__getstate__()
         
     def __setattr__(self, name, value):
-        super().__setattr__(name, value)
+        object.__setattr__(self, name, value)
         if name == '__data__':
-            super().__setattr__('__set__', self.__data__.keys())
+            object.__setattr__(self, '__set__', self.__data__.keys())
     
     def __bool__(self) -> bool:
         return bool(self.__data__)
@@ -405,7 +406,7 @@ class _orderedsetabc(t.Generic[_TK]):
         return self.__data__.__len__()
 
     def __iter__(self) -> Iterator[_TK]:
-        yield from self.__set__
+        yield from self.__data__
 
     def __contains__(self, o) -> int:
         return self.__data__.__contains__(o)
@@ -419,94 +420,112 @@ class _orderedsetabc(t.Generic[_TK]):
     #     return self.__class__(deepcopy(self, memo))
 
     def __and__(self, other):
-        if not isinstance(other, (Set, Mapping)):
-            if not isinstance(other, Iterable):
-                return NotImplemented
-            other = set(other)
+        if other is self:
+            return self.__class__(self)
+        elif isinstance(other, Iterable):
+            if not isinstance(other, (Set, Mapping)):
+                other = set(other)
+            return self.__class__(v for v in self if v in other)
 
-        return self.__class__(v for v in self if v in other)
+        return NotImplemented
 
     def __rand__(self, other):
-        if not isinstance(other, (Set, Mapping)):
-            if not isinstance(other, Iterable):
-                return NotImplemented
-            other = dict.fromkeys(other)
+        if other is self:
+            return self.__class__(self)
+        elif isinstance(other, Iterable):
+            if not isinstance(other, (Set, Mapping)):
+                other = dict.fromkeys(other)
+            return self.__class__(v for v in other if v in self)
 
-        return self.__class__(v for v in other if v in self)
-
+        return NotImplemented
 
     def __or__(self, other):
-        if not isinstance(other, Iterable):
-            return NotImplemented
-        rv = self.__class__(self)
-        rv.__data__.update(other  if isinstance(other, Mapping) else dict.fromkeys(other))
-        return rv
+        if other is self:
+            return self.__class__(self)
+        elif isinstance(other, Iterable):
+            clone = self.__class__(self)
+            clone.__data__.update(dict.fromkeys(other))
+            return clone
 
+        return NotImplemented
+        
     def __ror__(self, other):
-        if not isinstance(other, Iterable):
-            return NotImplemented
+        if other is self:
+            return self.__class__(self)
+        elif isinstance(other, Iterable):
+            clone = self.__class__(other)
+            clone.__data__.update(self.__data__)
+            return clone
 
-        rv = self.__class__(other)
-        rv.__data__.update(self.__data__)
-        return rv
+        return NotImplemented
 
     def __reversed__(self) -> Iterator[_TK]:
-        return self.__set__.__reversed__()
+        return self.__data__.__reversed__()
 
     def __sub__(self, other):
-        if not isinstance(other, (Set, Mapping)):
-            if not isinstance(other, Iterable):
-                return NotImplemented
-            other = set(other)
-        return self.__class__(v for v in self if v not in other)
+        if other is self:
+            return self.__class__()
+        elif isinstance(other, Iterable):
+            if not isinstance(other, (Set, Mapping)):
+                other = set(other)
+            return self.__class__(v for v in self if v not in other)
+            
+        return NotImplemented
 
     def __rsub__(self, other):
+        if other is self:
+            return self.__class__()
+        elif isinstance(other, Iterable):
+            if not isinstance(other, (Set, Mapping)):
+                other = dict.fromkeys(other)
+            return self.__class__(v for v in other if v not in self)
 
-        if not isinstance(other, (Set, Mapping)):
-            if not isinstance(other, Iterable):
-                return NotImplemented
-            other = dict.fromkeys(other)
-
-        return self.__class__(v for v in other if v not in self)
-    
     def __xor__(self, other):
-        
-        if not isinstance(other, (Set, Mapping)):
-            if not isinstance(other, Iterable):
-                return NotImplemented
+        if other is self:
+            return self.__class__()
+        elif not isinstance(other, (Set, Mapping)):
             other = dict.fromkeys(other)
-
-        rv = self.__class__(v for v in self if v not in other)
-        rv.__data__.update(dict.fromkeys(v for v in other if v not in self))
-        return rv
+            
+        return self.__class__(
+            i for it in ((v for v in self if v not in other), (v for v in other if v not in self)) for i in it
+        )
 
     def __rxor__(self, other):
-        if not isinstance(other, (Set, Mapping)):
-            if not isinstance(other, Iterable):
-                return NotImplemented
+        if other is self:
+            return self.__class__()
+        elif not isinstance(other, (Set, Mapping)):
             other = dict.fromkeys(other)
-
-        rv = self.__class__(v for v in other if v not in self)
-        rv.__data__.update(dict.fromkeys(v for v in self if v not in other))
-        return rv
+            
+        return self.__class__(
+            i for it in ((v for v in other if v not in self), (v for v in self if v not in other)) for i in it
+        )
 
     def __le__(self, other):
-        return self.__set__.__le__(other)
+        return self.__eq__(other) or self.__lt__(other)
 
     def __lt__(self, other):
+        if other is self:
+            return False
+        elif isinstance(other, _orderedsetabc):
+            other = other.__set__
         return self.__set__.__lt__(other)
 
     def __gt__(self, other):
+        if other is self:
+            return False
+        elif isinstance(other, _orderedsetabc):
+            other = other.__set__
         return self.__set__.__gt__(other)
 
     def __ge__(self, other):
-        return self.__set__.__ge__(other)
+        return self.__eq__(other) or self.__gt__(other)
 
     def __eq__(self, other):
+        if other is self:
+            return True
+        elif isinstance(other, _orderedsetabc):
+            other = other.__set__
         return self.__set__.__eq__(other)
-
-    # def __str__(self):
-    #     return  f'{{{", ".join(repr(k) for k in self.__set__)}}}'
 
     def __repr__(self):
         items = tuple(self)
@@ -710,63 +729,58 @@ class orderedset(_orderedsetabc[_TK], t.Generic[_TK]):
 
     def update(self, *iterables: Iterable[_TK]):
         """Add an element."""
-        self.__data__.update(dict.fromkeys(k for it in iterables for k in it))
-        # for it in iterables:
-        #     self.__data__.update((i, None) for i in it)
+        self.__data__.update(dict.fromkeys(k for it in iterables if it is not self for k in it))
     
-    def pop(self, val: _TK = _empty, default=_empty):
+    # def pop(self, val: _TK = _empty, default=_empty):
+    def pop(self):
         """Return the popped value.  Raise KeyError if empty."""
-        if val is _empty:
-            if self.__data__:
-                return self.__data__.popitem()[0]
-            elif default is _empty:
-                raise ValueError
-            else:
-                return default
-        else:
-            try:
-                del self.__data__[val]
-            except KeyError:
-                if default is _empty:
-                    raise ValueError(val)
-                return default
-            else:
-                return val
+        return self.__data__.popitem()[0]
+
+    def shift(self):
+        """Return the popped value.  Raise KeyError if empty."""
+        try:
+            return next(self.__iter__())
+        except StopIteration:
+            raise KeyError(f'empty {self.__class__.__name__}')
 
     def __ior__(self, it):
-        self.update(it)
+        it is self or self.update(it)
         return self
 
     def __iand__(self, it):
-        self.__data__ = dict.fromkeys(self.__set__ & it)
-        # for value in (self.__set__ - it):
-        #     self.discard(value)
-        return self
+        if it is self:
+            return self
+        elif isinstance(it, Iterable):
+            if not isinstance(it, (Set, Mapping)):
+                it = set(it)
+            self.__data__ = dict.fromkeys(v for v in self if v in it)
+            return self
+
+        return NotImplemented
 
     def __ixor__(self, it):
         if it is self:
             self.clear()
-        else:
-            self.__data__ = dict.fromkeys(self.__set__ ^ it)
-
-            # if not isinstance(it, Set):
-            #     it = dict.fromkeys(it).keys()
-
-            # for value in it:
-            #     if value in self:
-            #         self.discard(value)
-            #     else:
-            #         self.add(value)
-        return self
+            return self
+        elif isinstance(it, Iterable):
+            if not isinstance(it, (Set, Mapping)):
+                it = set(it)
+            self.__data__ = dict.fromkeys(
+                i for it in ((v for v in self if v not in it), (v for v in it if v not in self)) for i in it
+            )
+            return self
+        return NotImplemented
 
     def __isub__(self, it):
         if it is self:
             self.clear()
-        else:
-            self.__data__ = dict.fromkeys(self.__set__ - it)
-            # for value in it:
-                # self.discard(value)
-        return self
+            return self
+        elif isinstance(it, Iterable):
+            if not isinstance(it, (Set, Mapping)):
+                it = set(it)
+            self.__data__ = dict.fromkeys(v for v in self if v not in it)
+            return self
+        return NotImplemented
 
 
 

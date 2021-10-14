@@ -1,6 +1,6 @@
 from collections.abc import Mapping, Callable, Iterable, Set
 from logging import getLogger
-from operator import index, or_, and_
+from operator import or_, and_
 from types import MethodType, new_class
 import typing as t
 
@@ -12,19 +12,16 @@ from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.apps import apps
 from django.db.models.functions import Now
 
-from djx.common.collections import fallback_chain_dict, fallback_default_dict, fallbackdict, none_dict, orderedset, result_fallback_chain_dict
+from djx.common.collections import fallback_chain_dict, fallback_default_dict, fallbackdict, none_dict, orderedset
 from djx.common.metadata import metafield, BaseMetadata
 from djx.common.moment import Moment, moment
-from djx.common.proxy import ValueProxy
 
 
 from djx.common.utils import (
-    export, cached_property, Missing
+    export, cached_property
 )
-from djx.common.exc import ImproperlyConfigured
-from djx.common.utils.data import assign, getitem, result, DataPath
+from djx.common.utils.data import getitem, result, DataPath
 from djx.core.models.moment import MomentField
-from djx.schemas import fields
 
 from .alias import aliased
 
@@ -47,175 +44,27 @@ else:
 
 
 
-class _PolymorphicValue(t.NamedTuple('_PolymorphicFieldValue', [('field', '_PolymorphicField'), ('value', t.Any)])):
-
-    __slots__ = ()
-
-    # field: '_PolymorphicField'
-    # value: t.Any
-    _field_attrs = frozenset(( 'index', 'alias', 'name', 'attname', 'root'))
-
-    root: type[_T_Model]
-    alias: str
-    name: str
-    attname: str
-    
-    index: int
-    field: 'Field'
-
-    def __getattr__(self, name):
-        if name in self._field_attrs:
-            return getattr(self.field, name)
-        raise AttributeError(name)
-
-    def __gt__(self, o) -> bool:
-        if isinstance(o, _PolymorphicValue):
-            return self.field > o.field
-        return self.field > o
-    
-    def __ge__(self, o):
-        return self.__gt__(o) or self.__eq__(o)
-
-    def __lt__(self, o) -> bool:
-        if isinstance(o, _PolymorphicValue):
-            return self.field < o.field
-        return self.field < o
-
-    def __le__(self, o):
-        return self.__lt__(o) or self.__eq__(o)
-
-
-
-def _new_polymorphic_field_class(typ: type[_T_Model]) -> '_PolymorphicField[_T_Model]':
-    return new_class(f'_{typ.__name__}PolymorphicField', (_PolymorphicField[_T_Model],), None, lambda ns: ns.update(root=typ))
-
-
-class _PolymorphicField(t.Generic[_T_Model]):
-
-    __slots__ = 'index', 'alias', 'field', '_hash',
-
-    root: type[_T_Model]
-    alias: str
-    name: str
-    attname: str
-    
-    index: int
-    field: 'Field'
-
-    __by_root = fallback_default_dict[type[_T_Model], type['_PolymorphicField[_T_Model]']](_new_polymorphic_field_class)
-
-    def __class_getitem__(cls, params):
-        if isinstance(params, tuple):
-            typ = params[0]
-        else:
-            typ = params
-        
-        if isinstance(typ, type):
-            _cls = cls.__by_root[typ] 
-            return super(cls, _cls).__class_getitem__(params)
-
-        return super().__class_getitem__(params)
-
-    def __new__(cls, field, index=None, alias=None) -> None:
-        if field.__class__ is cls:
-            field = field.field
-
-        self = super().__new__(cls)
-        self.field = field
-        self.alias = alias or field.name
-        self.index = index
-        return self
-
-    def value(self, v):
-        # return _PolymorphicValue(self,  v.pk if self.is_relation and isinstance(v, m.Model) else v)
-        return _PolymorphicValue(self,  v)
-
-    def __eq__(self, o):
-        typ = o.__class__
-        if issubclass(typ, _PolymorphicField):
-            return self.index.__eq__(o.index) \
-                and (issubclass(o.root, self.root) or issubclass(self.root, o.root))
-        elif typ is str:
-            return self.alias.__eq__(o)
-        elif typ is int:
-            return self.index.__eq__(o)
-        else:
-            return (self.root, self.index).__eq__(o)
-
-    def __reduce__(self):
-        return self.__class__, (self.field, self.index, self.index)
-    
-    def __gt__(self, o) -> bool:
-        typ = o.__class__
-        if issubclass(typ, _PolymorphicField):
-            return self.index.__gt__(o.index)
-        elif typ is str:
-            return self.alias.__gt__(o)
-        else:
-            return self.index.__gt__(o)
-        # else:
-        #     return (self.root._meta, self.index).__gt__(o)
-
-        # return NotImplemented
-    
-    def __ge__(self, o):
-        return self.__gt__(o) or self.__eq__(o)
-
-    def __lt__(self, o) -> bool:
-        typ = o.__class__
-        if issubclass(typ, _PolymorphicField):
-            return self.index.__lt__(o.index)
-        elif typ is str:
-            return self.alias.__lt__(o)
-        else:
-            return self.index.__lt__(o)
-        # else:
-        #     return (self.root, self.index).__lt__(o)
-
-        # return NotImplemented
-    
-    def __le__(self, o):
-        return self.__lt__(o) or self.__eq__(o)
-    
-    def __hash__(self) -> int:
-        try:
-            return self._hash
-        except AttributeError:
-            self._hash = hash((self.root, self.index))
-            return self._hash
-    
-    def __getattr__(self, name):
-        if name != '_hash':
-            return getattr(self.field, name)
-        raise AttributeError(name)
-    
-    def __int__(self) -> int:
-        return self.index
-
-    def __str__(self) -> str:
-        return self.alias
-
-
-
-if t.TYPE_CHECKING:
-    class _PolymorphicField(Field, _PolymorphicField):
-        ...
-
-
 
 @export()
 class ModelConfig(BaseMetadata[_T_Model]):
 
     is_prepared: bool = False
     is_polymorphic: bool = False
+    __allowextra__ = True
 
     __cached_properties: set[str]
+    __cached_methods: set[str]
 
     def __init_subclass__(cls) -> None:
+        cls.__cached_methods = set()
         cls.__cached_properties = set()
         for k in dir(cls):
-            if isinstance(getattr(cls, k, None), cached_property):
+            v = getattr(cls, k, None)
+            if isinstance(v, cached_property):
                 cls.__cached_properties.add(k)
+            elif not isinstance(v, type) and callable(v) and callable(getattr(v, 'cache_clear', None)):
+                cls.__cached_methods.add(k)
+
         return super().__init_subclass__()
 
     @metafield[dict](inherit=True)
@@ -280,6 +129,23 @@ class ModelConfig(BaseMetadata[_T_Model]):
         value and rv.update(value)
         return { k: k if v is True else v for k,v in rv.items() }
 
+    @metafield[dict[str, bool]](inherit=True)
+    def tracked(self, value, base=None) -> dict[str, bool]:
+
+        if 'tracked' in self.__fieldset__:
+            val = self.tracked
+        else:
+            val = fallback_chain_dict(base)
+
+        if value:
+            if isinstance(value, str):
+                val.update({ value: True })
+            elif not isinstance(value, Mapping):
+                val.update(v if isinstance(v, tuple) else (v, True) for v in value)
+            else:
+                val.update(value)
+        return val
+
     @metafield
     def initial_kwargs(self, value, base=None) -> dict[str, t.Any]:
         # del self.the_inital_kwrags
@@ -291,16 +157,6 @@ class ModelConfig(BaseMetadata[_T_Model]):
 
         value and val.update(value)
         return val
-
-    # @metafield
-    # def default_kwargs(self, value, base=None) -> dict[str, t.Any]:
-    #     if 'default_kwargs' in self.__fieldset__:
-    #         val = self.default_kwargs
-    #     else:
-    #         val = fallback_chain_dict(base)
-
-    #     value and val.update(value)
-    #     return val
 
     @metafield[dict](inherit=True)
     def initial_query(self, value, base: dict=None):
@@ -377,12 +233,17 @@ class ModelConfig(BaseMetadata[_T_Model]):
 
     @cached_property
     def content_type(self):
-        return ContentType.objects.get_for_model(self.target, for_concrete_model=False)
+        try:
+            return ContentType.objects.get_for_model(self.target, for_concrete_model=False)
+        except Exception as e:
+            logger.exception(f'ContentType for {self.model} not loaded', stack_info=True)
 
     @cached_property
     def concrete_content_type(self):
-        return ContentType.objects.get_for_model(self.target, for_concrete_model=True)
-
+        try:
+            return ContentType.objects.get_for_model(self.target, for_concrete_model=True)
+        except Exception as e:
+            logger.exception(f'ContentType for {self.model} not loaded', stack_info=True)
 
     @cached_property[dict]
     def alias_query_vars(self) -> dict:
@@ -422,6 +283,14 @@ class ModelConfig(BaseMetadata[_T_Model]):
             a.name : m.F(a.name)
             for a in self.get_alias_fields().values() if a.annotate
         }
+    
+    @cached_property
+    def tracked_attrs(self):
+        fields = orderedset(f.attname for f in self.modelmeta.concrete_fields) \
+            - set(f.attname if (f := self.get_field(k, None)) else k for k,v in self.tracked.items() if v is False)
+
+        tracked = fields | orderedset(f.attname if (f := self.get_field(k, None)) else k for k,v in self.tracked.items() if v)
+        return tracked
 
     @cached_property
     def the_inital_query(self) -> t.Optional[m.Q]:
@@ -443,14 +312,8 @@ class ModelConfig(BaseMetadata[_T_Model]):
         if self.prefetch_related:
             return tuple(result(v, self) for v in self.prefetch_related.values())
 
-    # @cached_property
-    # def the_default_kwrags(self) -> t.Optional[dict]:
-    #     if self.initial_kwargs:
-    #         return { k: result(v, self) for k,v in self.initial_kwargs.items() }
-
     @cached_property
     def the_inital_kwrags(self) -> t.Optional[dict]:
-        debug(self.model, self.initial_kwargs)
         if self.initial_kwargs:
             return { k: result(v, self) for k,v in self.initial_kwargs.items() }
         return none_dict()
@@ -538,8 +401,9 @@ class ModelConfig(BaseMetadata[_T_Model]):
         try:
             for n, v in zip(fields, values):
                 f = get_field(n)
-                f.run_validators(f.to_python(v))
-        except (TypeError, ValueError, ValidationError):
+                f.to_python(v)
+        except Exception:
+        # except (TypeError, ValueError, ValidationError):
             return False
         else:
             return True
@@ -558,8 +422,7 @@ class ModelConfig(BaseMetadata[_T_Model]):
                 qs = qs.annotate(**annot)
 
         if q := self.the_inital_query:
-            debug(initialize_queryset=qs.model, target=self.target, the_inital_query=q)
-            qs = qs.filter(q) #.distinct()
+            qs = qs.filter(q)
 
         return qs
 
@@ -574,6 +437,7 @@ class ModelConfig(BaseMetadata[_T_Model]):
             self.get_alias_fields.cache_clear()
             self.get_query_aliases.cache_clear()
             self.get_query_annotations.cache_clear()
+
         return True    
 
     def add_aliased_attr(self, aka: 'aliased'):
@@ -637,6 +501,9 @@ class ModelConfig(BaseMetadata[_T_Model]):
         for p in self.__cached_properties:
             delattr(self, p)
 
+        for m in self.__cached_methods:
+            getattr(getattr(self, m), 'cache_clear')()
+
         self.is_prepared = True
         self._run_on_prepare()
         self.prepared()
@@ -649,8 +516,13 @@ class ModelConfig(BaseMetadata[_T_Model]):
                 result(getitem(self, func, None), self)
 
     def prepared(self) -> None:
-        pass
-    
+        ...
+
+    # TODO: Multi db support
+    # def using(self, db_alias) -> _T_Config:
+    #     return self
+
+        
     @property
     def _bases_(self):
         return tuple(c for b in self.target.__bases__ if isinstance((c := getattr(b, '__config__', None)), ModelConfig))
@@ -662,207 +534,4 @@ def _natural_key_q(self: ModelConfig, val, *, lookup='exact'):
     fields = self.which_natural_key_fields(val, strict=False)
     seq = (m.Q(**{f'{k}__{lookup}': v for k,v in kv }) for kv in fields)
     return reduce(or_, seq, m.Q())
-
-
-
-
-@export()
-class PolymorphicModelConfig(ModelConfig):
-
-    is_polymorphic: bool = True
-
-    # @metafield
-    # def initial_kwargs(self, value, base=None) -> dict[str, t.Any]:
-    #     if 'initial_kwargs' in self.__fieldset__:
-    #         val = self.initial_kwargs
-    #     elif base:
-    #         val = fallback_chain_dict(base)
-    #     else:
-    #         val = fallback_chain_dict(self._get_polymorphic_inital_kwargs())
-
-    #     value and val.update(value)
-    #     return val
-
-    @metafield
-    def polymorphic_ctype_field_name(self, value, base=None):
-        return value or base or 'polymorphic_ctype'
-
-    @property
-    def polymorphic_ctype_value(self):
-        return self.content_type
-
-    @metafield
-    def polymorphic_on(self, value, base=None) -> t.Optional[fallback_chain_dict[str, t.Any]]:
-        if not base:
-            base = { self.polymorphic_ctype_field_name : lambda s: s.polymorphic_ctype_value }
-        
-        return fallback_chain_dict(base, value or ())
-
-    @cached_property
-    def polymorphic_values(self) -> dict[str, t.Any]:
-        if not self.abstract:
-            if raw := self.polymorphic_on:
-                rv = { k: result(raw[k], self) for k in raw }
-                return rv
-
-    @cached_property
-    def polymorphic_ctype_field(self):
-        if fields := self.polymorphic_fields:
-            if name := self.polymorphic_ctype_field_name:
-                for field in fields:
-                    if field.alias == name:
-                        return field
-
-    @cached_property[t.Optional['ModelConfig']]
-    def polymorphic_base(self) -> t.Optional['ModelConfig']:
-        if not self.abstract and self.is_polymorphic:
-            if self.proxy:
-                return self.parent and self.parent.polymorphic_base
-            else:
-                return self
-
-    @cached_property[t.Optional['ModelConfig']]
-    def polymorphic_root(self) -> t.Optional['ModelConfig']:
-        if not self.abstract and self.is_polymorphic:
-            if self.parent and self.parent.is_polymorphic:
-                return self.parent.polymorphic_root
-            else:
-                return self
-
-    @cached_property
-    def polymorphic_descendants(self) -> int:
-        count = 0
-        for typ in self.polymorphic_types.values():
-            if typ is not self.target:
-                count += 1
-        return count
-
-    @cached_property
-    def polymorphic_fields(self) -> t.Union[orderedset[_PolymorphicField], None]:
-        if not self.abstract:
-            if values := self.polymorphic_on:
-                fields: list[_PolymorphicField] = []
-                fieldset = [f.attname for f in self.modelmeta.concrete_fields]
-
-                fcls = _PolymorphicField[self.polymorphic_root.target]
-
-                for name in values:
-                    field = self.get_field(name, None)
-                    if field is None:
-                        aka = self.get_alias_fields().get(name)
-                        if aka and aka.lookup_path:
-                            field = self.get_field(aka.lookup_path.lookup, None)
-                    
-                    if field is None:
-                        raise ValueError(f'polymorphic field {name!r} does not exist in {self.target}')
-
-                    fields.append(fcls(field, fieldset.index(field.attname), name))
-                
-                return orderedset(sorted(fields))
-
-    @cached_property
-    def polymorphic_key(self) -> t.Union[tuple[_PolymorphicValue], None]:
-        if fields := self.polymorphic_fields:
-            vals = self.polymorphic_values
-            return tuple(f.value(v) for f in fields if (v := vals[f.alias]) is not ...) or None
-    
-    @cached_property
-    def polymorphic_args(self) -> dict[tuple[int], dict[tuple[t.Any], type[_T_Model]]]:
-        if self.polymorphic_descendants:
-            if types := self.polymorphic_types:
-                ct_field = self.polymorphic_ctype_field
-
-                ctypes  = fallbackdict()
-
-                for k in types:
-                    if keys := tuple(f for f in k if f.field == ct_field):
-                        kf = keys[0]
-                        val = kf.value.pk if kf.field.is_relation and isinstance(kf.value, m.Model) else kf.value
-                        ctypes[val] = types[k]
-                    
-                return ct_field.index, ctypes
-        
-    @cached_property
-    def polymorphic_kwargs(self) -> dict[tuple[str], dict[tuple[t.Any], type[_T_Model]]]:
-        if self.polymorphic_descendants:
-            if types := self.polymorphic_types:
-                kwargmaps  = fallback_default_dict(fallbackdict)
-                ct_field = self.polymorphic_ctype_field
-
-                ctypes = kwargmaps[(ct_field.alias,)]
-                for k in types:
-                    if keys := tuple(f for f in k if f.field == ct_field):
-                        ctypes[keys[0].value] = types[k]
-
-                skip = {ct_field, *(f.field for f in self.polymorphic_key or ())}
-                
-                for k in types:
-                    if keys := tuple(f for f in k if f.field not in skip):
-                        key = tuple(f.field.alias for f in keys)
-                        val = tuple(f.value for f in keys)
-                        kwargmaps[key][val] = types[k]
-
-                return tuple(kwargmaps.items())
-        
-    @cached_property
-    def polymorphic_types(self) -> t.Optional[dict[tuple[_PolymorphicValue], type[_T_Model]]]:
-        if tree := self.polymorphic_tree:
-            if self is self.polymorphic_root:
-                val = tree
-            else:
-                val = {k : v for k,v in tree.items() if issubclass(v, self.target)}
-
-            return { k:val[k] for k in sorted(val, key=lambda k: tuple([-len(k), *k])) }
-
-    @cached_property
-    def polymorphic_tree(self) -> t.Optional[dict[tuple[_PolymorphicValue], type[_T_Model]]]:
-        if  self.polymorphic_fields:
-            root = self.polymorphic_root
-            key = self.polymorphic_key
-            if root is self:
-                tree = dict()
-            else:
-                tree = root.polymorphic_tree
-
-            if key:
-                tree[key] = self.target
-                vals = self.polymorphic_values
-                self.initial_kwargs = { k.field.alias:  vals[k.field.alias] for k in key }
-
-            return tree
-
-    # def _get_polymorphic_inital_kwargs(self):
-    #     def _make():
-    #         return { k: v
-    #             for k, v in self.polymorphic_values.items()
-    #                 if v is not ...
-    #         }
-
-    #     return _make()
-    # @staticmethod
-    # def _polymorphic_query(conf: 'ModelConfig'):
-    #     return
-    #     if types := conf.polymorphic_types:
-    #         args = types
-    #         if key := conf.polymorphic_key:
-    #             args = (k for k in args if k == key)
-
-    #         # else:
-    #         #     args = types
-
-    #         # debug(__self__=conf, __polymorphic_types__=conf.polymorphic_types)
-
-    #         looks = fallback_default_dict(lambda k: orderedset())
-
-    #         for keys in args:
-    #             for key in keys:
-    #                 looks[f'{key.field.alias}__in'].add(key.value)
-
-    #         return m.Q(**looks)        
-
-    #         # qset = orderedset(m.Q(**{p.field.alias: p.value for p in pt}) for pt in args)
-    #         # return reduce(or_, (q & ~reduce(or_, qset-(q,), m.Q()) for q in qset), m.Q())
-
-    #         # return reduce(or_, (m.Q(**{p.field.alias: p.value for p in pt}) for pt in args), m.Q())
-    #         # return reduce(or_, (m.Q(**{p.field.alias: p.value for p in pt}) for pt in types), m.Q())
 

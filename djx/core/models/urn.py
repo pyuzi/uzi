@@ -102,7 +102,7 @@ def _clean_urn_object_cache(sig: str, sender, instance, created=False, **kwds):
                     logger.info(f'{urn=!r} removed from cache on {sig!r} from {sender}. {instance=!r}.')
             except Exception as e:
                 logger.exception(f'Error removing {instance} from cache', exc_info=1, stack_info=1)
-                raise e
+                # raise e
 
 
 m.signals.pre_save.connect(partial(_clean_urn_object_cache, 'pre_save'))

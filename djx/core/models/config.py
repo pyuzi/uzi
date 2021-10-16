@@ -12,7 +12,7 @@ from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.apps import apps
 from django.db.models.functions import Now
 
-from djx.common.collections import fallback_chain_dict, fallback_default_dict, fallbackdict, none_dict, orderedset
+from djx.common.collections import fallback_chain_dict, fallback_default_dict, fallbackdict, nonedict, orderedset
 from djx.common.metadata import metafield, BaseMetadata
 from djx.common.moment import Moment, moment
 
@@ -316,7 +316,7 @@ class ModelConfig(BaseMetadata[_T_Model]):
     def the_inital_kwrags(self) -> t.Optional[dict]:
         if self.initial_kwargs:
             return { k: result(v, self) for k,v in self.initial_kwargs.items() }
-        return none_dict()
+        return nonedict()
 
     def update_init_kwargs(self, *args, **kwds):
         self.initial_kwargs = dict(*args, **kwds)
@@ -403,7 +403,6 @@ class ModelConfig(BaseMetadata[_T_Model]):
                 f = get_field(n)
                 f.to_python(v)
         except Exception:
-        # except (TypeError, ValueError, ValidationError):
             return False
         else:
             return True
@@ -491,6 +490,7 @@ class ModelConfig(BaseMetadata[_T_Model]):
 
     def __ready__(self):
         self._setup_timestamps()
+
         if apps.models_ready:
             self._prepare_()
 

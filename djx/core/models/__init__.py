@@ -3,6 +3,7 @@ import typing as t
 from django.apps import apps
 from djx.common.proxy import proxy
 from djx.common.imports import ImportRef
+from djx.common.utils import calling_module
 
 
 if t.TYPE_CHECKING:
@@ -27,6 +28,13 @@ from .urn import *
 
 if t.TYPE_CHECKING:
     from .base import Model, Manager, ModelConfig, PolymorphicModel, MPTTModel, PolymorphicMPTTModel
+
+    # class ModelUrn(ModelUrn):
+    #     ...
+
+    # class aliased(aliased):
+    #     ...
+
 else:
 
     def _importer(n, m='base'):
@@ -50,14 +58,9 @@ else:
 
 
 
-def AppModel(app_label: str, model_name: str=None, require_ready: bool=False, *, swapped: bool=True, cache: bool=True):
-    pkg: str = None
-    if model_name is None:
-        try:
-            pkg = sys._getframe(1).f_globals.get('__package__')
-        except (AttributeError, ValueError):
-            pkg = None
-        
+def AppModel(app_label: str, model_name: str=None, require_ready: bool=False, *, swapped: bool=True, cache: bool = True):
+    pkg: str = calling_module(key='__package__')
+
     def get_model()-> type[_T_Model]:
         model: type[_T_Model]
 

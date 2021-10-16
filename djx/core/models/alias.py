@@ -76,14 +76,9 @@ def _creation_order():
 
     
 @export()
-class aliased(cached_property[_T], property, t.Generic[_T]):
+class aliased(cached_property[_T], t.Generic[_T]):
 
     fget: Callable[[t.Any], _T]
-    fget = None
-    _fset = None
-    fset = None
-    _fdel = None
-    fdel = None
 
     # if t.TYPE_CHECKING:
     #     def __new__(cls: property[_T], 

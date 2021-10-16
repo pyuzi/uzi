@@ -160,16 +160,21 @@ class fallback_default_dict(fallbackdict[_TK, _TV]):
 
 
 
-class none_dict(dict[_TK, None], t.Generic[_TK]):
+@export()
+class nonedict(frozendict[_TK, None], t.Generic[_TK]):
 
     __slots__ = ()
 
-    __instance = None
+    _instance_ = None
+
+    def __init_subclass__(cls) -> None:
+        cls._instance_ = None
+        return super().__init_subclass__()
 
     def __new__(cls):
-        if cls.__instance is None:
-            cls.__instance = super().__new__(cls)
-        return cls.__instance
+        if cls._instance_ is None:
+            cls._instance_ = super().__new__(cls)
+        return cls._instance_
     
     def __len__(self) -> 0:
         return 0
@@ -190,12 +195,6 @@ class none_dict(dict[_TK, None], t.Generic[_TK]):
 
     def __getitem__(self, key: _TK) -> None:
         return None
-
-    def __setitem__(self, k: _TK, v) -> None:
-        raise TypeError(f'{self.__class__.__name__} is imutable')
-
-    def __delitem__(self, k) -> None:
-        raise TypeError(f'{self.__class__.__name__} is imutable')
 
     def __iter__(self):
         if False:
@@ -233,7 +232,7 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
                 self._fb = fb()
                 self._fbfunc = fb.__getitem__
             elif fb is None:
-                self._fb = none_dict()
+                self._fb = nonedict()
                 self._fbfunc = _none_fn
             else:
                 self._fb = fb(self)

@@ -4,7 +4,8 @@ from ._functools import (
     export, noop, class_only_method, class_only_property, 
     class_property, cached_class_property, 
     cached_property, lookup_property,
-    with_metaclass, add_metaclass
+    with_metaclass, add_metaclass,
+    calling_module
 )
 
 

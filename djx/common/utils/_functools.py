@@ -29,13 +29,14 @@ def noop(*a, **kw):
 def export(obj: _T =..., /, *, name=None, exports=None, module=None) -> _T:
     
     if module is None:
-        try:
-            mod = sys._getframe(1).f_globals.get('__name__')
-        except (AttributeError, ValueError):
-            pass
-        else:
-            if mod:
-                module = mod
+        module = calling_module(module)
+        # try:
+        #     mod = sys._getframe(1).f_globals.get('__name__')
+        # except (AttributeError, ValueError):
+        #     pass
+        # else:
+        #     if mod:
+        #         module = mod
 
     def add_to_all(_obj: _T) -> _T:
         _module = sys.modules[module or _obj.__module__]
@@ -137,13 +138,19 @@ class cached_class_property(class_property[_T]):
 #         self.cache[cls] = value
 
 
+def _noop(*a):
+    pass
+
+
 
 if t.TYPE_CHECKING:
-    base_cached_property = property[_T]
-    
+    _bases = base_cached_property[_T], property[_T]
+else:
+    _bases = base_cached_property[_T], property
 
 
-class cached_property(base_cached_property[_T]):
+
+class cached_property(*_bases, t.Generic[_T]):
     """Transforms a method into property whose value is computed once. 
     The computed value is then cached as a normal attribute for the life of the 
     instance::
@@ -183,9 +190,15 @@ class cached_property(base_cached_property[_T]):
     an AttributeError is raised. 
     The class has to have a `__dict__` in order for this property to work. 
     """
-    func: Callable[[t.Any], _T]
 
-    def __init__(self, fget: Callable[[t.Any], _T]=None, /, fset=None, fdel=None, *, readonly=False):
+    func: Callable[[t.Any], _T]
+    fget = None
+    _fset = None
+    fset = None
+    _fdel = None
+    fdel = None
+
+    def __init__(self, fget: Callable[[t.Any], _T]=_noop, /, fset=None, fdel=None, *, readonly=False):
         super().__init__(fget)
         self._fset = None
         self.fset = None
@@ -199,7 +212,7 @@ class cached_property(base_cached_property[_T]):
         self.__doc__ = func.__doc__
         return self
 
-    def setter(self, func=None):
+    def setter(self, func: Callable[[t.Any, _T]]=None):
         self._fset = func
         self.fset = self._get_fset(func)
         return self
@@ -305,7 +318,6 @@ class cached_property(base_cached_property[_T]):
         return rv
     
     def __setstate__(self, state):
-        old = self.__dict__.copy()
         self.__dict__.update(state, lock=RLock())
         
 
@@ -691,3 +703,10 @@ def add_metaclass(metaclass):
         return metaclass(cls.__name__, cls.__bases__, orig_vars)
     return wrapper
 
+
+
+def calling_module(default=None, *, key='__name__', lvl=2):
+    try:
+        return sys._getframe(lvl).f_globals.get(key, default)
+    except (AttributeError, ValueError):
+        return default

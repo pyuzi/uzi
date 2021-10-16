@@ -33,6 +33,7 @@ ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
     "djx.core",
+
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -42,14 +43,16 @@ INSTALLED_APPS = [
     'polymorphic_tree',
     'polymorphic',
     'mptt',
-    # "django_extensions",
+
     "djx.iam",
     "djx.spaces",
     "djx.ledgers",
-    # "djx.xtags",
+
     "djx.schemas",
     "djx.keydb",
     "djx.contacts",
+
+    # "djx.xtags",
     # "example_app",
 ]
 
@@ -113,6 +116,12 @@ AUTH_PASSWORD_VALIDATORS = [
 
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
+if 'djx.iam' in INSTALLED_APPS:
+    AUTH_USER_MODEL = 'iam.User'
+
+    AUTHENTICATION_BACKENDS = [
+        'djx.iam.backends.ModelBackend',
+    ]
 
 # Internationalization
 # https://docs.djangoproject.com/en/1.10/topics/i18n/

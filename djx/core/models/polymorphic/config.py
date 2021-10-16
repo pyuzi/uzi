@@ -100,9 +100,10 @@ class PolymorphicModelConfig(ModelConfig):
     @cached_property
     def polymorphic_descendants(self) -> int:
         count = 0
-        for typ in self.polymorphic_types.values():
-            if typ is not self.target:
-                count += 1
+        if types := self.polymorphic_types:
+            for typ in types.values():
+                if typ is not self.target:
+                    count += 1
         return count
 
     @cached_property
@@ -140,7 +141,7 @@ class PolymorphicModelConfig(ModelConfig):
             vals = self.polymorphic_values
             return orderedset(v for f in fields for v in f.values(vals[f.alias])) or None
     
-    @cached_property
+    @cached_property[bool]
     def polymorphic_loading(self) -> bool:
         return self.polymorphic_descendants and not self.polymorphic_proxy
 

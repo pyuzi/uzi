@@ -10,7 +10,7 @@ from django.apps import apps
 from django.core.exceptions import ImproperlyConfigured
 from django.db import models as m
 
-from djx.common.collections import PriorityStack, fallbackdict
+from djx.common.collections import PriorityStack, fallbackdict, nonedict
 
 from djx.di import di, ordered_id
 from djx.core import settings
@@ -123,12 +123,23 @@ class ModelUrnValueError(ValueError):
     
 
 
-@di.injectable('main', cache=True, kwargs=dict(maxsize=1024, ttl=300))
+class _blankdict(nonedict):
+
+    __slots__ = ()
+
+    def __setitem__(self, k, v):
+        pass
+
+    def __delitem__(self, v):
+        raise KeyError(v)
+
+
+@di.injectable('local', cache=True, kwargs=dict(maxsize=1024, ttl=300))
+@di.provide(scope='main', value=_blankdict())
 class ModelUrnObjectCache(TTLCache):
 
     def __init__(self, **kwds) -> None:
         super().__init__(**kwds) 
-
 
 
 
@@ -350,7 +361,11 @@ class ModelUrn(str, t.Generic[_T_Model]):
         flush is False or ModelUrn.__cache.expire()
 
         urn = _cls._new_(_cls._get_key_from_object(obj))
-        if ModelUrn.__cache.pop(urn, None) is not None:
+        try:
+            del ModelUrn.__cache[urn]
+        except KeyError:
+            return None
+        else:
             return urn
         
     @classmethod

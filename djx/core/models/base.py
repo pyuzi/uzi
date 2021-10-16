@@ -183,6 +183,7 @@ class Model(m.Model, metaclass=ModelType):
         __config__: t.ClassVar[ModelConfig]
         objects: t.ClassVar[Manager]
         _default_manager: t.ClassVar[Manager]
+        _base_manager: t.ClassVar[Manager]
     
         created_at: Moment
         updated_at: Moment

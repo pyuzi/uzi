@@ -31,6 +31,7 @@ class PolymorphicModelType(ModelType, type(PolymorphicModel)):
 
     def __call__(self, *args, **kwds):
         conf = self.__config__
+        # debug(self, conf.polymorphic_types, conf.polymorphic_kwargs, conf.polymorphic_args)
         if conf.polymorphic_loading:
             if args:
                 index, argmap = conf.polymorphic_args
@@ -94,8 +95,6 @@ class PolymorphicModel(Model, PolymorphicModel, metaclass=PolymorphicModelType):
 
 class PolymorphicMPTTModelType(PolymorphicModelType, MPTTModelType, type(PolymorphicMPTTModel)):
     ...
-
-
 
 
 

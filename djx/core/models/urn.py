@@ -133,6 +133,9 @@ class _blankdict(nonedict):
     def __delitem__(self, v):
         raise KeyError(v)
 
+    def expire(self, *v):
+        pass
+
 
 @di.injectable('local', cache=True, kwargs=dict(maxsize=1024, ttl=300))
 @di.provide(scope='main', value=_blankdict())

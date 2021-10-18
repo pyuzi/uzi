@@ -5,7 +5,7 @@ from ._functools import (
     class_property, cached_class_property, 
     cached_property, lookup_property,
     with_metaclass, add_metaclass,
-    calling_module
+    calling_scope
 )
 
 

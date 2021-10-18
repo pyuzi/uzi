@@ -1,3 +1,4 @@
+from os import altsep
 import typing as t 
 import logging
 
@@ -10,9 +11,9 @@ from .utils import export
 
 
 _T_Path = t.TypeVar('_T_Path', bound=PurePath)
-_T_UriPath = t.TypeVar('_T_UriPath', bound=PurePosixPath)
+_T_UriPath = t.TypeVar('_T_UriPath', bound='UriPath')
+_T_DotPath = t.TypeVar('_T_DotPath', bound='DotPath')
 
-_path_type = type(PurePath())
 
 logger = logging.getLogger(__name__)
 
@@ -155,5 +156,36 @@ class UriPathStr(PathStr[_T_UriPath], t.Generic[_T_UriPath]):
     __path_class__: t.ClassVar[type[_T_UriPath]] = UriPath
 
 
+
+
+
+
+class _DotPathFlavour(type(PurePosixPath._flavour)):
+    sep = '/'
+    altsep = PurePosixPath._flavour.sep
+
+
+
+_dot_flavour = _DotPathFlavour()
+
+@export()
+class DotPath(PurePath):
+
+    __slots__ = ()
+
+    _flavour = _dot_flavour
+
+    def __repr__(self):
+        return "{}({!r})".format(self.__class__.__name__, str(self))
+
+
+
+
+
+@export()
+class DotPathStr(PathStr[_T_DotPath], t.Generic[_T_DotPath]):
+
+    __slots__ = ()
+    __path_class__: t.ClassVar[type[_T_DotPath]] = DotPath
 
 

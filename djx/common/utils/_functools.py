@@ -29,14 +29,7 @@ def noop(*a, **kw):
 def export(obj: _T =..., /, *, name=None, exports=None, module=None) -> _T:
     
     if module is None:
-        module = calling_module(module)
-        # try:
-        #     mod = sys._getframe(1).f_globals.get('__name__')
-        # except (AttributeError, ValueError):
-        #     pass
-        # else:
-        #     if mod:
-        #         module = mod
+        module = calling_scope().get('__name__')
 
     def add_to_all(_obj: _T) -> _T:
         _module = sys.modules[module or _obj.__module__]
@@ -144,13 +137,13 @@ def _noop(*a):
 
 
 if t.TYPE_CHECKING:
-    _bases = base_cached_property[_T], property[_T]
+    _bases = property[_T],
 else:
     _bases = base_cached_property[_T], property
 
 
 
-class cached_property(*_bases, t.Generic[_T]):
+class cached_property(base_cached_property[_T], property):
     """Transforms a method into property whose value is computed once. 
     The computed value is then cached as a normal attribute for the life of the 
     instance::
@@ -192,11 +185,12 @@ class cached_property(*_bases, t.Generic[_T]):
     """
 
     func: Callable[[t.Any], _T]
-    fget = None
+    fget: Callable[[t.Any], _T] = None
     _fset = None
     fset = None
     _fdel = None
     fdel = None
+    
 
     def __init__(self, fget: Callable[[t.Any], _T]=_noop, /, fset=None, fdel=None, *, readonly=False):
         super().__init__(fget)
@@ -320,6 +314,11 @@ class cached_property(*_bases, t.Generic[_T]):
     def __setstate__(self, state):
         self.__dict__.update(state, lock=RLock())
         
+
+if t.TYPE_CHECKING:
+    class cached_property(property[_T], cached_property[_T]):
+        ...
+
 
 
 def method_decorator(decorator, name=''):
@@ -705,8 +704,19 @@ def add_metaclass(metaclass):
 
 
 
-def calling_module(default=None, *, key='__name__', lvl=2):
+def calling_scope(depth=2, *, globals: bool=None, locals: bool=None):
+    """Get the globals() or locals() scope of the calling scope"""
+    if globals is locals is None:
+        globals = True
+    elif globals and locals or not (globals or locals):
+            raise ValueError(f'args globals and locals are mutually exclusive')
+
     try:
-        return sys._getframe(lvl).f_globals.get(key, default)
+        if globals:
+            scope = sys._getframe(depth).f_globals
+        else:
+            scope = sys._getframe(depth).f_locals
     except (AttributeError, ValueError):
-        return default
+        raise
+    else:
+        return types.MappingProxyType(scope)

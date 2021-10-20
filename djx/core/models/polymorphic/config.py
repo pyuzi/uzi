@@ -43,10 +43,10 @@ class PolymorphicModelConfig(ModelConfig):
         return value or base or 'polymorphic_ctype'
 
     @property
-    def polymorphic_content_type(self):
+    def polymorphic_ctype(self):
         if self.polymorphic_proxy:
-            return self.parent.polymorphic_content_type or ...
-        return self.content_type or ...
+            return self.parent.polymorphic_ctype or ...
+        return self.model_ctype or ...
 
     @metafield[bool]
     def polymorphic_proxy(self, value, base=None):
@@ -62,7 +62,7 @@ class PolymorphicModelConfig(ModelConfig):
     @metafield
     def polymorphic_on(self, value, base=None) -> t.Optional[fallback_chain_dict[str, t.Any]]:
         if not base:
-            base = { self.polymorphic_ctype_field_name : DataPath('polymorphic_content_type') }
+            base = { self.polymorphic_ctype_field_name : DataPath('polymorphic_ctype') }
         
         return fallback_chain_dict(base, value or ())
 
@@ -212,7 +212,7 @@ class PolymorphicModelConfig(ModelConfig):
             if keys:
                 dups = []
                 if self.polymorphic_proxy:
-                    mod = tree.setdefault(f := next(self.polymorphic_ctype_field.values(self.content_type)), self.model)
+                    mod = tree.setdefault(f := next(self.polymorphic_ctype_field.values(self.model_ctype)), self.model)
                     mod is self.model or dups.append(f)
                 else:
                     tree.update(((k, self.model) for k in keys if k not in tree or dups.append(k)))

@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "djx.keydb",
     "djx.contacts",
 
+    "djx.cms",
     # "djx.xtags",
     # "example_app",
 ]

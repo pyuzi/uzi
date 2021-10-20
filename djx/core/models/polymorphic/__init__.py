@@ -4,7 +4,7 @@ import typing as t
 from django.db import models as m
 from djx.common.utils.data import result
 
-from polymorphic.models import PolymorphicModel
+from polymorphic.models import PolymorphicModel as BassePolymorphicModel
 from polymorphic.managers import PolymorphicManager, PolymorphicQuerySet
 from polymorphic_tree.models import PolymorphicMPTTModel, PolymorphicTreeForeignKey
 from polymorphic_tree.managers import PolymorphicMPTTModelManager, PolymorphicMPTTQuerySet
@@ -24,14 +24,13 @@ _T_Model = t.TypeVar('_T_Model', bound='Model', covariant=True)
 
 
 
-class PolymorphicModelType(ModelType, type(PolymorphicModel)):
+class PolymorphicModelType(ModelType, type(BassePolymorphicModel)):
 
 
     __config__: PolymorphicModelConfig
 
     def __call__(self, *args, **kwds):
         conf = self.__config__
-        # debug(self, conf.polymorphic_types, conf.polymorphic_kwargs, conf.polymorphic_args)
         if conf.polymorphic_loading:
             if args:
                 index, argmap = conf.polymorphic_args
@@ -63,7 +62,7 @@ class PolymorphicModelType(ModelType, type(PolymorphicModel)):
 
 
 @export()
-class PolymorphicModel(Model, PolymorphicModel, metaclass=PolymorphicModelType):
+class PolymorphicModel(Model, BassePolymorphicModel, metaclass=PolymorphicModelType):
 
     __config_class__ = PolymorphicModelConfig
     __config__: PolymorphicModelConfig
@@ -73,6 +72,7 @@ class PolymorphicModel(Model, PolymorphicModel, metaclass=PolymorphicModelType):
 
     class Config:
         on_prepare = 'polymorphic_tree'
+        
         
     def pre_save_polymorphic(self, using=...):
         """
@@ -84,7 +84,7 @@ class PolymorphicModel(Model, PolymorphicModel, metaclass=PolymorphicModelType):
         # field to figure out the real class of this object
         # (used by PolymorphicQuerySet._get_real_instances)
         if not self.polymorphic_ctype_id:
-            self.polymorphic_ctype = result(self.__config__.polymorphic_content_type, self)
+            self.polymorphic_ctype = result(self.__config__.polymorphic_ctype, self)
 
     pre_save_polymorphic.alters_data = True
 

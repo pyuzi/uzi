@@ -76,7 +76,7 @@ def _creation_order():
 
     
 @export()
-class aliased(cached_property[_T], t.Generic[_T]):
+class aliased(cached_property[_T]):
 
     fget: Callable[[t.Any], _T]
 
@@ -211,11 +211,11 @@ class aliased(cached_property[_T], t.Generic[_T]):
 
     getter = __call__
 
-    def loader(self: 'property[_T]', func: Callable[[t.Any], _T]) -> _T:
+    def loader(self: 'property[_T]', func: Callable[[t.Any], _T]) -> 'property[ _T]':
         return super().getter(func)
     
-    if t.TYPE_CHECKING:
-        loader = __call__
+    # if t.TYPE_CHECKING:
+        # loader = __call__
 
     def express(self, expr):
         if isinstance(expr, AliasExpression):
@@ -238,6 +238,13 @@ class aliased(cached_property[_T], t.Generic[_T]):
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}({self.attrname!r}, path={self.lookup_path!r})'
         
+
+
+
+if t.TYPE_CHECKING:
+    class aliased(property[_T], aliased[_T]):
+        ...
+
 
 
 

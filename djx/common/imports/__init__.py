@@ -12,14 +12,16 @@ from collections.abc import Mapping, Sequence, Set, Iterator
 from ..utils.data import getitem
 from ..utils import class_property
 
+from ..proxy import Proxy
+
 
 __all__ = [
-    'import_item', 'import_items'
+    'import_item', 'import_items', 'import_proxy'
 ]
 
 
 _TN = t.TypeVar('_TN', 'Importable', str)
-IT = t.TypeVar('IT')
+_IT = t.TypeVar('_IT')
     
 _T_mod = t.Union[str, 'Importable', ModuleType]
 _T_qual = t.Union[str, 'Importable']
@@ -101,7 +103,7 @@ class ImportName(str):
         else:
             return cls(v)
 
-    def __new__(bcls: type[IT], mod: _T_mod, qual:_T_qual=None) -> IT:
+    def __new__(bcls: type[_IT], mod: _T_mod, qual:_T_qual=None) -> _IT:
         if '_Flavor' not in bcls.__dict__:
             if qual is None and isinstance(mod, bcls):
                 return mod
@@ -304,7 +306,7 @@ class ImportRefError(ImportError):
 
 
 
-class ImportRef(ImportName, t.Generic[IT]):
+class ImportRef(ImportName, t.Generic[_IT]):
 
     __slots__ = ()
 
@@ -317,7 +319,7 @@ class ImportRef(ImportName, t.Generic[IT]):
         module: type['ModuleImportRef'] = None
         invalid: type['InvalidImportRef'] = None
 
-    def module(self, default: IT=...) -> ModuleType:
+    def module(self, default: _IT=...) -> ModuleType:
         if self._module in sys.modules:
             return sys.modules[self._module]
         try:
@@ -339,7 +341,7 @@ class ImportRef(ImportName, t.Generic[IT]):
         except ImportRefError:
             return False
 
-    def __call__(self, default: IT=...) -> IT:
+    def __call__(self, default: _IT=...) -> _IT:
         raise NotImplementedError(f'{self.__class__.__qualname__}.__call__')
 
     # @property
@@ -366,11 +368,11 @@ class ModuleImportRef(ModuleName, ImportRef[ModuleType]):
 
 
 
-class ObjectImportRef(ObjectName, ImportRef[IT]):
+class ObjectImportRef(ObjectName, ImportRef[_IT]):
 
     __slots__ = ()
 
-    def __call__(self, default: IT=...) -> IT:
+    def __call__(self, default: _IT=...) -> _IT:
         rv = getitem(self.module(), self._qualname, default)
         if rv is ...:
             raise ImportRefError(
@@ -389,7 +391,12 @@ ImportRef._Flavor.invalid = InvalidImportRef
 
 
 
-def import_item(import_name: str, package=None, *, default: IT=...) -> IT:
+def import_proxy(mod: _T_mod, qual:_T_qual=None, /, **opts) -> Proxy[_IT]:
+    return Proxy(ImportRef(mod, qual), **opts)    
+
+
+
+def import_item(import_name: str, package=None, *, default: _IT=...) -> _IT:
     """Imports an object or module based on a string.
     """
     if not isinstance(import_name, ImportName):

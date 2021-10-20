@@ -160,32 +160,34 @@ class UriPathStr(PathStr[_T_UriPath], t.Generic[_T_UriPath]):
 
 
 
-class _DotPathFlavour(type(PurePosixPath._flavour)):
-    sep = '/'
-    altsep = PurePosixPath._flavour.sep
+# class _DotPathFlavour(type(PurePosixPath._flavour)):
+#     sep = '|'
+#     altsep = PurePosixPath._flavour.sep
 
 
 
-_dot_flavour = _DotPathFlavour()
+# _dot_flavour = _DotPathFlavour()
 
-@export()
-class DotPath(PurePath):
+# @export()
+# class DotPath(PurePath):
 
-    __slots__ = ()
+#     __slots__ = ()
 
-    _flavour = _dot_flavour
+#     _flavour = _dot_flavour
 
-    def __repr__(self):
-        return "{}({!r})".format(self.__class__.__name__, str(self))
-
-
+#     def __repr__(self):
+#         return "{}({!r})".format(self.__class__.__name__, str(self))
 
 
 
-@export()
-class DotPathStr(PathStr[_T_DotPath], t.Generic[_T_DotPath]):
 
-    __slots__ = ()
-    __path_class__: t.ClassVar[type[_T_DotPath]] = DotPath
+
+# @export()
+# class DotPathStr(PathStr[_T_DotPath], t.Generic[_T_DotPath]):
+
+#     __slots__ = ()
+#     __path_class__: t.ClassVar[type[_T_DotPath]] = DotPath
+
+
 
 

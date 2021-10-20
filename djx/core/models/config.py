@@ -232,7 +232,7 @@ class ModelConfig(BaseMetadata[_T_Model]):
         return fn
 
     @cached_property
-    def content_type(self):
+    def model_ctype(self):
         try:
             return ContentType.objects.get_for_model(self.target, for_concrete_model=False)
         except Exception as e:

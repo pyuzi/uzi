@@ -212,8 +212,9 @@ class PolymorphicModelConfig(ModelConfig):
             if keys:
                 dups = []
                 if self.polymorphic_proxy:
-                    mod = tree.setdefault(f := next(self.polymorphic_ctype_field.values(self.model_ctype)), self.model)
-                    mod is self.model or dups.append(f)
+                    if (f := next(self.polymorphic_ctype_field.values(self.model_ctype))).value is not None:
+                        mod = tree.setdefault(f, self.model)
+                        mod is self.model or dups.append(f)
                 else:
                     tree.update(((k, self.model) for k in keys if k not in tree or dups.append(k)))
                 

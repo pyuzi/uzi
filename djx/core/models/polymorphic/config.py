@@ -44,9 +44,13 @@ class PolymorphicModelConfig(ModelConfig):
 
     @property
     def polymorphic_ctype(self):
+        return self.polymorphic_concrete.__config__.model_ctype or ...
+
+    @property
+    def polymorphic_concrete(self):
         if self.polymorphic_proxy:
-            return self.parent.polymorphic_ctype or ...
-        return self.model_ctype or ...
+            return self.parent.polymorphic_concrete
+        return self.target
 
     @metafield[bool]
     def polymorphic_proxy(self, value, base=None):

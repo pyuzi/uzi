@@ -35,7 +35,6 @@ _T_Model = t.TypeVar('_T_Model', bound='Model', covariant=True)
 _T_Config = t.TypeVar('_T_Config', bound='ModelConfig', covariant=True)
 
 
-from . import _patch as __
 
 
 
@@ -399,3 +398,4 @@ class MPTTModel(Model, MPTTModel, metaclass=MPTTModelType):
 
 
 from .polymorphic import PolymorphicModel, PolymorphicMPTTModel, PolymorphicModelConfig
+from . import _patch as __

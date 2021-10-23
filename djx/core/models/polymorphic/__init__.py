@@ -5,9 +5,7 @@ from django.db import models as m
 from djx.common.utils.data import result
 
 from polymorphic.models import PolymorphicModel as BassePolymorphicModel
-from polymorphic.managers import PolymorphicManager, PolymorphicQuerySet
 from polymorphic_tree.models import PolymorphicMPTTModel, PolymorphicTreeForeignKey
-from polymorphic_tree.managers import PolymorphicMPTTModelManager, PolymorphicMPTTQuerySet
 
 
 from djx.common.utils import (
@@ -19,8 +17,11 @@ from djx.common.utils import (
 from ..base import ModelType, Model, Manager, QuerySet, MPTTModel, MPTTModelType
 from .config import  PolymorphicModelConfig
 
+from .managers import *
+
 
 _T_Model = t.TypeVar('_T_Model', bound='Model', covariant=True)
+
 
 
 
@@ -67,6 +68,8 @@ class PolymorphicModel(Model, BassePolymorphicModel, metaclass=PolymorphicModelT
     __config_class__ = PolymorphicModelConfig
     __config__: PolymorphicModelConfig
 
+    objects = PolymorphicManager()
+
     class Meta:
         abstract = True
 
@@ -100,6 +103,8 @@ class PolymorphicMPTTModelType(PolymorphicModelType, MPTTModelType, type(Polymor
 
 @export()
 class PolymorphicMPTTModel(PolymorphicModel, PolymorphicMPTTModel, MPTTModel, metaclass=PolymorphicMPTTModelType):
+
+    objects = PolymorphicMPTTModelManager()
 
     class Meta:
         abstract = True

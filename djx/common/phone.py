@@ -11,7 +11,8 @@ from phonenumbers import (
 
     format_number, format_by_pattern,
     is_valid_number, is_possible_number,
-    carrier, is_possible_number_with_reason
+    carrier, is_possible_number_with_reason,
+    country_code_for_region
 )
 
 from djx.di import di

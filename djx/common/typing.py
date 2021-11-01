@@ -24,7 +24,7 @@ from typing import (  # type: ignore
     cast,
     get_type_hints,
 )
-
+from abc import ABC, abstractmethod
 from typing_extensions import Annotated, Literal
 
 try:
@@ -400,3 +400,29 @@ def get_class(type_: Type[Any]) -> Union[None, bool, Type[Any]]:
     except (AttributeError, TypeError):
         pass
     return None
+
+
+
+class GenericLike(ABC):
+    __slots__ = ()
+
+    __args__: tuple
+
+    @property
+    @abstractmethod
+    def __origin__(self):
+        ...
+
+    @classmethod
+    def __instancecheck__(cls, instance):
+        return super().__instancecheck__(instance) or (get_origin(instance) is not None and getattr(instance, '__parameters__', None).__class__ is tuple) 
+
+    @classmethod
+    def __subclasshook__(cls, subclass: type) -> bool:
+        if cls is GenericLike:
+            return hasattr(subclass, '__origin__') and hasattr(subclass, '__parameters__')
+        return NotImplemented
+
+
+
+GenericLike.register(GenericAlias)

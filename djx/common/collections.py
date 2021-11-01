@@ -4,7 +4,7 @@ import sys
 from copy import deepcopy
 from functools import cache, wraps
 from itertools import chain
-from types import GenericAlias, new_class
+from types import FunctionType, GeneratorType, GenericAlias, new_class
 import typing as t
 from collections.abc import (
     Hashable, Mapping, MutableMapping, MutableSet, Iterable, Set, Sequence, MutableSequence, 
@@ -52,28 +52,141 @@ _TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 @export()
 class frozendict(dict[_TK, _TV]):
 
-    __slots__ = ()
+    __slots__ = ('_frozen_', '_hash')
 
-    def __delitem__(self, v):
-        raise TypeError(f'{self.__class__.__name__} is immutable')
+    if t.TYPE_CHECKING:
+        _frozen_: t.Final[bool] = True
+        _hash: int = 0
+
+    def __init__(self, *args, **kwds) -> None:
+        self._frozen_ = False
+        super().__init__(*args, **kwds)
+        self._frozen_ = True
+    
+    def __delitem__(self):
+        if self._frozen_ is True:
+            raise TypeError(f'{self.__class__.__name__} is immutable')
+        return super().__delitem__(k)
 
     def __setitem__(self, k, v):
-        raise TypeError(f'{self.__class__.__name__} is immutable')
+        if self._frozen_ is True:
+            raise TypeError(f'{self.__class__.__name__} is immutable')
+        return super().__setitem__(k,v)
 
     def setdefault(self, k, v):
-        raise TypeError(f'{self.__class__.__name__} is immutable')
+        if self._frozen_ is True:
+            raise TypeError(f'{self.__class__.__name__} is immutable')
+        return super().setdefault(k,v)
 
-    def pop(self, k, v):
-        raise TypeError(f'{self.__class__.__name__} is immutable')
+    def pop(self, k, *v):
+        if self._frozen_ is True:
+            raise TypeError(f'{self.__class__.__name__} is immutable')
+        return super().pop(k, *v)
 
-    def popitem(self, *v):
-        raise TypeError(f'{self.__class__.__name__} is immutable')
+    def popitem(self):
+        if self._frozen_ is True:
+            raise TypeError(f'{self.__class__.__name__} is immutable')
+        return super().popitem()
 
     def update(self, *v, **kw):
-        raise TypeError(f'{self.__class__.__name__} is immutable')
+        if self._frozen_ is True:
+            raise TypeError(f'{self.__class__.__name__} is immutable')
+        return super().update(*v, **kw)
+
+    def __hash__(self):
+        try:
+            return self._hash
+        except AttributeError:
+            val = self.__class__, *self._hashvals()
+            self._hash = hash(val)
+            return self._hash
+
+    def _hashvals(self):
+        return ((k, self[k]) for k in sorted(self))
+
+    def __reduce__(self):
+        return self.__class__, (dict(self),)
+
+    def copy(self):
+        return self.__class__(self)
+
+    __copy__ = copy
 
 
 
+@export()
+class factorydict(frozendict[_TK, _TV]):
+
+    __slots__ = '__getitem__',
+
+    def __init__(self, func, keys=()) -> None:
+        self.__getitem__ = func
+        super().__init__(keys and dict.fromkeys(keys))
+    
+    def __reduce__(self):
+        return self.__class__, (self.__getitem__, tuple(self))
+
+    def copy(self):
+        return self.__class__(self.__getitem__, self)
+
+    __copy__ = copy
+
+    def items(self):
+        return ItemsView[tuple[_TK, _TV]](self)
+
+    def values(self):
+        return ValuesView[_TV](self)
+    
+    def _hashvals(self):
+        return self.__getitem__, tuple(sorted(self))
+
+
+
+
+
+
+@export()
+class nonedict(factorydict[_TK, None], t.Generic[_TK]):
+
+    __slots__ = ()
+
+    _instance_ = None
+
+    def __init_subclass__(cls) -> None:
+        cls._instance_ = None
+        return super().__init_subclass__()
+
+    def __new__(cls):
+        if cls._instance_ is None:
+            cls._instance_ = super().__new__(cls)
+        return cls._instance_
+    
+    def __init__(self):
+        super().__init__(_none_fn)
+
+    def __len__(self) -> 0:
+        return 0
+    
+    def __copy__(self):
+        return self
+    
+    copy = __copy__
+
+    def __reduce__(self):
+        return self.__class__, ()
+
+    def __contains__(self, key: _TK) -> False:
+        return False
+
+    def __bool__(self) -> False:
+        return False
+
+    def __iter__(self):
+        if False:
+            yield None
+        
+    def _hashvals(self):
+        return None,
 
 
 @export()
@@ -83,11 +196,12 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
     
     Unlike defaultdict, the fallback value will not be set.
     """
-    __slots__ = ('_fb', '_fbfunc')
+    __slots__ = ('_fb', '_fallback', '_fb_func')
 
     _fb: _FallbackType[_TK, _TV]
-    _fbfunc: _FallbackCallable[_TK, _TV]
-    _default_fallback: t.ClassVar[_FallbackType[_TK, _TV]] = None
+    _fallback: _FallbackType[_TK, _TV]
+    _fb_func: _FallbackCallable[_TK, _TV]
+    _default_fb: t.ClassVar[_FallbackType[_TK, _TV]] = None
 
     def __init__(self, fallback: _FallbackType[_TK, _TV]=None, *args, **kwds):
         super().__init__(*args, **kwds)
@@ -95,47 +209,74 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
 
     @property
     def fallback(self) -> _FallbackType[_TK, _TV]:
-        return self._fb
+        if self._fallback is None:
+            self._initfallback_()
+        return self._fallback
     
     @fallback.setter
     def fallback(self, fb: _FallbackType[_TK, _TV]):
-        if fb is None:
-            fb = self._default_fallback or _none_fn
+        self._fb = fb
+        self._fallback = None
+        del self._fb_func
 
-        if fb is None:
-            # self._fb, self._fbfunc = None, _none_fn
-            self._fb = self._fbfunc = None
-        elif isinstance(fb, Mapping):
-            self._fb, self._fbfunc = fb, fb.__getitem__
-        elif callable(fb):
-            self._fb = self._fbfunc = fb
-        else:
-            self._fb = fb
-            self._fbfunc = None
-        # else:
-            # raise TypeError(f'Fallback must be a Mapping or Callable. Got: {type(fb)}')
+    def _initfallback_(self):
+        if self._fallback is None:
+            fb = self._fb
+            if fb is None:
+                fb = self._default_fb
+            
+            typ = fb.__class__
+            if fb is None:
+                self._fallback = nonedict()
+            elif issubclass(typ, Mapping):
+                self._fallback = fb
+            elif issubclass(typ, type) and issubclass(fb, Mapping):
+                self._fallback = fb()
+            elif issubclass(typ, FunctionType):
+                if 'self' in fb.__annotations__:
+                    self._fallback = factorydict(lambda k: fb(self, k))
+                else:
+                    self._fallback = factorydict(fb)
+            elif isinstance(fb, Callable):
+                self._fallback = factorydict(fb)
+            else:
+                # self.__missing__ = _none_fn
+                raise TypeError(f'Fallback must be a Mapping | Callable | None. Got: {type(fb)}')
+            self._fb_func = self._fallback.__getitem__
 
-    @property
-    def fallback_func(self):
-        if self._fbfunc is None:
-            self._fbfunc = _none_fn
-        return self._fbfunc
+        return self._fb_func
 
-    def __missing__(self, k: _TK) -> _TV:
-        fn = self._fbfunc
-        if fn is None:
-            return None
-            # return self.fallback_func(k)
-        else:
-            return fn(k)
+    def __missing__(self, k):
+        return self._fb_func(k)
+
+    def __getattr__(self, k: str):
+        if k == '_fb_func':
+            self._fb_func = None
+            return self._initfallback_()
+        raise AttributeError(k)        
+    
+    # def __getattribute__(self, k: str):
+    #     try:
+    #         return super().__getattribute__(k)
+    #     except AttributeError:
+    #         if k == '__missing__':
+    #             return self._initfallback_()
+    #         raise
     
     def __reduce__(self):
-        return self.__class__, (self._fb, super().copy())
+        # return self.__class__, (self._fb, super().copy())
+        return self.__class__, (self._fb, dict(self))
 
     def copy(self):
         return self.__class__(self._fb, self)
 
     __copy__ = copy
+
+    def __delattr__(self, name: str) -> None:
+        try:
+            super().__delattr__(name)
+        except AttributeError:
+            pass
 
     # def __deepcopy__(self, memo=None):
     #     # if self._fb is not self._fbfunc and self._fb is not None:
@@ -155,91 +296,39 @@ def _has_self_arg(val):
 @export()
 class fallback_default_dict(fallbackdict[_TK, _TV]):
 
-    def __missing__(self, k: _TK) -> _TV:
-        return self.setdefault(k, super().__missing__(k))
-
-
-
-@export()
-class nonedict(frozendict[_TK, None], t.Generic[_TK]):
-
     __slots__ = ()
 
-    _instance_ = None
+    def _initfallback_(self):
+        if self._fallback is None:
+            func = super()._initfallback_()
+            setdefault = self.setdefault
+            self._fb_func = lambda k: setdefault(k, func(k))
+        return self._fb_func
 
-    def __init_subclass__(cls) -> None:
-        cls._instance_ = None
-        return super().__init_subclass__()
-
-    def __new__(cls):
-        if cls._instance_ is None:
-            cls._instance_ = super().__new__(cls)
-        return cls._instance_
-    
-    def __len__(self) -> 0:
-        return 0
-    
-    def __copy__(self) -> 0:
-        return self
-    
-    copy = __copy__
-
-    def __reduce__(self) -> 0:
-        return self.__class__,
-
-    def __contains__(self, key: _TK) -> False:
-        return False
-
-    def __bool__(self) -> False:
-        return False
-
-    def __getitem__(self, key: _TK) -> None:
-        return None
-
-    def __iter__(self):
-        if False:
-            yield None
 
 @export()
 class fallback_chain_dict(fallbackdict[_TK, _TV]):
 
-    _default_fallback = fallbackdict
+    _default_fb = fallbackdict
     
-    @property
-    def fallback(self) -> _FallbackType[_TK, _TV]:
-        self._fbfunc is None and self.fallback_func
-        return self._fb
+    # @property
+    # def fallback(self) -> _FallbackType[_TK, _TV]:
+    #     self.__missing__ # is None and self._set_missing_
+    #     return self._fallback
 
-    @fallback.setter
-    def fallback(self, fb: _FallbackType[_TK, _TV]):
-        if fb is None:
-            fb = self._default_fallback
+    # @fallback.setter
+    # def fallback(self, fb: _FallbackType[_TK, _TV]):
+    #     if fb is None:
+    #         fb = self._default_fallback
 
-        if isinstance(fb, Mapping):
-            self._fb = fb
-            self._fbfunc = fb.__getitem__
-        elif callable(fb):
-            self._fb = fb
-            self._fbfunc = None
-        else:
-            raise ValueError('fallback must be provided.')
-
-    @property
-    def fallback_func(self):
-        if self._fbfunc is None:
-            fb = self._fb
-            if isinstance(fb, type):
-                self._fb = fb()
-                self._fbfunc = fb.__getitem__
-            elif fb is None:
-                self._fb = nonedict()
-                self._fbfunc = _none_fn
-            else:
-                self._fb = fb(self)
-                self._fbfunc = self._fb.__getitem__
-
-        return self._fbfunc
-
+    #     if isinstance(fb, Mapping):
+    #         self._fallback = fb
+    #         self.__missing__ = fb.__getitem__
+    #     elif callable(fb):
+    #         self._fallback = fb
+    #         self.__missing__ = None
+    #     else:
+    #         raise ValueError('fallback must be provided.')
 
     def get(self, key, default=None) -> t.Union[_TV, None]:
         try:
@@ -250,10 +339,14 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
     def __contains__(self, o) -> bool:
         return super().__contains__(o) or self.fallback.__contains__(o)
 
-    @property
-    def parent(self):                          # like Django's Context.pop()
-        'New ChainMap from maps[1:].'
-        return self.fallback
+    # @property
+    # def parent(self):                          
+    #     'New fallback_chain_dict from maps[1:].'
+    #     rv = self.fallback
+    #     if isinstance(rv, self.__class__):
+    #         rv = self.__class__(rv)
+
+    #     return self.fallback
 
     def __iter__(self):
         seen = set()
@@ -279,6 +372,9 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
         return o == dict(self)
     
     def __ne__(self, o):
+        return not self.__eq__(o)
+
+    def __redu(self, o):
         return not self.__eq__(o)
 
     def __repr__(self):

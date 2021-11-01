@@ -5,10 +5,7 @@ from statistics import median, median_high, mean
 
 import pytest
 
-from ...providers import (
-    alias, provide, injectable
-)
-from ... import Depends, Scope, InjectedClassVar, InjectedProperty, Injector, abc
+from ... import Depends, Scope, InjectedClassVar, InjectedProperty, Injector, abc, alias, provide, injectable
 from ...inspect import ordered_id
 
 from djx.common.saferef import StrongRef as symbol
@@ -128,7 +125,7 @@ class Baz:
 alias('bar', user_func_injectable, cache=False)
 
 
-@injectable(cache=False, scope=Scope.ANY)
+@injectable(cache=False, scope=Scope.MAIN)
 class Bar:
 
     infoo = InjectedProperty(Foo)

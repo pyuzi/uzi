@@ -1,5 +1,6 @@
 from __future__ import annotations
 from functools import cache
+import typing as t
 from weakref import WeakSet
 from djx.common.collections import orderedset, PriorityStack
 from djx.common.utils import Void
@@ -21,6 +22,7 @@ from typing import (
 from djx.common.utils import cached_class_property, cached_property, class_property, export, text
 
 from djx.common.abc import Orderable
+from djx.common.collections import frozendict
 from djx.common.typing import GenericAlias as _GenericAlias
 
 
@@ -71,6 +73,8 @@ class Resolver(Generic[T_Injected], metaclass=ABCMeta):
 
     __slots__ = ('bound', 'value', '__weakref__')
 
+    alias: ClassVar[bool] = False
+    concrete = None
     bound: Union[T_Injector, None]
     value: Union[T_Injected, Void]
 
@@ -242,36 +246,37 @@ class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
 
     __class_getitem__ = classmethod(GenericAlias)
 
-    @classmethod
-    def __prepare__(mcls, cls, bases, **kwds):
-        return dict(
-            __instance__=None, 
-            __registry__=None,
-        )  
+    # @classmethod
+    # def __prepare__(mcls, cls, bases, **kwds):
+    #     return dict(
+    #         # __instance__=None, 
+    #         __registry__=None,
+    #     )  
             
-    def __init__(cls: 'ScopeType[T_Scope, _T_Conf]', name, bases, dct, **kwds):
-        super().__init__(name, bases, dct, **kwds)
+    # def __init__(cls: 'ScopeType[T_Scope, _T_Conf]', name, bases, dct, **kwds):
+    #     super().__init__(name, bases, dct, **kwds)
 
-        assert cls.__instance__ is None, (
-            f'Scope class should not define __instance__ attributes'
-        )
+    #     assert cls.__instance__ is None, (
+    #         f'Scope class should not define __instance__ attributes'
+    #     )
 
-    @class_property
-    def all_providers(cls):
-        return ScopeType.__registries
+    # @class_property
+    # def all_providers(cls):
+    #     return ScopeType.__registries
 
-    @property
-    def own_providers(cls):
-        return cls.all_providers[cls.config.name]
+    # @property
+    # def own_providers(cls):
+    #     return cls.all_providers[cls.config.name]
 
-    def register_provider(cls, provider: T_Provider, scope: Union[str, ScopeAlias]=None, *, flush: bool=None) -> T_Provider:
-        if scope.__class__ is not cls:
-            scope = cls._get_scope_name(scope or provider.scope or cls)
-            cls = cls._gettype(scope)
+    # def register_provider(cls, provider: T_Provider, scope: Union[str, ScopeAlias]=None, *, flush: bool=None) -> T_Provider:
+    #     if scope.__class__ is not cls:
+    #         scope = cls._get_scope_name(scope or provider.scope or cls)
+    #         cls = cls._gettype(scope)
         
-        cls.own_providers[provider.abstract] = provider
-        flush is not False and cls.__instance__ and cls.__instance__.flush(provider.abstract)
-        return provider
+    #     flush is not False and cls.__instance__ and cls.__instance__.flush(provider.abstract)
+    #     cls.own_providers[provider.abstract] = provider
+
+    #     return provider
 
     def _get_scope_name(cls: 'ScopeType[T_Scope, _T_Conf]', val):
         return val.name if type(val) is ScopeAlias \
@@ -293,19 +298,19 @@ class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
         else:
             return cls
 
-    def __call__(cls, scope=None, *args,  **kwds):
-        if scope.__class__ is cls:
-            return scope
+    # def __call__(cls, scope=None, *args,  **kwds):
+    #     if scope.__class__ is cls:
+    #         return scope
         
-        cls = cls._gettype(cls._get_scope_name(scope or cls))
+    #     cls = cls._gettype(cls._get_scope_name(scope or cls))
 
-        if cls.config.is_abstract:
-            raise TypeError(f'Cannot create abstract scope {cls}')
-        elif cls.__instance__ is not None:
-            return cls.__instance__
+    #     if cls.config.is_abstract:
+    #         raise TypeError(f'Cannot create abstract scope {cls}')
+    #     elif cls.__instance__ is not None:
+    #         return cls.__instance__
 
-        cls.__instance__ = type.__call__(cls, *args, **kwds)
-        return cls.__instance__
+    #     cls.__instance__ = type.__call__(cls, *args, **kwds)
+    #     return cls.__instance__
   
     def __getitem__(cls, params=...):
         if type(params) is ScopeAlias:
@@ -330,7 +335,7 @@ class ScopeType(ABCMeta, Generic[T_Scope, _T_Conf, T_Provider]):
         klass = klass or cls
         if not cls._is_abstract(klass):
             name = cls._get_scope_name(klass)
-            klass.__registry__ = ScopeType.__registries[name]
+            # klass.__registry__ = ScopeType.__registries[name]
             ScopeType.__types[name] = klass
         return cls
 
@@ -370,10 +375,10 @@ class Scope(Orderable, Container, metaclass=ScopeType):
 
     __class_getitem__ = classmethod(ScopeType.__getitem__)
 
-    def __init__(self) -> None:
-        assert self.__class__.__instance__ is None, (
-                f'Scope are singletons. {self.__instance__} already created.'
-            )
+    # def __init__(self) -> None:
+    #     assert self.__class__.__instance__ is None, (
+    #             f'Scope are singletons. {self.__instance__} already created.'
+    #         )
 
     @cached_class_property
     def key(cls):
@@ -435,7 +440,7 @@ class Scope(Orderable, Container, metaclass=ScopeType):
         elif isinstance(x, (Scope, ScopeType)):
             return x.key == self.key
         else:
-            return NotImplemented
+            return False
 
     def __hash__(self) -> int:
         return hash(self.key)
@@ -444,13 +449,13 @@ class Scope(Orderable, Container, metaclass=ScopeType):
 
 
 @export()
-class Provider(Orderable, Generic[T_Injected, T_Injectable, T_Resolver, T_Scope], metaclass=ABCMeta):
+class Provider(Orderable, Generic[T_Injected, T_Injectable, T_Resolver], metaclass=ABCMeta):
     
     __slots__ = ()
     
     _default_scope: ClassVar[str] = Scope.MAIN
 
-    abstract: StaticIndentity[T_Injectable]
+    abstract: T_Injectable
 
     scope: str
     priority: int
@@ -459,7 +464,7 @@ class Provider(Orderable, Generic[T_Injected, T_Injectable, T_Resolver, T_Scope]
     options: dict
 
     @abstractmethod
-    def resolver(self, scope: T_Scope) -> T_Resolver:
+    def make_resolver(self, scope: T_Scope) -> T_Resolver:
         """Bind provider to given injector.
         """
         ...

@@ -4,13 +4,13 @@ from .settings import *
 
 # Application definition
 
-INSTALLED_APPS = [
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django_extensions",
-    "example_app",
-]
+# INSTALLED_APPS = [
+#     "django.contrib.auth",
+#     "django.contrib.contenttypes",
+#     "django.contrib.sessions",
+#     "django_extensions",
+#     "example_app",
+# ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

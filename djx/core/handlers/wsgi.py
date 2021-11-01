@@ -14,7 +14,5 @@ logger = logging.getLogger(__name__)
 class WSGIHandler(InjectorContextHandler, WSGIHandler):
 
     def __call__(self, environ, start_response):
-        with self.injector():
-            rv = super().__call__(environ, start_response)
-        
-        return rv
+        with self.ioc.use(self.di_scope):
+            return super().__call__(environ, start_response)

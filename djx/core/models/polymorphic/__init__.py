@@ -48,10 +48,11 @@ class PolymorphicModelType(ModelType, type(BassePolymorphicModel)):
                             break
                     except KeyError:
                         pass
-                
-            if new is None:
-                new = self._create_from_kwargs_(**kwds)
-            
+                if new is None:
+                    new = self._create_from_kwargs_(**kwds)
+            else:
+                new = self._create_from_kwargs_()
+
         elif args:
             new = self._create_from_args_(*args, **kwds)
         else:

@@ -24,6 +24,7 @@ class Settings(metaclass=ABCMeta):
         return django_settings() or super().__new__(cls)
 
 
+debug(Settings)
 settings: Settings = di.proxy(Settings, callable=True)
 
 

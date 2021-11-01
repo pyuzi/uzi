@@ -1,4 +1,5 @@
 import re
+import sys
 from abc import ABCMeta
 
 from copy import copy as _copy, deepcopy
@@ -491,13 +492,14 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
     def __setstate__(self, val):
         self.__dict__.update(val)
     
-    def __getattr__(self, alias):
-        name = self.__fieldaliases__[alias]
-        if name is alias:
-            # return NotImplemented
-            raise AttributeError(alias)
+    # def __getattr__(self, alias):
+    #     name = self.__fieldaliases__[alias]
+    #     if name is alias:
+    #         tb = sys.exc_info()[1]
+    #         # return NotImplemented
+    #         raise AttributeError(alias).with_traceback(tb)
         
-        return getattr(self, name)
+    #     return getattr(self, name)
 
     @classmethod
     def _base_from_target(cls, target, attr):

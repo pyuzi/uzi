@@ -9,7 +9,7 @@ from timeit import repeat
 import pytest
 
 
-from ... import is_injectable, using, injector, INJECTOR_TOKEN, di
+from ... import ioc, use, current, INJECTOR_TOKEN, di
 
 
 from .mocks import *
@@ -28,16 +28,16 @@ class SymbolTests:
     def run_basic(self, obj, kind=None):
         return True
 
-    def test_basic(self):
-        assert is_injectable(Foo)
+    # def test_basic(self):
+    #     assert is_injectable(Foo)
 
-        assert is_injectable(user_func_injectable)
-        assert is_injectable(user_symb)
-        assert is_injectable(user_symb())
-        assert is_injectable(user_str)
-        assert is_injectable(symbol(user_str))
-        assert not is_injectable(noop_symb)
-        assert not is_injectable(user_func_symb)
+    #     assert is_injectable(user_func_injectable)
+    #     assert is_injectable(user_symb)
+    #     assert is_injectable(user_symb())
+    #     assert is_injectable(user_str)
+    #     assert is_injectable(symbol(user_str))
+    #     assert not is_injectable(noop_symb)
+    #     assert not is_injectable(user_func_symb)
 
     def test_late_provider(self):
         @injectable(scope='main')
@@ -51,7 +51,8 @@ class SymbolTests:
         class Late:
             pass
 
-        with using('test') as inj:
+
+        with use('test') as inj:
             with inj.context:
                 key = 'late'
                 val ='This was injected late'
@@ -59,8 +60,10 @@ class SymbolTests:
 
                 provide(key, value=val)
 
-                print('', *inj.scope.providers.maps, end='\n\n', sep='\n -')
-                print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))
+                print('', *inj.scope.providers.maps, end='\n\n', sep='\n -><=')
+                print('\n', *(f' -+= {k} --> {v!r}\n' for k,v in ioc.injector.content.items()))
+        
+                debug([(s,k) for s, d in ioc.deps.items() for k in d])
 
                 assert inj[key] == val
 
@@ -73,7 +76,7 @@ class SymbolTests:
                 assert isinstance(inj[Early], Late)
         # assert 0
                 
-    def test_speed(self):
+    def test_speed(self, speed_profiler):
         # with scope() as inj:
         with nullcontext():
             # with scope('local') as inj:
@@ -82,13 +85,13 @@ class SymbolTests:
             #     print('*'*16, inj,'*'*16)
             #     # with scope('abc') as _inj:
                 #     nl = "\n    -- "
-                with using('test') as inj:
+                with use('test') as inj:
                     with inj.context:
                         null = lambda: None
-                        mkinj = lambda: injector()
+                        mkinj = lambda: ioc.injector
                         mkfoo = lambda: Foo(user_func_symb(), user=user_func_str(), inj=mkinj())
                         # mkfoo = lambda: Foo('a very simple value here', user=user_func_str(), inj=null())
-                        mkbaz = lambda: null() or Baz() 
+                        mkbaz = lambda: Baz() 
                         mkfunc = lambda: user_func_injectable(user_func_str(), mkfoo())
                         mkbar = lambda: Bar(mkfoo(), mkfoo(), user_func_str(), mkfunc(), sym=user_func_symb(), baz=mkbaz())
                         injfoo = lambda: inj[Foo]
@@ -98,11 +101,15 @@ class SymbolTests:
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        _n = int(2.5e4)
-                        self.run('Baz', mkbaz, injbaz, _n)
-                        self.run('Foo', mkfoo, injfoo, _n)
-                        self.run('Bar', mkbar, injbar, _n)
-        
+                        _n = int(2.5e3)
+
+                        profile = speed_profiler(_n, labels=('PY', 'DI'))
+                    
+                        profile(mkbaz, injbaz, 'Baz')
+                        profile(mkfoo, injfoo, 'Foo')
+                        profile(mkbar, injbar, 'Bar')
+
+                
                         wrapbar = di.wrap(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
                         wrapfunc = di.wrap(user_func_str, kwargs=dict(p='PATCHED USER'))
 
@@ -113,20 +120,7 @@ class SymbolTests:
 
                         # print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))
 
-                        assert injector[Bar] is not injector[Bar]
+                        # assert injector[Bar] is not injector[Bar]
 
 
-        assert 0
-
-    def run(self, lbl, mfn, ifn, n=int(1e4), rep=2, r=3):
-        mres, mt, mtt = ops_per_sec(n, *repeat(mfn, number=n, repeat=rep, globals=locals()))
-        ires, it, itt = ops_per_sec(n, *repeat(ifn, number=n, repeat=rep, globals=locals()))
-        if mres > ires:
-            d = f'M {round(mres/ires, r)}x faster'
-        else:
-            d = f'I {round(ires/mres, r)}x faster'
-        M, I = f'{round(mtt, r)} secs'.ljust(12) + f' avg {round(mt, r)} secs'.ljust(16) \
-                    + f'{round(mres, r)} ops/sec'.ljust(16+r), \
-                f'{round(itt, r)} secs'.ljust(12) + f' avg {round(it, r)} secs'.ljust(16) \
-                    + f'{round(ires, r)} ops/sec'.ljust(16+r)
-        print(f' - {lbl} {rep} x {n} ({rep * n}) ops == {d}\n   - {M=!s}\n   - {I=!s}')
+        assert 1

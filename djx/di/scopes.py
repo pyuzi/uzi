@@ -1,15 +1,17 @@
-from contextvars import ContextVar
+import typing as t 
 import logging
+from operator import index
 from threading import RLock
-from weakref import ref
+from types import GenericAlias
+from weakref import finalize, ref
 from functools import partial
 from itertools import chain
-from typing import Callable, ClassVar, Generic
 from collections import ChainMap
 from collections.abc import Collection
 
 from djx.common.collections import orderedset, fallbackdict
 from djx.common.imports import ImportRef
+from djx.common.typing import GenericLike
 
 
 from djx.common.utils import export, lookup_property, cached_property
@@ -17,19 +19,24 @@ from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
-from .providers import AliasProvider, InjectorProvider
+from .providers import InjectorProvider
 from .inspect import ordered_id
 from .injectors import Injector, InjectorContext, NullInjector, INJECTOR_TOKEN
 from .abc import (
     ANY_SCOPE, COMMAND_SCOPE, LOCAL_SCOPE, MAIN_SCOPE, REQUEST_SCOPE,
     Injectable, ScopeConfig, 
-    T_ContextStack, T_Injector, T_Provider, _T_Conf, T_Scope,
+    T_ContextStack, T_Injector, T_Provider, _T_Conf,
 )
 
 from . import abc, signals
 
+if t.TYPE_CHECKING:
+    from . import IocContainer
+
 logger = logging.getLogger(__name__)
 
+
+T_Scope = t.TypeVar('T_Scope', bound='Scope')
 
 
 _config_lookup = partial(lookup_property, source='config', read_only=True)
@@ -39,7 +46,7 @@ _config_lookup = partial(lookup_property, source='config', read_only=True)
 _INTERNAL_SCOPE_NAMES = fallbackdict(main=None, any=None)
 
 @export()
-class Config(BaseMetadata[T_Scope], ScopeConfig, Generic[T_Scope, T_Injector, T_ContextStack]):
+class Config(BaseMetadata[T_Scope], ScopeConfig, t.Generic[T_Scope, T_Injector, T_ContextStack]):
 
     is_abstract = metafield[bool]('abstract', default=False, inherit=False)
 
@@ -129,7 +136,7 @@ class ScopeType(abc.ScopeType):
 class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     """"""
 
-    config: ClassVar[_T_Conf]
+    config: t.ClassVar[_T_Conf]
     __pos: int
     class Config:
         abstract = True
@@ -141,12 +148,14 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     injector_class: type[T_Injector] = _config_lookup()
     dependants: orderedset[T_Scope]
     injectors: list[ref[T_Injector]]
-    _lock: RLock 
+    ioc: 'IocContainer'
 
-    def __init__(self):
+    # _lock: RLock 
+
+    def __init__(self, ioc: 'IocContainer'):
         self.__pos = 0
-        super().__init__()
-        self._lock = RLock()
+        # self._lock = RLock()
+        self.ioc = ioc
         self.dependants = orderedset()
         self.injectors = []
         signals.boot.send(self.key, scope=self)
@@ -167,19 +176,19 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     def parents(self):
         return list(s for s in self.depends if not s.embedded)
 
-    @property
-    def resolvers(self):
-        try:
-            return self._resolvers
-        except AttributeError:
-            return self._make_resolvers()
-        finally:
-            self.prepare()
+    # @property
+    # def resolvers(self):
+    #     try:
+    #         return self._resolvers
+    #     except AttributeError:
+    #         return self._make_resolvers()
+    #     finally:
+    #         self.prepare()
 
     @cached_property
     def providers(self):
         return ChainMap(
-                self.__class__.own_providers, 
+                self.ioc.deps[self.name], 
                 *(s.providers for s in reversed(self.embeds)),
             )
            
@@ -206,8 +215,9 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         __debug__ and logger.debug(f'created({self}): {rv!r}')
 
         self.setup_content(rv)
-        self.injectors.append(ref(rv, self.injectors.remove))
-
+        wrv = ref(rv)
+        self.injectors.append(wrv)
+        finalize(rv, self._remove_injector, wrv, rv.name)
         signals.init.send(self.key, injector=rv, scope=self)
 
         return rv
@@ -215,27 +225,33 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     def create_context(self, inj: T_Injector) -> T_ContextStack:
         return self.context_class(inj)
 
+    def _remove_injector(self, inj, name=None) -> T_ContextStack:
+        return self.injectors.remove(inj)
+
     def dispose(self, inj: T_Injector):
         self.injectors.remove(ref(inj))
         inj.content = None
     
     def setup_content(self, inj: T_Injector):
-        def fallback(key):
-            res = self.providers.get(key)
-            if res is None and isinstance(key, ImportRef):
-                try:
-                    obj = key()
-                except Exception:
-                    pass
+        scope = self
+        def fallback(self: fallbackdict, token):
+            prov_map = scope.providers
+            prov = prov_map.get(token)
+            if prov is None:
+                if False and isinstance(token, GenericLike):
+                    prov = prov_map.get(token.__origin__)
+                    if prov is not None:
+                        prov=prov.parameterized[token]
+                        if prov is not None:
+                            return self.setdefault(token, prov.resolver(scope).bind(inj))
+                    
+                    return self.setdefault(token, inj.parent.content[token])
                 else:
-                    res = self.providers.get(obj)
-            
-            if res is None:
-                return content.setdefault(key, inj.parent.content[key])
+                    return self.setdefault(token, inj.parent.content[token])
             else:
-                return content.setdefault(key, res.resolver(self).bind(inj))
+                return self.setdefault(token, prov.resolver(scope).bind(inj))
 
-        inj.content = content = fallbackdict(fallback)
+        inj.content = fallbackdict(fallback)
         return inj    
 
     def add_dependant(self, scope: T_Scope):
@@ -247,7 +263,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         return scope in self.dependants \
             or any(s.has_descendant(scope) for s in self.dependants)
     
-    def flush(self, key: Injectable, *, skip=None):
+    def flush(self, key: Injectable, *, parameterize=None, skip=None):
         if skip is None:
             skip = set()
         elif self in skip:
@@ -255,12 +271,14 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
 
         skip.add(self)
 
-        if hasattr(self, '_resolvers'):
-            if key in self._resolvers:
-                del self._resolvers[key]
         for inj in self.injectors:
             if inj := inj():
                 del inj[key]
+        
+        # if own := self.__class__.own_providers.get(key):
+        #     keys = key, *own.
+        # else: 
+        #     keys = key,
 
         for d in self.dependants: 
             d.flush(key, skip=skip)
@@ -271,8 +289,6 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
             if strict: 
                 raise RuntimeError(f'Scope {self} already prepared')
             return
-        
-
         self._prepare()
         self.ready()
         signals.ready.send(self.key, scope=self)
@@ -280,11 +296,11 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     def _prepare(self):
         self.__pos = self.__pos or ordered_id()
 
-        mkprov = partial(AliasProvider, scope=self.name, priority=-1)
+        ioc = self.ioc
         for abstract in (None, Injector, abc.Injector, self.injector_class, INJECTOR_TOKEN):
-            self.__class__.register_provider(mkprov(abstract, self))
+            ioc.alias(abstract, self, scope=self.name, priority=-1)
         
-        self.__class__.register_provider(InjectorProvider(self, None, -1, scope=self.name))
+        ioc[self.name:self] = InjectorProvider(self, None, priority=-1, scope=self.name)
 
         __debug__ and logger.debug(f'prepare({self!r})')
 
@@ -297,12 +313,14 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         return self._resolvers
 
     def _iter_depends(self):
-        for scope in map(Scope, self.config.depends):
+        ioc = self.ioc
+        for s in self.config.depends:
+            scope = ioc.scopes[s]
             scope.add_dependant(self)
             yield scope
 
-    def __contains__(self, x) -> None:
-        return x == self or any(True for s in self.depends if x in s)
+    def __contains__(self, x) -> bool:
+        return x == self or next((True for s in self.depends if x in s), False)
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}[{self.config.name!r}]'

@@ -19,14 +19,11 @@ logger = logging.getLogger(__name__)
 class InjectorContextHandler(BaseHandler):
 
     request_class: t.ClassVar[type[HttpRequest]]
-    injector_scope_name: t.ClassVar[str] = di.REQUEST_SCOPE
-
-    @cached_property
-    def _inj_scope(self):
-        return di.Scope[self.injector_scope_name]()    
-
-    def injector(self) -> di.Injector:
-        return di.scope(self.injector_scope_name)
+    di_scope: t.ClassVar[str] = di.REQUEST_SCOPE
+    ioc = di.ioc
+    
+    # def injector(self) -> di.Injector:
+    #     return di.scope(self.injector_scope_name)
     
     def get_response(self, request: HttpRequest) -> HttpResponse:
         self._provide_request(request)
@@ -37,9 +34,10 @@ class InjectorContextHandler(BaseHandler):
         return await super().get_response_async(request)
 
     def _provide_request(self, req: HttpRequest):
-        inj = di.injector()
-        assert inj.scope is self._inj_scope, f'{inj.scope!r} is not {self._inj_scope!r}'
-        inj[self.request_class] = req
-        inj[HttpRequest] = req
-        inj[abc.Request] = req
+        inj = self.ioc.at(self.di_scope, default=None)
+        # assert inj.scope is self._inj_scope, f'{inj.scope!r} is not {self._inj_scope!r}'
+        if inj:
+            inj[self.request_class] = req
+            inj[HttpRequest] = req
+            inj[abc.Request] = req
     

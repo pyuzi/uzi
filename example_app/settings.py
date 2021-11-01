@@ -44,15 +44,15 @@ INSTALLED_APPS = [
     'polymorphic',
     'mptt',
 
-    "djx.iam",
-    "djx.spaces",
-    "djx.ledgers",
+    # "djx.iam",
+    # "djx.spaces",
+    # "djx.ledgers",
 
-    "djx.schemas",
-    "djx.keydb",
-    "djx.contacts",
+    # "djx.schemas",
+    # "djx.keydb",
+    # "djx.contacts",
 
-    "djx.cms",
+    # "djx.cms",
     # "djx.xtags",
     # "example_app",
 ]

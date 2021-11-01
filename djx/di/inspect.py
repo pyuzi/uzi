@@ -1,28 +1,21 @@
 
 import inspect as ins
-from functools import partial, cache
-from itertools import islice
+import typing as t 
 
-from cachetools.func import lru_cache
-from weakref import WeakSet
-from typing import (
-    Annotated, Any, Callable, ClassVar, ForwardRef, 
-    Generic, Literal, Optional, Type, TypeVar, 
-    TYPE_CHECKING, Union
-)
-from collections.abc import Iterator, Mapping
+
+from collections.abc import Mapping, Callable
 
 from djx.common.utils import export
 from djx.common.typing import get_origin, get_args, eval_type
 from djx.common.imports import ImportRef
 
-from .abc import Injector, T_Injectable, Injectable
+from .abc import Injector
 
 
 _empty = ins.Parameter.empty
 
 
-_expand_generics = {Annotated}
+_expand_generics = {t.Annotated}
 
 
 
@@ -38,7 +31,7 @@ _KEYWORD_ONLY = ins.Parameter.KEYWORD_ONLY
 # @export()
 # class Depends(type):
 
-#     __depends__: Union[list, Any]
+#     __depends__: t.Union[list, t.Any]
 
 #     def __class_getitem__(cls, parameters):
 #         if not isinstance(parameters, tuple):
@@ -47,7 +40,7 @@ _KEYWORD_ONLY = ins.Parameter.KEYWORD_ONLY
 #         typ, *deps = parameters
 #         deps = [*deps] if len(deps) > 1 else deps[0] if deps else typ if isinstance(typ, type) else None
 
-#         return Union[cls('Depends', (), dict(__depends__=deps)), typ]
+#         return t.Union[cls('Depends', (), dict(__depends__=deps)), typ]
 
 #     def __repr__(cls) -> str:
 #         return f'Depends({cls.__depends__!r})'
@@ -78,13 +71,17 @@ def builtin_values():
 
 # ins.isbuiltin()
 
-def annotated_deps(obj) -> Union[list, Any]:
-    from .providers import Dependency, is_provided
-    if is_provided(obj):
+def annotated_deps(obj) -> t.Union[list, t.Any]:
+    from .providers import DependencyAnnotation
+    from .container import ioc
+
+    if obj in ioc:
         return obj
-    elif isinstance(obj, Dependency):
+    elif isinstance(obj, DependencyAnnotation):
         return obj.deps[0]
-    elif get_origin(obj) in _expand_generics:
+    elif (orig := get_origin(obj)) in ioc:
+        return obj
+    elif orig in _expand_generics:
         for d in get_args(obj):
             if rv := annotated_deps(d):
                 return rv
@@ -97,7 +94,7 @@ def annotated_deps(obj) -> Union[list, Any]:
 
 
 @export()
-def signature(callable: Callable[..., Any], *, follow_wrapped=True, evaltypes=True) -> 'InjectableSignature':
+def signature(callable: Callable[..., t.Any], *, follow_wrapped=True, evaltypes=True) -> 'InjectableSignature':
     sig = InjectableSignature.from_callable(callable, follow_wrapped=follow_wrapped)
 
     if not isinstance(sig, InjectableSignature):
@@ -122,14 +119,8 @@ class Parameter(ins.Parameter):
     __slots__ = ('_dependency', '_type',)
     
     def __init__(self, name, kind, *, default=_empty, annotation=_empty):
-        
         super().__init__(name, kind, default=default, annotation=annotation)
-
         self._dependency = annotated_deps(self._annotation) or None
-
-    @property
-    def default(self):
-        return self._default
 
     # @property
     # def is_dependency(self):
@@ -416,8 +407,8 @@ class BoundArguments(ins.BoundArguments):
 class InjectableSignature(ins.Signature):
     __slots__ = ('_pos_params', '_pos_deps', '_kw_params', '_kw_deps', '_bound')
 
-    _parameter_cls: ClassVar[type[Parameter]] = Parameter
-    _bound_arguments_cls: ClassVar[type[BoundArguments]] = BoundArguments
+    _parameter_cls: t.ClassVar[type[Parameter]] = Parameter
+    _bound_arguments_cls: t.ClassVar[type[BoundArguments]] = BoundArguments
     _bound: BoundArguments
 
     parameters: Mapping[str, Parameter]
@@ -479,7 +470,7 @@ class InjectableSignature(ins.Signature):
             )
 
 
-    def inject(self, _injector: Injector, *args: Any, **kwargs: Any) -> BoundArguments:
+    def inject(self, _injector: Injector, *args: t.Any, **kwargs: t.Any) -> BoundArguments:
         rv = self.bind_partial(*args, **kwargs)
         rv.apply_injected(_injector)
         return rv
@@ -491,12 +482,12 @@ class InjectableSignature(ins.Signature):
             self._bound = super().bind_partial()
             return self._bound.copy()
 
-    def bind(self, *args: Any, **kwargs: Any) -> BoundArguments:
+    def bind(self, *args: t.Any, **kwargs: t.Any) -> BoundArguments:
         if not args and not kwargs:
             return self.bound()
         return super().bind(*args, **kwargs)
 
-    def bind_partial(self, *args: Any, **kwargs: Any) -> BoundArguments:
+    def bind_partial(self, *args: t.Any, **kwargs: t.Any) -> BoundArguments:
         if not args and not kwargs:
             return self.bound()
         return super().bind_partial(*args, **kwargs)
@@ -504,9 +495,11 @@ class InjectableSignature(ins.Signature):
         
 
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     class Signature(InjectableSignature):
         __slots__ = ()
 
 else:
     Signature = InjectableSignature
+
+

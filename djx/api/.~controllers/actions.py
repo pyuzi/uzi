@@ -68,7 +68,7 @@ class Action(t.Generic[_T]):
         if typ is None:
             typ = obj.__class__
 
-        debug(typ, obj)
+        vardump(typ, obj)
         alias = BoundAction[self, typ]
 
         try:
@@ -152,6 +152,6 @@ class Foo:
 
 # foo = Foo()
 
-# debug(Foo.act, Foo.fun)
-# debug(foo.act.__doc__, foo.fun)
+# vardump(Foo.act, Foo.fun)
+# vardump(foo.act.__doc__, foo.fun)
 

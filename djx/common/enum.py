@@ -15,8 +15,6 @@ from types import MappingProxyType
 import warnings
 import typing as t
 
-from djx.common.utils.data import assign
-
 from .utils import export, text
 
 
@@ -77,7 +75,7 @@ class _MemberData:
 
 class EnumMeta(BaseEnumMeta):
 
-    def __new__(mcs, name, bases, attrs, fields=None, **kwds):
+    def __new__(mcs, name, bases, attrs, *, fields=None, frozen=True, **kwds):
 
         get_member_names = \
               lambda d=None, f=list, *, a=attrs: _get_member_names(a, f, d)
@@ -102,7 +100,7 @@ class EnumMeta(BaseEnumMeta):
 
 
         # if fields is not None:
-        dcls = attrs['__member_dataclass__'] = mcs._define_member_dataclass(name, bases, fields)
+        dcls = attrs['__member_dataclass__'] = mcs._define_member_dataclass(name, bases, fields, frozen=frozen is not False)
 
         data = attrs['__member_data__'] = {}
 
@@ -128,12 +126,12 @@ class EnumMeta(BaseEnumMeta):
         return cls
 
     @classmethod
-    def __prepare__(mcls, name, bases, *, fields=None) -> None: 
+    def __prepare__(mcls, name, bases, **kwds) -> None: 
         rv = super().__prepare__(name, bases)
         return rv
 
     @classmethod
-    def _define_member_dataclass(mcls, name, bases, fieldset=None, **kwds) -> type[tuple]:
+    def _define_member_dataclass(mcls, name, bases, fieldset=None, *, frozen=True, **kwds) -> type[tuple]:
         
         fields: Iterable = ()
 
@@ -151,13 +149,13 @@ class EnumMeta(BaseEnumMeta):
             dbase = make_dataclass(
                     f'_{name}DataclassAbc',
                     map(mapfn, text.compact(fieldset.replace(',', ' ')).split()),
-                    frozen=True
+                    frozen=frozen
                 )
         else:
             dbase = make_dataclass(
                     f'_{name}DataclassAbc',
                     map(mapfn, fieldset or ()),
-                    frozen=True
+                    frozen=frozen
                 )
 
         ebase = bases[-1] if bases else None
@@ -175,7 +173,7 @@ class EnumMeta(BaseEnumMeta):
                 f'_{name}Dataclass', 
                 fields, 
                 bases=(dbase, _MemberData), 
-                frozen=True
+                frozen=frozen
             )
 
     def _choices_(cls):

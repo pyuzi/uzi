@@ -141,13 +141,13 @@ del get_queryset
 #         # with transaction.atomic():
 #         ctx = copy_context()
 #         rv = ctx.run(_do_delete, self, at, purge)
-#         debug('DELETE RESULT --> ', rv, self)
+#         vardump('DELETE RESULT --> ', rv, self)
 #         raise IntegrityError('STOP')
 
 #     except DeletionIntegrityError as e:
-#         debug('ERRRRRRR -----> ', e.objs)
+#         vardump('ERRRRRRR -----> ', e.objs)
 #     except Exception as e:
-#         debug('ERRRRRRR -----> ???? ', e)
+#         vardump('ERRRRRRR -----> ???? ', e)
 
         
 
@@ -191,7 +191,7 @@ del get_queryset
 #         token = None
 #         return rv
 #     finally:
-#         debug('FINALIZE delete --> XXXXXXXXXXXXXXXXX')
+#         vardump('FINALIZE delete --> XXXXXXXXXXXXXXXXX')
 #         token is None or __del_stack.reset(token)
     
 

@@ -12,7 +12,7 @@ from django.db import models as m
 
 from djx.common.collections import PriorityStack, fallbackdict, nonedict
 
-from djx.di import di, ordered_id
+from djx.di import ioc, ordered_id, InjectedClassVar
 from djx.core import settings
 from djx.common.imports import ImportRef
 from djx.common.proxy import unproxy, proxy
@@ -31,7 +31,7 @@ _ModelType = type(m.Model)
 
 logger = logging.getLogger(__name__)
 
-_DEBUG = settings.DEBUG
+# _DEBUG = settings.DEBUG
 
 
 if t.TYPE_CHECKING:
@@ -137,14 +137,12 @@ class _blankdict(nonedict):
         pass
 
 
-@di.injectable('local', cache=True, kwargs=dict(maxsize=1024, ttl=300))
-@di.provide(scope='main', value=_blankdict())
+@ioc.injectable(at='local', cache=True, kwargs=dict(maxsize=1024, ttl=300))
+@ioc.value(value=_blankdict(), at='main')
 class ModelUrnObjectCache(TTLCache):
 
     def __init__(self, **kwds) -> None:
         super().__init__(**kwds) 
-
-
 
 
 @export()
@@ -156,7 +154,7 @@ class ModelUrn(str, t.Generic[_T_Model]):
 
     __slots__ = ()
 
-    __cache: t.ClassVar[ModelUrnObjectCache] = di.InjectedClassVar(ModelUrnObjectCache)
+    __cache: t.ClassVar[ModelUrnObjectCache] = InjectedClassVar(ModelUrnObjectCache)
     __type_map: t.ClassVar[PriorityStack[tuple, type['ModelUrn']]] = PriorityStack()
     _pos: t.ClassVar[int] = ordered_id()
 

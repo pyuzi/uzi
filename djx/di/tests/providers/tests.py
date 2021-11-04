@@ -9,7 +9,7 @@ from timeit import repeat
 import pytest
 
 
-from ... import ioc, use, current, INJECTOR_TOKEN, di
+from djx.di import ioc
 
 
 from .mocks import *
@@ -22,8 +22,6 @@ parametrize = pytest.mark.parametrize
 
 
 class SymbolTests:
-
-    ops_per_sec = ops_per_sec
 
     def run_basic(self, obj, kind=None):
         return True
@@ -40,39 +38,37 @@ class SymbolTests:
     #     assert not is_injectable(user_func_symb)
 
     def test_late_provider(self):
-        @injectable(scope='main')
+        @ioc.injectable(at='main')
         class Early:
             
 
             def __str__(self) -> str:
                 return ''
         
-        @injectable(scope='main')
+        @ioc.injectable(at='main')
         class Late:
             pass
 
 
-        with use('test') as inj:
+        with ioc.use('test') as inj:
             with inj.context:
                 key = 'late'
                 val ='This was injected late'
                 assert inj.get(key) is None
 
-                provide(key, value=val)
+                ioc.value(key, val)
 
                 print('', *inj.scope.providers.maps, end='\n\n', sep='\n -><=')
                 print('\n', *(f' -+= {k} --> {v!r}\n' for k,v in ioc.injector.content.items()))
         
-                debug([(s,k) for s, d in ioc.deps.items() for k in d])
+                # vardump([(s,k) for s, d in ioc.providers.items() for k in d])
 
                 assert inj[key] == val
 
                 assert isinstance(inj[Early], Early)
-                assert not isinstance(inj[Early], Late)
 
-                alias(Early, Late, scope='main')
+                ioc.alias(Early, Late, scope='main')
 
-                assert not isinstance(inj[Early], Early)
                 assert isinstance(inj[Early], Late)
         # assert 0
                 
@@ -85,7 +81,7 @@ class SymbolTests:
             #     print('*'*16, inj,'*'*16)
             #     # with scope('abc') as _inj:
                 #     nl = "\n    -- "
-                with use('test') as inj:
+                with ioc.use('test') as inj:
                     with inj.context:
                         null = lambda: None
                         mkinj = lambda: ioc.injector
@@ -101,7 +97,7 @@ class SymbolTests:
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        _n = int(2.5e3)
+                        _n = int(2.5e4)
 
                         profile = speed_profiler(_n, labels=('PY', 'DI'))
                     
@@ -110,8 +106,8 @@ class SymbolTests:
                         profile(mkbar, injbar, 'Bar')
 
                 
-                        wrapbar = di.wrap(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
-                        wrapfunc = di.wrap(user_func_str, kwargs=dict(p='PATCHED USER'))
+                        wrapbar = ioc.wrap(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
+                        wrapfunc = ioc.wrap(user_func_str, kwargs=dict(p='PATCHED USER'))
 
                         print(f'\n WRAPPED ---> {wrapbar()!r}\n REAL   ---> {injbar()!r}')
                         print(f'\n WRAPPED ---> {wrapfunc()!r}\n REAL   ---> {injfunc()!r}')
@@ -123,4 +119,4 @@ class SymbolTests:
                         # assert injector[Bar] is not injector[Bar]
 
 
-        assert 1
+        assert 0

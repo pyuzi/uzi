@@ -230,8 +230,11 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
                 self._fallback = nonedict()
             elif issubclass(typ, Mapping):
                 self._fallback = fb
-            elif issubclass(typ, type) and issubclass(fb, Mapping):
-                self._fallback = fb()
+            elif issubclass(typ, type):
+                if issubclass(fb, Mapping):
+                    self._fallback = fb()
+                else:
+                    self._fallback = factorydict(lambda k: fb())
             elif issubclass(typ, FunctionType):
                 if 'self' in fb.__annotations__:
                     self._fallback = factorydict(lambda k: fb(self, k))
@@ -372,9 +375,6 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
         return o == dict(self)
     
     def __ne__(self, o):
-        return not self.__eq__(o)
-
-    def __redu(self, o):
         return not self.__eq__(o)
 
     def __repr__(self):
@@ -982,7 +982,11 @@ class PriorityStack(dict[_T_Stack_K, list[_T_Stack_V]], t.Generic[_T_Stack_K, _T
     def __setitem__(self, k: _T_Stack_K, val: _T_Stack_V):
         self.insert(k, None, val, sort=True)
 
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}({{ {", ".join(f"{k!r}: {self[k:]!r}" for k in self) }}})'
 
+    def __str__(self) -> str:
+        return f'{self.__class__.__name__}({{ {", ".join(f"{k!r}: {self[k:]!r}" for k in self) }}})'
 
 _none_stack = (None,)
 
@@ -1114,7 +1118,6 @@ class AttributeMapping(MutableMapping[_TK, _TV], t.Generic[_TK, _TV]):
             parser = object_parser(cls.__dict_class__)
 
         return parser
-        
         
         
 

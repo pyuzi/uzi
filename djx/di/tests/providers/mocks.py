@@ -5,10 +5,11 @@ from statistics import median, median_high, mean
 
 import pytest
 
-from ... import Depends, Scope, InjectedClassVar, InjectedProperty, Injector, abc, alias, provide, injectable
 from ...inspect import ordered_id
 
 from djx.common.saferef import StrongRef as symbol
+
+from djx.di import ioc, Depends, Scope, InjectedProperty, Injector, abc
 
 
 abc.Injectable.register(symbol)
@@ -75,10 +76,10 @@ class _TestScope(Scope):
         
 
 
-@injectable(cache=True, scope='main')
+@ioc.type(cache=True, at='main')
 class Foo:
     
-    def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str],inj: Injector) -> None:
+    def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str], inj: Injector) -> None:
         self.name = f'{name} -> #{ordered_id()}'
         self.user = user
         self.inj = inj
@@ -90,7 +91,7 @@ class Foo:
         return f'Foo({self.name!r}' #' u={self.user!r} inj={self.inj!r})'
 
 
-provide('foo.name', value='My Name Is Foo!!')
+ioc.value('foo.name', 'My Name Is Foo!!')
 
 
 
@@ -99,20 +100,20 @@ class Follow:
 
 
 
-alias(Follow, Foo, cache=False)
+ioc.alias(Follow, Foo, cache=False)
 
 
-@injectable(scope=Scope.ANY, cache=True)
+@ioc.function(at=Scope.ANY, cache=True)
 def user_func_injectable(user: Depends[str, user_str], d2: Follow):
     return f'user_func_injectable -> {user=!r} #{ordered_id()}'
 
 
-@injectable(scope=Scope.ANY, cache=True)
+@ioc.injectable(at=Scope.ANY, cache=True)
 def user_func_injectable(user: Depends[str, user_str], d2: Follow):
     return f'user_func_injectable -> {user=!r} #{ordered_id()}'
 
 
-@injectable(cache=False)
+@ioc.injectable(at='any', cache=False)
 class Baz:
 
     def __init__(self):
@@ -122,10 +123,10 @@ class Baz:
 
 
 
-alias('bar', user_func_injectable, cache=False)
+ioc.alias('bar', user_func_injectable, cache=False)
 
 
-@injectable(cache=False, scope=Scope.MAIN)
+@ioc.injectable(cache=False, at=Scope.MAIN)
 class Bar:
 
     infoo = InjectedProperty(Foo)
@@ -154,25 +155,15 @@ class Bar:
         return f'Bar#{self.pk}(foo={self.foo!r}: user={self.user!r})'
     
 
-
+@ioc.function(user_symb)
 def user_func_symb():
     return f'user_func_symb {user_symb} -> #{ordered_id()}'
     
 
-provide(user_symb, factory=user_func_symb, cache=False)
-
-
-@injectable(abstract=user_str, cache=False)
-@injectable()
+@ioc.injectable(user_str, cache=False)
+@ioc.injectable()
 def user_func_str(p=None):
     return f'user_func_str {user_str} -> {p=!r} -> #{ordered_id()}'
     
-
-
-
-def ops_per_sec(n, *vals):
-    val = mean(vals)
-    return n * (1/val), val, sum(vals, 0)
-
 
 

@@ -7,19 +7,19 @@ from weakref import finalize, ref
 from functools import partial
 from itertools import chain
 from collections import ChainMap
-from collections.abc import Collection
+from collections.abc import Collection, Callable
 
-from djx.common.collections import orderedset, fallbackdict
+from djx.common.collections import fallback_default_dict, orderedset, fallbackdict
 from djx.common.imports import ImportRef
 from djx.common.typing import GenericLike
 
 
-from djx.common.utils import export, lookup_property, cached_property
+from djx.common.utils import export, lookup_property, cached_property, noop
 from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
-from .providers import InjectorProvider
+from .resolvers import InjectorResolver
 from .inspect import ordered_id
 from .injectors import Injector, InjectorContext, NullInjector, INJECTOR_TOKEN
 from .abc import (
@@ -103,7 +103,7 @@ class Config(BaseMetadata[T_Scope], ScopeConfig, t.Generic[T_Scope, T_Injector, 
 class ScopeType(abc.ScopeType):
     
     config: _T_Conf
-    __instance__: T_Scope
+    # __instance__: T_Scope
 
     def __new__(mcls, name, bases, dct) -> 'ScopeType[T_Scope]':
         raw_conf = dct.get('Config')
@@ -158,7 +158,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         self.ioc = ioc
         self.dependants = orderedset()
         self.injectors = []
-        signals.boot.send(self.key, scope=self)
+        self.boot()
 
     @property
     def is_ready(self):
@@ -171,6 +171,10 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     @cached_property
     def depends(self):
         return dict((d, d) for d in sorted(self._iter_depends()))
+          
+    @cached_property
+    def aliases(self):
+        return orderedset(self.ioc.get_scope_aliases(self))
           
     @property
     def parents(self):
@@ -188,7 +192,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     @cached_property
     def providers(self):
         return ChainMap(
-                self.ioc.deps[self.name], 
+                self.ioc.providers[self.name], 
                 *(s.providers for s in reversed(self.embeds)),
             )
            
@@ -196,9 +200,18 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     def _implicit_bases(cls):
         return ImplicitScope,
 
-    def bootstrap(self, inj: T_Injector):
-        logger.error('    '*(inj.level+1) + f'  >>> bootstrap({self}):  {inj}')
-        return
+    def aka(self, *aliases):
+        aka = self.aliases
+        if aliases:
+            return next((True for a in aliases if a in aka), False)
+        return len(aka) > 1
+
+    def boot(self):
+        self.ioc.scope_booted(self)
+
+    # def bootstrap(self, inj: T_Injector):
+    #     logger.error('    '*(inj.level+1) + f'  >>> bootstrap({self}):  {inj}')
+    #     return
 
     def create(self, parent: Injector) -> T_Injector:
         if parent and self in parent:
@@ -233,23 +246,13 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         inj.content = None
     
     def setup_content(self, inj: T_Injector):
-        scope = self
+        get_provider: Callable[..., abc.Provider] = self.providers.get
         def fallback(self: fallbackdict, token):
-            prov_map = scope.providers
-            prov = prov_map.get(token)
-            if prov is None:
-                if False and isinstance(token, GenericLike):
-                    prov = prov_map.get(token.__origin__)
-                    if prov is not None:
-                        prov=prov.parameterized[token]
-                        if prov is not None:
-                            return self.setdefault(token, prov.resolver(scope).bind(inj))
-                    
-                    return self.setdefault(token, inj.parent.content[token])
-                else:
-                    return self.setdefault(token, inj.parent.content[token])
+            provider = get_provider(token)
+            if provider is None:
+                return self.setdefault(token, inj.parent.content[token])
             else:
-                return self.setdefault(token, prov.resolver(scope).bind(inj))
+                return self.setdefault(token, provider(token, self).bind(inj))
 
         inj.content = fallbackdict(fallback)
         return inj    
@@ -291,25 +294,26 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
             return
         self._prepare()
         self.ready()
-        signals.ready.send(self.key, scope=self)
-    
+        self.ioc.scope_ready(self)
+
     def _prepare(self):
         self.__pos = self.__pos or ordered_id()
 
-        ioc = self.ioc
-        for abstract in (None, Injector, abc.Injector, self.injector_class, INJECTOR_TOKEN):
-            ioc.alias(abstract, self, scope=self.name, priority=-1)
-        
-        ioc[self.name:self] = InjectorProvider(self, None, priority=-1, scope=self.name)
+        # tags = {self, Injector, abc.Injector, self.injector_class, INJECTOR_TOKEN}
+        # @self.ioc.provide(tags, at=self.name, priority=-10)
+        # def provider(conf, tag, scope):
+        #     return InjectorResolver()
+
+        self.ioc.alias({self}, abc.Injector, at=self.name, priority=-10)
 
         __debug__ and logger.debug(f'prepare({self!r})')
 
     def _make_resolvers(self):
+        get_provider: Callable[..., abc.Provider] = self.providers.get
         def fallback(key):
-            pr = self.providers.get(key) 
-            return self._resolvers.setdefault(key, pr and pr.resolver( self ))
+            return get_provider(key, noop)(key, self)
 
-        self._resolvers = fallbackdict(fallback)
+        self._resolvers = fallback_default_dict(fallback)
         return self._resolvers
 
     def _iter_depends(self):
@@ -355,7 +359,6 @@ class AnyScope(Scope):
 
 class MainScope(Scope):
 
-    __main_inj: T_Injector = None
     class Config:
         name = MAIN_SCOPE
 
@@ -366,7 +369,7 @@ class MainScope(Scope):
             rv = None
         finally:
             if rv is None:
-                return super().create(None)
+                return super().create(parent)
             return rv
 
 
@@ -412,9 +415,6 @@ class TaskScope(Scope):
             LOCAL_SCOPE,
         ]
         
-
-
-
 
 
 

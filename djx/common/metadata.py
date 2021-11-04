@@ -331,7 +331,7 @@ class MetadataType(ABCMeta):
         cls = super().__new__(mcls, name, bases, dct)
         cls.register_metafields()
 
-        # debug(f'{cls.__module__}:{cls.__qualname__}', {f: getattr(cls, f) for f in cls.__fields__})
+        # vardump(f'{cls.__module__}:{cls.__qualname__}', {f: getattr(cls, f) for f in cls.__fields__})
         return cls
 
     def register_metafields(self):
@@ -409,7 +409,7 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
 
         self.__fieldset__ = set()
 
-        # debug(name, raw, base)
+        # vardump(name, raw, base)
         self.__raw__ = _to_dict(raw, default=dict())
         self.__base__ = _to_dict(base, skip=None)
         

@@ -34,7 +34,10 @@ logger = logging.getLogger(__name__)
 @export()
 def saferef(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, _weaktype=weakref, _strongtype=None) -> ReferenceType[_T]:
     if isinstance(obj, ReferenceType):
-        return obj
+        if (o := obj()) is None:
+            return obj
+        else:
+            return saferef(o, callback, coerce=coerce, strict=strict, _weaktype=_weaktype, _strongtype=_strongtype)
     elif coerce is True and isinstance(obj, StrongReferent):
         return (_strongtype or StrongRef)(obj, callback)
     elif isinstance(obj, MethodType):

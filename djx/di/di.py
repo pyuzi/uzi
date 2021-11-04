@@ -273,7 +273,7 @@ class InjectedProperty(t.Generic[T_Injected]):
         self._default = default
         self.cache = bool(cache)
         self.ioc = unproxy(ioc)
-        self.token = self.__class__, self.ioc.get_scope_name(scope, 'any'), dep,
+        self.token = self.__class__, self.ioc.scope_name(scope, 'any'), dep,
 
         self.__name__ = name
         self._register()

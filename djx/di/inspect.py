@@ -75,11 +75,11 @@ def annotated_deps(obj) -> t.Union[list, t.Any]:
     from .providers import DependencyAnnotation
     from .container import ioc
 
-    if obj in ioc:
+    if ioc.is_provided(obj):
         return obj
     elif isinstance(obj, DependencyAnnotation):
         return obj.deps[0]
-    elif (orig := get_origin(obj)) in ioc:
+    elif ioc.is_provided(orig := get_origin(obj)):
         return obj
     elif orig in _expand_generics:
         for d in get_args(obj):

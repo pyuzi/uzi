@@ -137,7 +137,7 @@ class ModelType(ModelBase):
         if init := self.__config__.the_inital_kwrags:
             kwds = dict(init, **kwds)
 
-        # debug(_create_from_kwargs_=self, the_inital_kwrags=init, kwds=kwds)
+        # vardump(_create_from_kwargs_=self, the_inital_kwrags=init, kwds=kwds)
 
         return ModelBase.__call__(self, **kwds)
 
@@ -296,7 +296,7 @@ class Model(m.Model, metaclass=ModelType):
     #     if kwargs:
     #         property_names = opts._property_names
 
-    #         debug(property_names)
+    #         vardump(property_names)
 
     #         for prop in tuple(kwargs):
     #             try:
@@ -307,11 +307,11 @@ class Model(m.Model, metaclass=ModelType):
     #                         _setattr(self, prop, kwargs[prop])
     #                     del kwargs[prop]
     #             except (AttributeError, FieldDoesNotExist) as e:
-    #                 debug(prop, property_names, e)
+    #                 vardump(prop, property_names, e)
                 
     #                 pass
             
-    #         # debug(kwargs, property_names)
+    #         # vardump(kwargs, property_names)
 
     #         for kwarg in kwargs:
     #             raise TypeError("%s() got an unexpected keyword argument '%s'" % (cls.__name__, kwarg))

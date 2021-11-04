@@ -21,7 +21,7 @@ if not t.TYPE_CHECKING:
 
 
 if t.TYPE_CHECKING:
-    from .. import Dependency
+    from .. import Provider
     class ResolverFactory(Callable[[abc.Provider, t.Any], T_Resolver]):
         ...
 else:
@@ -167,7 +167,6 @@ class FuncParamsResolver(FuncResolver):
         if self.cache:
             def __call__(*args, **kwds) -> T:
                 bound = self.bound
-                debug(self.__class__, bound, concrete)
                 self.value = concrete(*params.inject_args(bound, kwds), *args, **params.inject_kwargs(bound, kwds))
                 return self.value
         else:

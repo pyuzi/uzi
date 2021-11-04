@@ -4,6 +4,12 @@ import inspect as ins
 import pytest
 
 
+from djx.di import IocContainer, Injector, abc, Scope, ioc
+
+
+
+
+
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
@@ -15,14 +21,14 @@ class Foo(t.Generic[_T_Foo]):
 
     foo: _T_Foo
 
-    def __init__(self, foo: _T_Foo) -> None:
+    def __init__(self, foo: _T_Foo, inj: Injector) -> None:
         self.foo = foo
         
 class Bar(t.Generic[_T_Bar]):
 
     bar: _T_Bar
 
-    def __init__(self, bar: _T_Bar) -> None:
+    def __init__(self, foo: Foo, bar: _T_Bar=None) -> None:
         self.bar = bar
 
 
@@ -46,38 +52,34 @@ class FooBarBaz(Foo[float], Bar[str], t.Generic[_T_Baz]):
         self.baz = baz
 
 
-        
 
 
-class BasicGenericTests:
+class ContainerTests:
+
+
+    def test_scope_name(self):
+        ioc = IocContainer('main', scope_aliases=dict(abc='local', xyz='abc')) 
+
+        assert ioc.scope_name('main') == 'main'
+        assert ioc.scope_name('abc') == 'local'
+        assert ioc.scope_name('xyz') == 'local'
 
     def test_basic(self):
-        
-
-        for t in (Foo, Bar, FooBar, IntFoo, FooBarBaz, FooBar[int, _T_Bar]):
-            if isinstance(t, GenericAlias):
-                vardump(
-                    t, 
-                    t.__origin__, 
-                    t.__args__, 
-                    t.__parameters__, 
-                    getattr(t, '__annotations__', None),
-                    t.__init__.__annotations__,
-                )
-            else:
-                vardump(
-                    t, 
-                    getattr(t, '__orig_bases__', None),
-                    t.__parameters__, 
-                    getattr(t, '__annotations__', None),
-                    t.__init__.__annotations__,
-                )
 
 
+        ioc.type(Foo, Foo, args=('FooMe',))
+        ioc.type(Bar, Bar)
 
-        assert 1, '\n'
+        assert ioc.make(Injector)
+
+        assert ioc.is_provided(Foo)
+        assert ioc.is_provided(Bar)
+
+        assert ioc.make(Foo)
+        assert ioc.make(Bar)
+
+        # assert 0, '\n'
  
-
 
             
         

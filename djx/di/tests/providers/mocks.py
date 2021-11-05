@@ -94,13 +94,12 @@ class Foo:
 ioc.value('foo.name', 'My Name Is Foo!!')
 
 
-
+@ioc.alias(use=Foo, cache=False)
 class Follow:
     pass
 
 
 
-ioc.alias(Follow, Foo, cache=False)
 
 
 @ioc.function(at=Scope.ANY, cache=True)
@@ -126,7 +125,7 @@ class Baz:
 ioc.alias('bar', user_func_injectable, cache=False)
 
 
-@ioc.injectable(cache=False, at=Scope.MAIN)
+@ioc.injectable(cache=False, at=Scope.ANY)
 class Bar:
 
     infoo = InjectedProperty(Foo)

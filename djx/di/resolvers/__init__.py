@@ -85,8 +85,15 @@ class AliasResolver(ConcreteResolver[T, T_Injectable]):
         self.cache = cache
         if cache:
             def __call__(*a, **kw) -> T:
-                self.value = self.bound.make(concrete, *a, **kw)
-                return self.value
+                if a or kw:
+                    return self.bound.make(concrete, *a, **kw)
+                val = self.value
+                if val is Void:
+                    val = self.value = self.bound.make(concrete)
+
+                return val
+                # self.value = self.bound.make(concrete, *a, **kw)
+                # return self.value
         else:
             def __call__(*a, **kw) -> T:
                 return self.bound.make(concrete, *a, **kw)
@@ -110,9 +117,19 @@ class AliasWithParamsResolver(AliasResolver):
         self.params = params
         if cache:
             def __call__(*a, **kw) -> T:
-                _a, _kw = self.params
-                self.value = self.bound.make(concrete, *_a, *a, **_kw, **kw)
-                return self.value
+                if a or kw:
+                    _a, _kw = self.params
+                    return self.bound.make(concrete, *_a, *a, **_kw, **kw)
+                
+                val = self.value
+                if val is Void:
+                    _a, _kw = self.params
+                    val = self.value = self.bound.make(concrete, *_a, *a, **_kw, **kw)
+                return val
+
+                # _a, _kw = self.params
+                # self.value = self.bound.make(concrete, *_a, *a, **_kw, **kw)
+                # return self.value
         else:
             def __call__(*a, **kw) -> T:
                 _a, _kw = self.params
@@ -138,8 +155,14 @@ class FuncResolver(ConcreteResolver[T, Callable[..., T]]):
         self.cache = cache
         if cache:
             def __call__(*args, **kwds) -> T:
-                self.value = concrete(*args, **kwds)
-                return self.value
+                if args or kwds:
+                    return concrete(*args, **kwds)
+                
+                val = self.value
+                if val is Void:
+                    val = self.value = concrete()
+                return val
+
             self.__call__ = __call__
         else:
             self.__call__ = concrete
@@ -166,9 +189,16 @@ class FuncParamsResolver(FuncResolver):
         self.params = params
         if self.cache:
             def __call__(*args, **kwds) -> T:
-                bound = self.bound
-                self.value = concrete(*params.inject_args(bound, kwds), *args, **params.inject_kwargs(bound, kwds))
-                return self.value
+                if args or kwds:
+                    bound = self.bound
+                    return concrete(*params.inject_args(bound, kwds), *args, **params.inject_kwargs(bound, kwds))
+
+                val = self.value
+                if val is Void:
+                    bound = self.bound
+                    self.value = val = concrete(*params.inject_args(bound), **params.inject_kwargs(bound))
+
+                return val
         else:
             def __call__(*args, **kwds) -> T:
                 bound = self.bound

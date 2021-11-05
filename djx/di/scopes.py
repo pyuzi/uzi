@@ -255,7 +255,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
                 return self.setdefault(token, provider(token, self).bind(inj))
 
         inj.content = fallbackdict(fallback)
-        return inj    
+        return inj
 
     def add_dependant(self, scope: T_Scope):
         self.prepare()
@@ -278,11 +278,6 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
             if inj := inj():
                 del inj[key]
         
-        # if own := self.__class__.own_providers.get(key):
-        #     keys = key, *own.
-        # else: 
-        #     keys = key,
-
         for d in self.dependants: 
             d.flush(key, skip=skip)
 
@@ -298,22 +293,17 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
 
     def _prepare(self):
         self.__pos = self.__pos or ordered_id()
-
-        # tags = {self, Injector, abc.Injector, self.injector_class, INJECTOR_TOKEN}
-        # @self.ioc.provide(tags, at=self.name, priority=-10)
-        # def provider(conf, tag, scope):
-        #     return InjectorResolver()
-
-        self.ioc.alias({self}, abc.Injector, at=self.name, priority=-10)
-
+        self.ioc.alias(self, abc.Injector, at=self.name, priority=-10)
         __debug__ and logger.debug(f'prepare({self!r})')
 
     def _make_resolvers(self):
         get_provider: Callable[..., abc.Provider] = self.providers.get
-        def fallback(key):
-            return get_provider(key, noop)(key, self)
+        def fallback(self: fallbackdict, key):
+            pro = get_provider(key)
+            return pro and setdefault(key, pro(key, self))
 
-        self._resolvers = fallback_default_dict(fallback)
+        self._resolvers = fallbackdict(fallback)
+        setdefault = self._resolvers.setdefault
         return self._resolvers
 
     def _iter_depends(self):

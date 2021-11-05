@@ -3,7 +3,7 @@ import typing as t
 from functools import partial
 from threading import Lock
 from collections.abc import Mapping, MutableMapping
-from collections import defaultdict, deque
+from collections import ChainMap, defaultdict, deque
 from contextlib import AbstractContextManager as ContextManager, ExitStack, nullcontext
 from types import FunctionType
 from contextvars import ContextVar
@@ -182,7 +182,7 @@ def _new_pk() -> None:
 class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
     __slots__ = (
-        'scope', 'parent', 'content', 'level', '__ctx',
+        'scope', '_scopes', 'parent', 'content', 'level', '__ctx',
         '__booted', '__skipself', '__weakref__',
     )
 
@@ -203,6 +203,15 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         self.level = 0 if parent is None else parent.level + 1 
         self.content = content
         self.__booted = False
+
+        if parent:
+            self._scopes = ChainMap({
+                s: self for ss in ((scope,), scope.embeds) for s in ss
+            }, self.parent._scopes)
+        else:
+            self._scopes = {
+                s: self for ss in ((scope,), scope.embeds) for s in ss
+            }
         # self.__skipself = False
         # self[None] = 
         self.__ctx = scope.create_context(self)
@@ -242,10 +251,12 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
     
     def at(self, *scopes, default=...) -> 'Injector':
         keyfn = self.ioc.scopekey
+        _scopes = self._scopes.__getitem__
         for scope in scopes:
             try:
-                return self.make(keyfn(scope))
-            except InjectorKeyError:
+                return _scopes(keyfn(scope))
+                # return self.make(keyfn(scope))
+            except KeyError:
                 continue
 
         if default is ...:
@@ -272,11 +283,13 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.content.__getitem__(key)
         if res is not None:
-            if res.value is not Void:
-                assert not(args or kwds), (
-                        f'{res} takes no arguments. Some where given for {key}'
-                    )
+            # if not(args or kwds):
+            if res.value is not Void and not(args or kwds):
+                # assert not(args or kwds), (
+                #         f'{res} takes no arguments. Some where given for {key}'
+                #     )
                 return res.value
+                # return res.__call__()
             else:
                 return res.__call__(*args, **kwds)
         elif isinstance(key, ImportRef):
@@ -363,7 +376,7 @@ class NullInjector(t.Generic[T_Injector]):
 
     scope = None
     parent = None
-    
+    _scopes = frozendict()
     level = -1
     
     def __init__(self, name=None):

@@ -740,17 +740,17 @@ def _discover_scopes(sender, *, instance: IocContainer, **kwds):
 def _make_env_ioc():
     try:
         key = os.environ.get(IOC_CONTAINER_ENV_KEY, f'{__name__}:_default_make_container')
-        rv = ImportRef(key)(None)
-        if not isinstance(rv, IocContainer):
-            if callable(rv):
-                rv = rv()
+        ioc = ImportRef(key)(None)
+        if not isinstance(ioc, IocContainer):
+            if callable(ioc):
+                ioc = ioc()
 
-            if not isinstance(rv, IocContainer):
+            if not isinstance(ioc, IocContainer):
                 raise TypeError(
                     f'ENV_KEY {IOC_CONTAINER_ENV_KEY} must be a path to an IocContainer. '
-                    f'{key!r} resolves to {type(rv)}'
+                    f'{key!r} resolves to {type(ioc)}'
                 )
-        return rv
+        return ioc
     except Exception as e:
         logger.exception(e)
         raise e

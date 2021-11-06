@@ -1,6 +1,6 @@
 import typing as t 
 from pathlib import PurePath
-from djx.di import di
+from djx.di import InjectedProperty
 
 import jinja2
 
@@ -38,7 +38,7 @@ class TemplateWrapper:
     
     __slots__ = 'template', 'backend', 'origin', '__weakref__'
 
-    request: Request = di.injected_property(default=None)
+    request: Request = InjectedProperty(default=None)
 
     template: jinja2.Template
     backend: 'Jinja2'
@@ -154,7 +154,7 @@ class Jinja2(BaseEngine):
                jinja2.DebugUndefined if settings.DEBUG else jinja2.Undefined
             )
         
-        self.env = di.make(env, **options)
+        self.env = ioc.make(env, **options)
 
     def wrap_template(self, template):
         return self.template_wrapper(template, self)

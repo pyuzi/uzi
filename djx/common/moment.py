@@ -9,7 +9,7 @@ from dateutil import tz
 
 
 from djx.core import settings
-from djx.di import di
+from djx.di import ioc
 from djx.common.utils import getitem
 from djx.common.locale import Locale
 
@@ -44,7 +44,7 @@ _T_FRAMES = t.Literal[
 ]
 
 
-di.alias(tzinfo, T_Tzinfo, scope='main')
+ioc.alias(tzinfo, T_Tzinfo, at='main')
 
 ParserError = parser.ParserError
 
@@ -68,7 +68,7 @@ else:
 
 # In order to avoid accessing settings at compile time,
 # wrap the logic in a function and cache the result.
-@di.injectable('main', abstract=T_Tzinfo, cache=True)
+@ioc.injectable(at='main', abstract=T_Tzinfo, cache=True)
 def _default_timezone():
     """
     Return the default time zone as a tzinfo instance.
@@ -84,11 +84,11 @@ def _default_timezone():
 
 
 def get_current_timezone():
-    return di.make(tzinfo)
+    return ioc.make(tzinfo)
 
 
 def get_default_timezone():
-    return di.make(T_Tzinfo)
+    return ioc.make(T_Tzinfo)
 
 
 
@@ -282,7 +282,7 @@ def FormatedMoment(fmt):
 
 
 
-@di.injectable('any', cache=True)
+@ioc.injectable(at='any', cache=True)
 class MomentFactory(base.ArrowFactory, t.Generic[T_Moment]):
 
     type: Type[T_Moment] = Moment
@@ -343,7 +343,7 @@ class MomentFactory(base.ArrowFactory, t.Generic[T_Moment]):
         return self.get(*args, **kwargs)
 
 
-di.alias(MomentFactory[Moment], MomentFactory)
+ioc.alias(MomentFactory[Moment], MomentFactory)
 
-moment: MomentFactory[Moment] = di.proxy(MomentFactory)
+moment: MomentFactory[Moment] = ioc.proxy(MomentFactory)
 

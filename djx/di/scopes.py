@@ -9,7 +9,7 @@ from itertools import chain
 from collections import ChainMap
 from collections.abc import Collection, Callable
 
-from djx.common.collections import fallback_default_dict, orderedset, fallbackdict
+from djx.common.collections import fallback_default_dict, nonedict, orderedset, fallbackdict
 from djx.common.imports import ImportRef
 from djx.common.typing import GenericLike
 
@@ -25,7 +25,7 @@ from .injectors import Injector, InjectorContext, NullInjector, INJECTOR_TOKEN
 from .abc import (
     ANY_SCOPE, COMMAND_SCOPE, LOCAL_SCOPE, MAIN_SCOPE, REQUEST_SCOPE,
     Injectable, ScopeConfig, 
-    T_ContextStack, T_Injector, T_Provider, _T_Conf,
+    T_ContextStack, T_Injector, T_Injectable, T_Provider, _T_Conf,
 )
 
 from . import abc, signals
@@ -180,17 +180,16 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
     def parents(self):
         return list(s for s in self.depends if not s.embedded)
 
-    # @property
-    # def resolvers(self):
-    #     try:
-    #         return self._resolvers
-    #     except AttributeError:
-    #         return self._make_resolvers()
-    #     finally:
-    #         self.prepare()
+    @property
+    def resolvers(self):
+        try:
+            return self._resolvers
+        except AttributeError:
+            self._resolvers = self._make_resolvers()
+            return self._resolvers
 
     @cached_property
-    def providers(self):
+    def providers(self) -> ChainMap[T_Injectable, T_Provider]:
         return ChainMap(
                 self.ioc.providers[self.name], 
                 *(s.providers for s in reversed(self.embeds)),
@@ -246,15 +245,16 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         inj.content = None
     
     def setup_content(self, inj: T_Injector):
-        get_provider: Callable[..., abc.Provider] = self.providers.get
-        def fallback(self: fallbackdict, token):
-            provider = get_provider(token)
-            if provider is None:
-                return self.setdefault(token, inj.parent.content[token])
+        get_resolver: Callable[..., abc.Resolver] = self.resolvers.__getitem__
+        def fallback(token):
+            res = get_resolver(token)
+            if res is None:
+                return setdefault(token, inj.parent.content[token])
             else:
-                return self.setdefault(token, provider(token, self).bind(inj))
+                return setdefault(token, res.bind(inj))
 
         inj.content = fallbackdict(fallback)
+        setdefault = inj.content.setdefault
         return inj
 
     def add_dependant(self, scope: T_Scope):
@@ -266,21 +266,30 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         return scope in self.dependants \
             or any(s.has_descendant(scope) for s in self.dependants)
     
-    def flush(self, key: Injectable, *, parameterize=None, skip=None):
-        if skip is None:
-            skip = set()
-        elif self in skip:
+    def flush(self, key: Injectable, *, _target: 'Scope'=..., _skip: orderedset=None):
+        sk = self, key
+
+        if _skip is None: 
+            _skip = orderedset()
+        elif sk in _skip:
             return
 
-        skip.add(self)
-
+        _skip.add(sk)
+        
         for inj in self.injectors:
             if inj := inj():
                 del inj[key]
         
         for d in self.dependants: 
-            d.flush(key, skip=skip)
+            d.flush(key, _skip=_skip)
 
+        if not self.embedded:
+            self.resolvers.pop(key, None)
+
+            if _target is ...:
+                if provider := self.providers.get(key):
+                    for k in provider.flush(self.name):
+                        self.flush(k, _target=key, _skip=_skip)
 
     def prepare(self: T_Scope, *, strict=False):
         if self.is_ready:
@@ -297,14 +306,18 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         __debug__ and logger.debug(f'prepare({self!r})')
 
     def _make_resolvers(self):
-        get_provider: Callable[..., abc.Provider] = self.providers.get
-        def fallback(self: fallbackdict, key):
-            pro = get_provider(key)
-            return pro and setdefault(key, pro(key, self))
+        if self.embedded:
+            return nonedict()
 
-        self._resolvers = fallbackdict(fallback)
-        setdefault = self._resolvers.setdefault
-        return self._resolvers
+        get_provider: Callable[..., abc.Provider] = self.providers.get
+
+        def fallback(key):
+            if pro := get_provider(key):
+                return setdefault(key, pro(key, self))
+
+        res = fallbackdict(fallback)
+        setdefault = res.setdefault
+        return res
 
     def _iter_depends(self):
         ioc = self.ioc

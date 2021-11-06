@@ -305,7 +305,8 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         #         self.set(key, AliasResolver(key.__origin__, bound=self))
         elif isinstance(key, (type, FunctionType)):
             del self.content[key]
-            self.ioc.injectable(self.name, flush=False)(key)
+
+            self.ioc.injectable(key, key, at=self.name, flush=False)
             return self.make(key, *args, **kwds)
 
         raise InjectorKeyError(f'{key} in {self!r}')

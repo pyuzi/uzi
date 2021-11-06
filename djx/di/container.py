@@ -63,7 +63,7 @@ class IocContainer:
     _onboot: t.Union[deque[Callable[['IocContainer'], t.Any]], None]
 
     Scope:  type['BaseScope']
-    scopes: fallbackdict[str, 'Scope']
+    scopes: fallbackdict[str, 'BaseScope']
     scope_aliases: fallbackdict[str, str]
     default_scope: str
     main: 'Injector' 
@@ -221,7 +221,7 @@ class IocContainer:
                 elif isinstance(fn, Callable):
                     wrapper = update_wrapper(wrapper, fn, updated=())
                 
-            self.alias(wrapper, fn, scope=scope, **kwds)
+            self.alias(wrapper, fn, at=scope, **kwds)
             return wrapper
         
         if func is ...:
@@ -332,9 +332,6 @@ class IocContainer:
     def __getitem__(self, key):
         return self.injector.__getitem__(key)
 
-    # def __setitem__(self, key, val):
-    #     self.injector.__setitem__(key)
-
     def is_provided(self, obj, scope=None):
         if obj is not None:
             scope = self.scope_name(scope, None)
@@ -343,46 +340,62 @@ class IocContainer:
                     return True
         return False
 
-    @classmethod
-    def _unslice_key(cls, key):
-        if key.__class__ is slice:
-            return (None if key.start == 0 else key.start), key.stop, key.step or 1
-        else:
-            return None, key, 1
+    def flush(self, tag: T_Injectable, scope: str=None):
+        scope = self.scope_name(scope)
+        if scope := self.scopes.get(scope):
+            scope.flush(tag)
+    @t.overload
+    def register(self, 
+            tags: t.Union[_T_Tags, None],
+            use: t.Union[abc.Provider, T_UsingAny], /,
+            at: t.Union[_T_ScopeNames, None] = None, 
+            *, 
+            flush: bool = True,
+            **kwds) -> None:
+                ...
 
-    def create_provider(self, provider: t.Union[abc.Provider, T_UsingAny] = Missing, **kwds: dict) -> 'Provider':
-        if provider is Missing:
-            ...
-        elif isinstance(provider, abc.Provider):
+    def register(self, 
+            provide: t.Union[_T_Tags, None] , /,
+            use: t.Union[abc.Provider, T_UsingAny], 
+            at: t.Union[_T_ScopeNames, None] = None, 
+            **kwds):
+        # if __debug__:
+        #     # logger.debug(f'Cheking legacy scope params.')
+        #     if 'scope' in kwds:
+        #         raise ValueError(f'scope kwarg no longer supported. {kwds["scope"]!r} given in --> {provide=!r}, {use=!r}')
+            
+        #     if isinstance(provide, str) and provide in self.Scope._active_types():
+        #         raise ValueError(f'scope arg no longer supported. {provide!r} given in --> {use=!r}')
+        
+        if self.bootstrapped:
+            self._register_provider(provide, use, at=at, **kwds)
+        else:
+            self.on_boot(self._register_provider, provide, use, at=at, **kwds)
+
+    def create_provider(self, provider: t.Union[abc.Provider, T_UsingAny], **kwds: dict) -> 'Provider':
+        if isinstance(provider, abc.Provider):
             if kwds:
                 kind = KindOfProvider(kwds.pop('kind', None) or provider.kind)
                 if kind is not provider.kind:
                     raise TypeError(f'incompatible kinds {provider.kind} to {kind}')
                 return provider.replace(**kwds)
-        else:
-            kwds['using'] = provider
+            return provider
 
-        kind = KindOfProvider(kwds.pop('kind'))
-        cls = self._get_provider_class(kind, kwds)
-        return cls(**kwds)
+        cls = self._get_provider_class(KindOfProvider(kwds.pop('kind')), kwds)
+        return cls(provider, **kwds)
 
     def _get_provider_class(self, kind: 'KindOfProvider', kwds: dict) -> type['Provider']:
         return kind.default_impl
 
-    def flush(self, tag: T_Injectable, scope: str=None):
-        scope = self.scope_name(scope)
-        if scope := self.scopes.get(scope):
-            scope.flush(tag)
-
     def _register_provider(self, 
                 tags: t.Union[_T_Tags, None],
-                using: t.Union[abc.Provider, T_UsingAny],
+                use: t.Union[abc.Provider, T_UsingAny], /,
                 at: t.Union[_T_ScopeNames, None] = None, 
                 *, 
                 flush: bool = True,
                 **kwds) -> None:
         
-        provider = self.create_provider(using, **kwds)
+        provider = self.create_provider(use, **kwds)
 
         scope_name = self.scope_name
 
@@ -399,16 +412,20 @@ class IocContainer:
 
         seen = fallback_default_dict(set)
         
+        flush = flush is not False and self.flush
+        registry = self.providers
+
         for scope in at:
             for s, seq in self._iter_abstracts(tags):
                 at = s and scope_name(s, scope) or scope
                 skip = seen[at]
                 for tag in seq:
                     if not (tag in skip or skip.add(tag)):
-                        flush is False or self.flush(tag, at)
-                        self.providers[at].append(tag, provider)
+                        flush and flush(tag, at)
+                        registry[at].append(tag, provider)
 
-    def _iter_abstracts(self, tags):
+    @classmethod
+    def _iter_abstracts(cls, tags):
         if isinstance(tags, Set):
             yield None, tags
         elif isinstance(tags, dict):
@@ -419,18 +436,6 @@ class IocContainer:
                     yield k, [v]
         else:
             yield None, [tags]
-
-    @t.overload
-    def register(self, 
-            tags: t.Union[_T_Tags, None],
-            using: t.Union[abc.Provider, T_UsingAny],
-            at: t.Union[_T_ScopeNames, None] = None, 
-            *, 
-            flush: bool = True,
-            **kwds) -> None:
-                ...
-    def register(self, *args,**kwds):
-        self.on_boot(self._register_provider, *args, **kwds)
 
     @t.overload
     def alias(self, 
@@ -485,8 +490,8 @@ class IocContainer:
 
     @t.overload
     def value(self, 
-            tag: _T_Tags, 
-            value: T_UsingValue, *, 
+            provide: _T_Tags, /,
+            use: T_UsingValue, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
@@ -495,9 +500,8 @@ class IocContainer:
         ...
     @t.overload
     def value(self, 
-            tag: None, 
-            value: T_UsingValue,
             *, 
+            use: T_UsingValue,
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
@@ -505,32 +509,43 @@ class IocContainer:
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 
-    def value(self, tag:  t.Union[_T_Tags, None]=None, value: T_UsingValue=..., **kwds):
+    def value(self, provide:  t.Union[_T_Tags, None]=None, /, use: T_UsingValue=..., **kwds):
         """Registers an `AliasProvider`
         """
         def register(obj: _T_Tags):
-            self.register(obj, value, kind=KindOfProvider.value, **kwds)
+            self.register(obj, use, kind=KindOfProvider.value, **kwds)
 
             return obj
 
-        if tag is None:
+        if provide is None:
             return register
         else:
-            return register(tag)    
+            return register(provide)    
 
     @t.overload
     def function(self, 
-            tag: t.Union[_T_Tags, None], 
-            func: T_UsingFunc, *, 
+            provide: t.Union[_T_Tags, None], /, 
+            use: T_UsingFunc, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
             flush: bool = True,
-            **opts) -> T_UsingFunc:
+            **opts) -> _T_Tags:
         ...
     @t.overload
     def function(self, 
-            tag: t.Union[_T_Tags, None]=None, 
+            *, 
+            use: T_UsingFunc, 
+            at: t.Union[_T_ScopeNames, None] = None, 
+            priority: int = 1, 
+            cache:bool=None, 
+            flush: bool = True,
+            **opts) -> Callable[[_T_Tags], _T_Tags]:
+        ...
+
+    @t.overload
+    def function(self, 
+            provide: t.Union[_T_Tags, None]=None, /, 
             *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
@@ -539,33 +554,48 @@ class IocContainer:
             **opts) -> Callable[[T_UsingFunc], T_UsingFunc]:
         ...
 
-    def function(self, tag: t.Union[_T_Tags, None]=None, func: T_UsingFunc =..., **kwds):
+    def function(self, provide: t.Union[_T_Tags, None]=None, /, use: T_UsingFunc =..., **kwds):
         """Registers an `AliasProvider`
         """
+        def register(obj):
+            if use is ...:
+                tag, use_ = provide, obj
+            else:
+                tag, use_ = obj, use
 
-        def register(obj: T_UsingFunc):
-            self.register(tag, obj, kind=KindOfProvider.func, **kwds)
+            self.register(tag, use_, kind=KindOfProvider.func, **kwds)
             return obj
-
-        if func is ...:
+    
+        if provide is None or use is ...:
             return register
         else:
-            return register(func)    
+            return register(provide)    
 
     @t.overload
     def type(self, 
-            tag: t.Union[_T_Tags, None], 
-            cls: T_UsingType, *, 
+            provide: t.Union[_T_Tags, None], 
+            /,
+            use: T_UsingType, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
             flush: bool = True,
-            **opts) -> T_UsingType:
+            **opts) -> _T_Tags:
+        ...
+
+    @t.overload
+    def type(self, *,
+            use: T_UsingType, 
+            at: t.Union[_T_ScopeNames, None] = None, 
+            priority: int = 1, 
+            cache:bool=None, 
+            flush: bool = True,
+            **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
     @t.overload
     def type(self, 
-            tag: t.Union[_T_Tags, None]=None, 
-            *, 
+            provide: t.Union[_T_Tags, None]=None, 
+            /, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
@@ -573,33 +603,48 @@ class IocContainer:
             **opts) -> Callable[[T_UsingType], T_UsingType]:
         ...
 
-    def type(self, tag: t.Union[_T_Tags, None]=None, cls: T_UsingType =..., **kwds):
-        
-        def register(obj: T_UsingType):
-            self.register(tag, obj, kind=KindOfProvider.type, **kwds)
-            return obj
+    def type(self, provide: t.Union[_T_Tags, None]=None, /, use: T_UsingType =..., **kwds):
+        def register(obj):
+            if use is ...:
+                tag, use_ = provide, obj
+            else:
+                tag, use_ = obj, use
 
-        if cls is ...:
+            self.register(tag, use_, kind=KindOfProvider.type, **kwds)
+            return obj
+    
+        if provide is None or use is ...:
             return register
         else:
-            return register(cls)    
-
+            return register(provide)    
+            
     @t.overload
     def injectable(self, 
-                tag: t.Union[_T_Tags, None],
-                using: T_UsingAny, 
+                provide: t.Union[_T_Tags, None], /,
+                use: T_UsingAny, 
                 *,
                 at: t.Union[_T_ScopeNames, None] = None,
                 cache:bool=None, 
                 kind: KindOfProvider,
                 priority: int = 1,  
                 flush: bool = True,
-                **opts) -> T_UsingAny:
+                **opts) -> _T_Tags:
+        ...    
+    @t.overload
+    def injectable(self, 
+                *,
+                use: T_UsingAny, 
+                at: t.Union[_T_ScopeNames, None] = None,
+                cache:bool=None, 
+                kind: KindOfProvider,
+                priority: int = 1,  
+                flush: bool = True,
+                **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
     @t.overload
     def injectable(self, 
-                tag: t.Union[_T_Tags, None]=None,
-                *,
+                provide: t.Union[_T_Tags, None]=None,
+                 /, *,
                 at: t.Union[_T_ScopeNames, None] = None,
                 cache:bool=None, 
                 kind: KindOfProvider,
@@ -608,21 +653,29 @@ class IocContainer:
                 **opts) -> Callable[[T_UsingAny], T_UsingAny]:
         ...
 
-    def injectable(self, tag: t.Union[_T_Tags, None]=None, using: T_UsingAny =..., **kwds):
-        def register(obj: T_UsingAny):
+    def injectable(self, provide: t.Union[_T_Tags, None]=None, /, use: T_UsingAny =..., **kwds):
+        def register(obj):
+            if use is ...:
+                tag, use_ = provide, obj
+            else:
+                tag, use_ = obj, use
+
             kind = kwds.pop('kind', None)
             if not kind:
-                if not callable(obj):
-                    raise TypeError(f'expected Callable but got {type(obj)} for {tag!r}')
-                elif isinstance(obj, (type, GenericAlias)):
+                if not callable(use_):
+                    raise TypeError(f'expected Callable but got {type(use_)} for {tag!r}')
+                elif isinstance(use_, (type, GenericAlias)):
                     kind = KindOfProvider.type
                 else:
                     kind = KindOfProvider.func
         
-            self.register(tag, obj, kind=kind, **kwds)
+            self.register(tag, use_, kind=kind, **kwds)
             return obj
-
-        return register if using is ... else register(using)
+    
+        if provide is None or use is ...:
+            return register
+        else:
+            return register(provide)    
 
     @t.overload
     def provide(self, 

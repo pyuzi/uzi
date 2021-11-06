@@ -5,14 +5,14 @@ from collections.abc import MutableMapping, Mapping
 from djx.common.utils import export
 
 
-from djx.di import di
+from djx.di import ioc
 
 from ..util import django_settings
 
 
 
 @export()
-@di.injectable(di.MAIN_SCOPE, cache=True)
+@ioc.injectable(at='main', cache=True)
 class Settings(metaclass=ABCMeta):
     
     __slots__ = ()
@@ -24,11 +24,11 @@ class Settings(metaclass=ABCMeta):
         return django_settings() or super().__new__(cls)
 
 
-settings: Settings = di.proxy(Settings, callable=True)
+settings: Settings = ioc.proxy(Settings, callable=True)
 
 
 
-@di.injectable(di.REQUEST_SCOPE)
+@ioc.injectable(at='request')
 class Request(metaclass=ABCMeta):
     __slots__ = ()
 
@@ -47,7 +47,7 @@ class Response(metaclass=ABCMeta):
 
 
 @export()
-@di.injectable(di.REQUEST_SCOPE)
+@ioc.injectable(at='request')
 class Session(MutableMapping):
     __slots__ = ()
 
@@ -55,7 +55,7 @@ class Session(MutableMapping):
 
 
 @export()
-@di.injectable(di.REQUEST_SCOPE)
+@ioc.injectable(at='request')
 class User(metaclass=ABCMeta):
     __slots__ = ()
 

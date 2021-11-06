@@ -15,7 +15,7 @@ from phonenumbers import (
     country_code_for_region
 )
 
-from djx.di import di
+from djx.di import ioc
 
 from .collections import fallbackdict
 from .enum import IntEnum, StrEnum

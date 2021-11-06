@@ -7,7 +7,7 @@ from django.contrib.staticfiles.management.commands.runserver import (
 
 from django.conf import settings
 
-from djx.di import di
+from djx.di import ioc
 
 
 
@@ -31,7 +31,7 @@ class Command(RunserverCommand):
     #     Return the static files serving handler wrapping the default handler,
     #     if static files should be served. Otherwise return the default handler.
     #     """
-    #     handler = di.get(WS)
+    #     handler = ioc.get(WS)
     #     handler = super().get_handler(*args, **options)
     #     use_static_handler = options['use_static_handler']
     #     insecure_serving = options['insecure_serving']

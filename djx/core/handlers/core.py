@@ -6,7 +6,7 @@ from django.core.handlers.base import BaseHandler
 
 from djx.common.utils import cached_property
 
-from djx.di import di
+from djx.di import ioc, REQUEST_SCOPE
 
 from ..http import HttpResponse, HttpRequest
 
@@ -19,11 +19,8 @@ logger = logging.getLogger(__name__)
 class InjectorContextHandler(BaseHandler):
 
     request_class: t.ClassVar[type[HttpRequest]]
-    di_scope: t.ClassVar[str] = di.REQUEST_SCOPE
-    ioc = di.ioc
-    
-    # def injector(self) -> di.Injector:
-    #     return di.scope(self.injector_scope_name)
+    di_scope: t.ClassVar[str] = REQUEST_SCOPE
+    ioc = ioc
     
     def get_response(self, request: HttpRequest) -> HttpResponse:
         self._provide_request(request)

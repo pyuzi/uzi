@@ -138,7 +138,7 @@ class _blankdict(nonedict):
 
 
 @ioc.injectable(at='local', cache=True, kwargs=dict(maxsize=1024, ttl=300))
-@ioc.value(value=_blankdict(), at='main')
+@ioc.value(use=_blankdict(), at='main')
 class ModelUrnObjectCache(TTLCache):
 
     def __init__(self, **kwds) -> None:

@@ -153,6 +153,8 @@ _proxy_attrs = frozenset((
 ))
 
 
+_object_getattribute = object.__getattribute__
+
 
 class Proxy(t.Generic[_TP], metaclass=ProxyType):
     """Forwards all operations to the return value of the given callable `fget`.
@@ -232,16 +234,16 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
     def __repr__(self):
         return f'{type(self).__name__}({self.__proxy_target__})'
 
-    # def __getattribute__(self, name):
-    #     if name in _proxy_attrs:
-    #         return super().__getattribute__(name)
-    #     return getattr(super().__getattribute__('__proxy_target__'), name)
-
-    def __getattr__(self, name):
+    def __getattribute__(self, name):
         if name in _proxy_attrs:
-            raise AttributeError(name)
+            return _object_getattribute(self, name)
+        return getattr(_object_getattribute(self, '__proxy_target__'), name)
+
+    # def __getattr__(self, name):
+    #     if name in _proxy_attrs:
+    #         raise AttributeError(name)
         
-        return getattr(self.__proxy_target__, name)
+    #     return getattr(self.__proxy_target__, name)
 
     __str__ = _ProxyLookup(str)
     __bytes__ = _ProxyLookup(bytes)

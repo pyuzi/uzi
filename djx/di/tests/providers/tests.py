@@ -66,11 +66,16 @@ class SymbolTests:
                 assert inj[key] == val
 
                 assert isinstance(inj[Early], Early)
+                
+                vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
 
-                ioc.alias(Early, Late, scope='main')
+                ioc.alias(Early, Late, at='main')
 
                 assert isinstance(inj[Early], Late)
-        # assert 0
+
+                vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
+
+        assert 1
                 
     def test_speed(self, speed_profiler):
         # with scope() as inj:
@@ -97,7 +102,7 @@ class SymbolTests:
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        _n = int(2.5e4)
+                        _n = int(5e3)
 
                         profile = speed_profiler(_n, labels=('PY', 'DI'))
                     
@@ -119,4 +124,4 @@ class SymbolTests:
                         # assert injector[Bar] is not injector[Bar]
 
 
-        assert 0
+        assert 1

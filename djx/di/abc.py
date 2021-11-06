@@ -499,18 +499,21 @@ class Provider(Orderable, t.Generic[T_Injected, T_Injectable, T_Resolver], metac
     @abstractmethod
     def clone(self: T_Provider) -> T_Provider:
         ...
-        
-    @abstractmethod
-    def flush(self, *tokens, scope: t.Union[T_Scope, None]=None, all: t.Union[bool, None]=None) -> int:
+
+    @t.overload
+    def flush(self, scope: str, /) -> Sequence[T_Injectable]:
         ...
-        
+    @t.overload
+    def flush(self, scopes: Sequence[str]=..., /, all: bool=False) -> dict[str, Sequence[T_Injectable]]:
+        ...
+
+    @abstractmethod
+    def flush(self, scopes: t.Union[Sequence[str], str]=..., *, all: bool=False):
+        ...
+
     @abstractmethod
     def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
         ...
-
-    def __str__(self) -> str:
-        return f'{self.__class__.__name__}({self.abstract}, at="{self.scope}")'
-
 
 
 

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from moneyed import Money as _Money, Currency, get_currency
 
 
-from djx.di import di
+from djx.di import ioc
 from djx.common.utils import text, class_property
 from djx.common.locale import get_locale_currency
 from djx.common.collections import PriorityStack

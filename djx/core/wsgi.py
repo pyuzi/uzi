@@ -1,7 +1,7 @@
 import django
 
 
-from djx.di import di
+from djx.di import ioc
 from .handlers.wsgi import WSGIHandler
 
 
@@ -11,8 +11,7 @@ def get_wsgi_application():
     Return a WSGI callable that runs in a `request` injector scope. 
     """
     django.setup(set_prefix=False)
-    return di.injector.make(WSGIHandler)
-
+    return ioc.make(WSGIHandler)
 
 
 def get_internal_wsgi_application():

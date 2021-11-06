@@ -8,7 +8,7 @@ from djx.common.intervals import Bound
 from djx.common.proxy import proxy
 
 from djx.common.utils import export, cached_property
-from djx.di import inspect, di
+from djx.di import inspect, ioc
 
 
 _T = t.TypeVar('_T')
@@ -74,7 +74,7 @@ class Action(t.Generic[_T]):
         try:
             return obj.__dict__[alias]
         except KeyError:
-            obj.__dict__[alias] = MethodType(di.make(alias, typ, self), obj)
+            obj.__dict__[alias] = MethodType(ioc.make(alias, typ, self), obj)
             return obj.__dict__[alias]
     
     def __call__(_self, self, /, *args: t.Any, **kwds: t.Any) -> t.Any:
@@ -89,8 +89,7 @@ class Action(t.Generic[_T]):
 
 
 @export()
-# @di.wrap(cache=True)
-# @di.injectable(cache=True, )
+# @ioc.wrap(cache=True)
 class BoundAction:
 
     __slots__ = 'action', 'ctrlcls', '__call__'
@@ -107,7 +106,7 @@ class BoundAction:
     #     cache = cls.__bound
     #     if params[] not in cls.__
 
-    #     # di.wrap()
+    #     # ioc.wrap()
 
 
     def __init__(_self, cls: type[Controller], action: Action):

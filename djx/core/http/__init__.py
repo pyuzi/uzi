@@ -2,8 +2,7 @@
 from types import ModuleType
 import typing as t
 from djx.common.imports import ImportRef
-from djx.di import di
-from djx.di.di import call
+from djx.di import ioc
 from ninja import *
 from ninja.constants import NOT_SET
 
@@ -13,10 +12,10 @@ from django.http.request import HttpRequest
 from django.http.response import HttpResponseBase as HttpResponse
 
 
-from djx.di import di
+from djx.di import ioc
 from djx.core import abc
 
-di.alias(HttpRequest, abc.Request, scope=di.REQUEST_SCOPE)
+ioc.alias(HttpRequest, abc.Request, at='request')
 
 
 # from djx.schemas import Schema, GenericSchema
@@ -42,7 +41,7 @@ def include_router(module: t.Union[str, ImportRef, ModuleType], path: str=None):
     return r1
 
 
-@di.provide(scope='main', value=None, cache=True)
+@ioc.value(at='main', use=None, cache=True)
 class API(BaseAPI):
     
     def __init__(self, *args, renderer: BaseRenderer=None, parser: Parser=None, **kwds):
@@ -71,7 +70,7 @@ class API(BaseAPI):
 
 
 
-api: API = di.proxy(API)
+api: API = ioc.proxy(API)
 
 
 

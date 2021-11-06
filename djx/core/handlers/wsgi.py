@@ -2,7 +2,7 @@ import logging
 import typing as t
 
 from django.core.handlers.wsgi import WSGIHandler
-from djx.di import di
+from djx.di import ioc
 
 from .core import InjectorContextHandler
 

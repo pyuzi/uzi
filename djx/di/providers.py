@@ -3,18 +3,20 @@ from enum import auto
 from logging import getLogger
 import typing as t 
 from abc import abstractmethod
+from weakref import finalize
 from djx.common.collections import AttributeMapping, fallback_default_dict, fallbackdict, frozendict, nonedict, orderedset
 
-from collections.abc import  Callable, Hashable
+from collections.abc import  Callable, Hashable, Sequence
 from copy import copy
 
 
 from types import FunctionType, MappingProxyType, MethodType
 from djx.common.enum import IntEnum, auto
+from djx.common.proxy import unproxy
 
-from djx.common.saferef import saferef, SafeKeyRefDict
+from djx.common.saferef import ReferenceType, saferef, SafeRefSet
 from djx.common.typing import GenericLike
-from djx.common.utils import export, Void, cached_property, Missing
+from djx.common.utils import export, Void, cached_property, Missing, noop
 from .inspect import BoundArguments, ordered_id
 from . import abc
 from .abc import (
@@ -45,15 +47,15 @@ T_ScopeAlias = t.TypeVar('T_ScopeAlias', str, ScopeAlias)
 @export()
 class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
 
-    using: T_UsingAny[T_Injected]
+    concrete: T_UsingAny[T_Injected]
     kind: t.Final[t.Union[KindOfProvider, None]] = None
 
     __hidden_attrs__: t.Final[orderedset[str]] = ...
 
-    _using_kwarg_: t.ClassVar = 'using'
+    # _using_kwarg_: t.ClassVar = 'concrete'
     _sig: 'InjectableSignature'
 
-    # _tags: SafeKeyRefDict
+    _resolvers: fallback_default_dict[str, SafeRefSet]
 
     __pos: int
 
@@ -70,11 +72,9 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
         if flip:
             cls.__hidden_attrs__ -= (a[1:] for a in flip)
 
-    def __init__(self, using: t.Any=Missing, **kwds) -> None:
-        if using is Missing:
-            self.using = kwds.pop(self._using_kwarg_)
-        else:
-            self.using = using
+    def __init__(self, concrete: t.Any, /, **kwds) -> None:
+
+        self.concrete = concrete
 
         kwds = dict(self._defaults_() or (), **kwds)
         kwds['priority'] = kwds.get('priority', 1) or 0
@@ -82,20 +82,20 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
         self._assing(**kwds)
         self._boot_()
         self.__statekeys__
-    
+        
     def _defaults_(self) -> dict:
         return
 
     def _boot_(self):
         self.__pos = ordered_id()
 
-    # @property
-    # def tags(self):
-    #     try:
-    #         return self._tags
-    #     except AttributeError:
-    #         self._tags = SafeKeyRefDict()
-    #         return self._tags
+    @property
+    def resolvers(self):
+        try:
+            return self._resolvers
+        except AttributeError:
+            self._resolvers = fallback_default_dict(SafeRefSet)
+            return self._resolvers
 
     @property
     def signature(self):
@@ -103,8 +103,8 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
             return self._sig
         except AttributeError:
             from .inspect import signature
-            if callable(self.using):
-                self._sig = signature(self.using, evaltypes=True)
+            if callable(self.concrete):
+                self._sig = signature(self.concrete, evaltypes=True)
             else:
                 self._sig = None
             return self._sig
@@ -131,12 +131,23 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
     def replace(self, **kwds):
         return self.clone()._assing(**kwds)
 
-    def flush(self, *tags, scope: t.Union[T_Scope, None]=None, all: t.Union[bool, None]=None):
-        rv = []
-        # for tag in tags:
-        #     if tag in 
-        # raise NotImplementedError(f'{self.__class__.__name__}.flush')
-    
+    @t.overload
+    def flush(self, scope: str, /) -> Sequence[T_Injectable]:
+        ...
+    @t.overload
+    def flush(self, scopes: Sequence[str]=..., /, all: bool=False) -> dict[str, Sequence[T_Injectable]]:
+        ...
+
+    def flush(self, scopes: t.Union[Sequence[str], str]=..., *, all: bool=False):
+        if isinstance(scopes, str):
+            return tuple(self.resolvers.pop(scopes, ()))
+        elif all:
+            scopes = tuple(self.resolvers.keys())
+        elif scopes is ...:
+            raise ValueError(f'provide a scopes or set all=True')
+        
+        return { s: self.flush(s) for s in scopes}
+
     def __getstate__(self):
         dct = self.__dict__
         return { k: dct[k] for k in self.__statekeys__ if k in dct }
@@ -149,18 +160,25 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
 
     def _iter_statekeys(self):
         excludes = self.__hidden_attrs__
-        for k in self.__dict__:
+        for k in self.__dict__.keys():
             if not(k in excludes or k[:1] == '_' or k[-1] == '_'):
                 yield k
 
     def implicit_tag(self):
-        if isinstance(self.using, Hashable):
-            return self.using
+        if isinstance(self.concrete, Hashable):
+            return self.concrete
         return NotImplemented
 
+    def _cleanup_resolve_(self, scope: str, key: ReferenceType):
+        return self.resolvers.get(scope, nonedict()).pop(key, None) is not None
+
     @abstractmethod
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
         ...
+    
+    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+        self.resolvers[scope.name].add(token)
+        return self.make_resolver(token, scope)
 
     def __order__(self):
         return (self.priority, self.__pos)
@@ -170,7 +188,7 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
             and self.__getstate__() == x.__getstate__()
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self.using!r})'
+        return f'{self.__class__.__name__}({self.concrete!r})'
 
 
 
@@ -178,10 +196,10 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
 @KindOfProvider.factory._set_default_impl
 class FactoryProvider(Provider):
 
-    _using_kwarg_: t.ClassVar = 'provider'
+    # _using_kwarg_: t.ClassVar = 'provider'
 
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
-        return self.using(self, token, scope)        
+    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+        return self.concrete(self, token, scope)        
 
 
 
@@ -189,10 +207,10 @@ class FactoryProvider(Provider):
 @KindOfProvider.resolver._set_default_impl
 class ResolverProvider(Provider):
 
-    _using_kwarg_: t.ClassVar = 'resolver'
+    # _using_kwarg_: t.ClassVar = 'resolver'
 
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
-        return self.using 
+    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+        return self.concrete 
 
 
 
@@ -200,10 +218,10 @@ class ResolverProvider(Provider):
 @KindOfProvider.value._set_default_impl
 class ValueProvider(Provider):
 
-    _using_kwarg_: t.ClassVar = 'value'
+    # _using_kwarg_: t.ClassVar = 'value'
 
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
-        return ValueResolver(self.using)
+    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+        return ValueResolver(self.concrete)
 
 
 
@@ -215,14 +233,6 @@ class ValueProvider(Provider):
 class AliasProvider(Provider):
 
     __slots__ = '_params',
-
-    _using_kwarg_: t.ClassVar = 'alias'
-
-    # def check(self):
-        # super().check()
-        # assert is_provided(self.using), (
-        #         f'No provider for aliased `{self.using}` in `{self.abstract}`'
-        #     )
 
     def _defaults_(self) -> dict:
         return dict(cache=None)
@@ -240,11 +250,11 @@ class AliasProvider(Provider):
     def implicit_tag(self):
         return NotImplemented
 
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
         params = self.params
         if params is None:
-            return AliasResolver(self.using, cache=self.cache)
-        return AliasWithParamsResolver(self.using, cache=self.cache, params=params)
+            return AliasResolver(self.concrete, cache=self.cache)
+        return AliasWithParamsResolver(self.concrete, cache=self.cache, params=params)
 
 
 
@@ -252,7 +262,7 @@ class AliasProvider(Provider):
 class CallableProvider(Provider):
 
     __slots__ = ('_sig', '_params')
-    using: Callable[..., T]
+    concrete: Callable[..., T]
 
     def _defaults_(self) -> dict:
         return dict(cache=None)
@@ -263,7 +273,7 @@ class CallableProvider(Provider):
             return self._sig
         except AttributeError:
             from .inspect import signature
-            self._sig = signature(self.using)
+            self._sig = signature(self.concrete)
             return self._sig
 
     @property
@@ -278,15 +288,15 @@ class CallableProvider(Provider):
 
     def check(self):
         super().check()
-        assert callable(self.using), (
-                f'`using` must be a valid Callable. Got: {type(self.using)}'
+        assert callable(self.concrete), (
+                f'`concrete` must be a valid Callable. Got: {type(self.concrete)}'
             )
 
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
         params = self.params
         if params is None:
-            return FuncResolver(self.using, cache=self.cache)
-        return FuncParamsResolver(self.using, cache=self.cache, params=params)
+            return FuncResolver(self.concrete, cache=self.cache)
+        return FuncParamsResolver(self.concrete, cache=self.cache, params=params)
 
 
 
@@ -419,7 +429,7 @@ class DependencyAnnotation(t.Generic[T_Injectable, T_Injected, T_ScopeAlias]):
     def __hash__(self) -> bool:
         return hash((self.scope, self.deps))
 
-    def __call__(self, inj) -> T_Injectable:
+    def make_resolver(self, inj) -> T_Injectable:
         # return inj[self._scope][self._deps]
         inj = inj[self._scope]
         return next((inj[d] for d in self._deps), self._default)

@@ -5,7 +5,7 @@ from babel import numbers
 from babel.core import LOCALE_ALIASES, get_locale_identifier
 import babel
 
-from djx.di import di
+from djx.di import ioc
 from djx.common.utils import cached_property, export
 from djx.common.collections import fallbackdict
 
@@ -80,7 +80,7 @@ _cat_settings_keys =fallbackdict[str, list[str]](
 _locale_sep = fallbackdict[str, str]('_', LANGUAGE_CODE='-')
 
 
-@di.injectable('main', abstract=LOCALE, cache=True)
+@ioc.injectable(LOCALE, at='main', cache=True)
 def default_locale(category: LangCategory=None, 
                     aliases=LOCALE_ALIASES):
     category = category or 'LOCALE'
@@ -97,14 +97,14 @@ def default_locale(category: LangCategory=None,
 
 
 
-@di.injectable(abstract=LOCALE_ID)
+@ioc.injectable(LOCALE_ID)
 def _parse_locale_id(id: LOCALE):
     return parse_locale(id)
 
 
 @export()
-@di.injectable('main', cache=True)
-@di.injectable('local', cache=True)
+@ioc.injectable(at='main', cache=True)
+@ioc.injectable(at='local', cache=True)
 class Locale(Babel):
 
     t.overload
@@ -131,18 +131,18 @@ class Locale(Babel):
 
 
 
-locale: Locale = di.proxy(Locale, callable=True)
+locale: Locale = ioc.proxy(Locale, callable=True)
 
 
 
 
-@di.wrap()
+@ioc.wrap()
 def get_locale_currency(locale: Locale=None):
     return locale and locale.local_currency
 
 
 
-@di.wrap()
+@ioc.wrap()
 def get_locale_currencies(locale: Locale=None):
     return locale and locale.local_currencies
 

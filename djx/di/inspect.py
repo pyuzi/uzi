@@ -51,23 +51,17 @@ def builtin_values():
 # ins.isbuiltin()
 
 def annotated_deps(obj) -> t.Union[list, t.Any]:
-    from . import AnnotatedDepends, ioc, Depends
+    from . import ioc, Depends
 
     if ioc.is_provided(obj):
         return obj
-    # elif isinstance(obj, AnnotatedDepends):
-    #     return obj.deps[0]
     elif ioc.is_provided(orig := get_origin(obj)):
         return obj
     elif orig in _expand_generics:
         for d in get_args(obj):
             if d.__class__ is Depends:
                 return obj
-            # if rv := annotated_deps(d):
-            #     return rv
         
-
-
 
 
 

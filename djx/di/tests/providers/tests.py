@@ -102,7 +102,10 @@ class SymbolTests:
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        _n = int(8e4)
+                        _n = int(5e4)
+
+                        injbar()
+                        injfoo()
 
                         profile = speed_profiler(_n, labels=('PY', 'DI'))
                     

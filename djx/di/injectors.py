@@ -298,14 +298,8 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
                 rv = self.make(concrete)
                 self.set(key, AliasResolver(concrete, bound=self))
                 return rv
-        # elif isinstance(key, GenericLike):
-        #     concrete = key.__origin__
-        #     res = self.content.__getitem__(key.__origin__)
-        #     if res is not None:
-        #         self.set(key, AliasResolver(key.__origin__, bound=self))
         elif isinstance(key, (type, FunctionType)):
             del self.content[key]
-
             self.ioc.injectable(key, key, at=self.name, flush=False)
             return self.make(key, *args, **kwds)
 

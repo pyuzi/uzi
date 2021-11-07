@@ -23,11 +23,15 @@ from djx.common.typing import GenericAlias as _GenericAlias
 
 if t.TYPE_CHECKING:
     from . import IocContainer, KindOfProvider
+else:
+    __all__ = [
+        'ANY_SCOPE',
+        'LOCAL_SCOPE', 
+        'MAIN_SCOPE',
+        'REQUEST_SCOPE', 
+        'COMMAND_SCOPE',
+    ]
 
-
-__all__ = [
-   
-]
 
 
 logger = logging.getLogger(__name__)

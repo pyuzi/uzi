@@ -136,6 +136,7 @@ class IocContainer:
             self.signals.setup.send(self.__class__, instance=self)
             
             self._run_onboot_callbacks(exhaust=True)
+            self._register_default_providers_()
 
             self.signals.boot.send(self.__class__, instance=self)
 
@@ -144,13 +145,31 @@ class IocContainer:
 
             self.signals.ready.send(self.__class__, instance=self)
 
-    # def _populate_scopes_(self):
-        # scopes = self.Scope._active_types()
-        # for scope in scopes:
-            # self.scopes[scope]
+    def _register_default_providers_(self):
+        from .injectors import Injector
+        from .resolvers import InjectorResolver, AliasResolver
+        from .tools import Depends
+        
+        is_provided = self.is_provided
 
-    # def _populate_providers_(self):
-    #     pass
+        @self.provide(t.Annotated, at='any', priority=-10)
+        def provide_annotaed(self, token, scope: 'BaseScope'):
+            if anno := next((d for d in token.__metadata__ if is_provided(d.__class__)), None):
+                if prov := scope.providers.get(anno.__class__):
+                    return prov(token, scope, annotation=anno)
+
+        @self.provide(Depends, at='any', priority=-10)
+        def provide_depends(self, token, scope: 'BaseScope', annotation: Depends=None):
+            if annotation:
+                aka = token.__origin__ if annotation._on is ... else annotation._on
+                if akaa := scope.providers.get(aka):
+                    return akaa(token, scope)
+
+        self.resolver(abc.Injector, InjectorResolver(), at='any', priority=-10)
+
+        self.alias(Injector, abc.Injector, at='any', priority=-10)
+
+        
 
     def __setattr__(self, name, val):
         getattr(self, name)
@@ -668,7 +687,7 @@ class IocContainer:
                     kind = KindOfProvider.type
                 else:
                     kind = KindOfProvider.func
-        
+
             self.register(tag, use_, kind=kind, **kwds)
             return obj
     
@@ -774,28 +793,6 @@ def _default_make_container():
 def _discover_scopes(sender, *, instance: IocContainer, **kwds):
     instance.discover_scopes(text.compact((os.environ.get(IOC_CONTAINER_ENV_KEY) or '').replace(',', ' ')).split(' '))
 
-    from .injectors import Injector
-    from .resolvers import InjectorResolver, AliasResolver
-    from .tools import Depends
-
-    @instance.provide(t.Annotated, at='any')
-    def provide_annotaed(self, token, scope: 'BaseScope'):
-        if dep := next((d for d in token.__metadata__ if d.__class__ is Depends), None):
-            aka = token.__origin__ if dep._on is ... else dep._on
-            if akaa := scope.providers.get(aka):
-                return akaa(token, scope)
-
-
-    instance.resolver(abc.Injector, InjectorResolver(), at='any', priority=-10)
-
-    instance.alias(Injector, abc.Injector, at='any', priority=-10)
-
-    
-
-
-# @signals.setup.connect_via(IocContainer)
-# def _discover_scopes(sender, *, instance: IocContainer, **kwds):
-#     instance.discover_scopes(text.compact((os.environ.get(IOC_CONTAINER_ENV_KEY) or '').replace(',', ' ')).split(' '))
 
 
 

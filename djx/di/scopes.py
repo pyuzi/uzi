@@ -318,9 +318,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
             elif origin := get_origin(key):
                 if pro := get_provider(origin):
                     return setdefault(key, pro(key, self))
-                # else:
-            return setdefault(key, None)
-
+            # return setdefault(key, None)
 
         res = fallbackdict(fallback)
         setdefault = res.setdefault

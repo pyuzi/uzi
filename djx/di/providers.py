@@ -111,6 +111,7 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
 
     @cached_property[orderedset[str]]
     def __statekeys__(self):
+
         return orderedset(self._iter_statekeys())
 
     def _assing(self, **kwds):
@@ -173,12 +174,13 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
         return self.resolvers.get(scope, nonedict()).pop(key, None) is not None
 
     @abstractmethod
-    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         ...
     
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
-        self.resolvers[scope.name].add(token)
-        return self.make_resolver(token, scope)
+    def __call__(self, token: T_Injectable, scope: T_Scope, *args, alias=None, **kwds) -> Resolver[T_Injected]:
+        if res := self.make_resolver(token, scope, *args, **kwds):
+            self.resolvers[scope.name].add(token if alias is None else alias)
+        return res
 
     def __order__(self):
         return (self.priority, self.__pos)
@@ -198,8 +200,8 @@ class FactoryProvider(Provider):
 
     # _using_kwarg_: t.ClassVar = 'provider'
 
-    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
-        return self.concrete(self, token, scope)        
+    def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
+        return self.concrete(self, token, scope, *args, **kwds)        
 
 
 
@@ -209,7 +211,7 @@ class ResolverProvider(Provider):
 
     # _using_kwarg_: t.ClassVar = 'resolver'
 
-    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         return self.concrete 
 
 
@@ -220,7 +222,7 @@ class ValueProvider(Provider):
 
     # _using_kwarg_: t.ClassVar = 'value'
 
-    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         return ValueResolver(self.concrete)
 
 
@@ -250,9 +252,11 @@ class AliasProvider(Provider):
     def implicit_tag(self):
         return NotImplemented
 
-    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         params = self.params
         if params is None:
+            if prov := scope.providers.get(self.concrete):
+                return prov(self.concrete, scope, alias=token)
             return AliasResolver(self.concrete, cache=self.cache)
         return AliasWithParamsResolver(self.concrete, cache=self.cache, params=params)
 
@@ -292,7 +296,7 @@ class CallableProvider(Provider):
                 f'`concrete` must be a valid Callable. Got: {type(self.concrete)}'
             )
 
-    def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
+    def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         params = self.params
         if params is None:
             return FuncResolver(self.concrete, cache=self.cache)

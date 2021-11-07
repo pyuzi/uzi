@@ -19,19 +19,8 @@ from .container import ioc
 
 
 from .abc import (
-    ANY_SCOPE, LOCAL_SCOPE, MAIN_SCOPE, REQUEST_SCOPE, COMMAND_SCOPE,
-    Injectable, InjectorKeyError, ScopeAlias, StaticIndentity, 
-    T, T_Injected, T_Injector, T_Injectable
+    Injectable, InjectorKeyError, T_Injected, 
 )
-
-if not t.TYPE_CHECKING:
-    __all__ = [
-        'ANY_SCOPE',
-        'LOCAL_SCOPE', 
-        'MAIN_SCOPE',
-        'REQUEST_SCOPE', 
-        'COMMAND_SCOPE',
-    ]
 
 
 logger = logging.getLogger(__name__)
@@ -131,44 +120,6 @@ T_Depends = t.TypeVar('T_Depends', bound=abc.Injectable, covariant=True)
 
 
 
-class DependsAlias(t.GenericAlias):
-    
-    def __init__(self, origin, metadata):
-            if isinstance(origin, DependsAlias):
-                metadata = origin.__metadata__ + metadata
-                origin = origin.__origin__
-            super().__init__()
-            self.__metadata__ = metadata
-
-    def __hash__(self) -> bool:
-        return super().__hash__()
-
-    def copy_with(self, params):
-        assert len(params) == 1
-        new_type = params[0]
-        return DependsAlias(new_type, self.__metadata__)
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}[{t._type_repr(self.__origin__)}, {', '.join(repr(a) for a in self.__metadata__)}]"
-        
-    def __reduce__(self):
-        return operator.getitem, (
-            Depends, (self.__origin__,) + self.__metadata__
-        )
-
-    def __eq__(self, other):
-        if not isinstance(other, DependsAlias):
-            return NotImplemented
-        if self.__origin__ != other.__origin__:
-            return False
-        return self.__metadata__ == other.__metadata__
-
-    def __hash__(self):
-        logger.info(f'Hashing {self.__class__.__name__}({self.__metadata__!r})')
-        return hash((self.__origin__, self.__metadata__))
-
-
-
 
 @export()
 class Depends:
@@ -206,41 +157,6 @@ class Depends:
         else:
             return ret
 
-
-    def __class_getitem__(cls, params: t.Union[T, tuple[T, ...]]) -> t.Annotated[T, 'Dependency']:
-        if not isinstance(params, tuple):
-            tp = on = params
-            at = ...
-        else:
-            tp, on, at, *_ = *params, ..., ...
-        
-        return cls(tp, on=on, at=at)
-        
-
-        scope = None
-        if not isinstance(params, tuple):
-            deps = ((tp := params),)
-        elif(lp := len(params)) == 1:
-            tp = (deps := params)[0]
-        elif lp > 1:
-            if isinstance(params[1], ScopeAlias):
-                tp, scope, *deps = params
-            else:
-                tp, *deps = params
-        
-
-        deps or (deps := (tp,))
-        isinstance(deps, list) and (deps := tuple(deps))
-        _dep_types = (list, dict, Injectable, AnnotatedDepends)
-        if any(not isinstance(d, _dep_types) for d in deps):
-            raise TypeError("Depends[...] should be used "
-                            "with at least one type argument and "
-                            "an t.Optional ScopeAlias (Scope['name'])."
-                            "and 1 or more Injectables if the type arg "
-                            "is not the injectable")
-        
-        return DependsAlias(tp, (AnnotatedDepends(deps, scope=scope),))
-
     def __init_subclass__(cls, *args, **kwargs):
         raise TypeError(f"Cannot subclass {cls.__module__}.Depends")
 
@@ -258,61 +174,4 @@ class Depends:
 
 
 
-
-
-
-@export()
-@Injectable.register
-class AnnotatedDepends(t.Generic[T_Injectable, T_Injected]):
-    """Dependency Object"""
-    __slots__ = '_deps', '_scope', '_default', '__weakref__'
-
-    def __new__(cls, deps: T_Injectable, scope: ScopeAlias=..., *, default: t.Any=...):
-        if isinstance(deps, cls):
-            if scope in (..., None, deps.scope) and default in (..., deps.default):
-                return deps
-            else:
-                kwds = dict()
-                scope in (..., None) or kwds.update(scope=scope)
-                default is ... or kwds.update(default=default)
-                return deps.copy(**kwds)
-        return super().__new__(cls)
-
-    def __init__(self, deps: T_Injectable, scope: ScopeAlias=..., *, default: t.Any=...):
-        self._deps = tuple(deps) if isinstance(deps, list) \
-            else deps if isinstance(deps, tuple) else (deps,)
-        self._scope = Scope[(None if scope is ... else scope) or Scope.ANY]
-        self._default = default
-    
-    @property
-    def deps(self) -> T_Injectable:
-        return self._deps
-
-    @property
-    def scope(self):
-        return self._scope
-
-    def __eq__(self, x) -> bool:
-        if isinstance(x, AnnotatedDepends):
-            return self._scope == x._scope and self._deps == x._deps
-        return NotImplemented
-
-    def __hash__(self) -> bool:
-        # logger.info(f'Hashing {self.__class__.__name__}({self._scope!r}, {self._deps})')
-        return hash((self.scope, self.deps))
-
-    def __repr__(self) -> bool:
-        return f'{self.__class__.__name__}({self._scope!r}, {self._deps})'
-
-    def make_resolver(self, inj) -> T_Injectable:
-        # return inj[self._scope][self._deps]
-        inj = inj[self._scope]
-        return next((inj[d] for d in self._deps), self._default)
-
-    def copy(self, **kwds) -> T_Injectable:
-        kwds['scope'] = kwds.get('scope') or self._scope
-        kwds['deafult'] = kwds.setdefault('deafult', self._default)
-        return self.__class__(self._deps, **kwds)
-    __copy__ = copy
-    
 

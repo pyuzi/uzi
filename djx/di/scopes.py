@@ -195,6 +195,10 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
                 self.ioc.providers[self.name], 
                 *(s.providers for s in reversed(self.embeds)),
             )
+
+    # @cached_property
+    # def aliased(self) -> ChainMap[T_Injectable, T_Provider]:
+    #     return 
            
     @classmethod
     def _implicit_bases(cls):
@@ -286,7 +290,7 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
 
         if not self.embedded:
             self.resolvers.pop(key, None)
-
+            
             if _target is ...:
                 if provider := self.providers.get(key):
                     for k in provider.flush(self.name):

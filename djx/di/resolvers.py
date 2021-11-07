@@ -105,11 +105,11 @@ class AliasResolver(ConcreteResolver[T, T_Injectable]):
         kwds.setdefault('params', self.params)
         return super().clone(*args, **kwds)
 
-    def bind(self: T_Resolver, inj: T_Injector) -> T_Resolver:
-        if not self.cache and self.params is None:
-            return inj.content[self.concrete]
-        else:
-            return super().bind(inj)  
+    # def bind(self: T_Resolver, inj: T_Injector) -> T_Resolver:
+    #     if not self.cache and self.params is None:
+    #         return inj.content[self.concrete]
+    #     else:
+    #         return super().bind(inj)  
 
 
                                                                                                                                                              
@@ -143,10 +143,6 @@ class AliasWithParamsResolver(AliasResolver):
                 _a, _kw = self.params
                 return self.bound.make(concrete, *_a, *a, **_kw, **kw)
         self.__call__ = __call__
-
-    def clone(self, *args, **kwds):
-        kwds.setdefault('cache', self.cache)
-        return super().clone(*args, **kwds)
 
 
 

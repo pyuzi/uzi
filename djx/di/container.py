@@ -412,7 +412,6 @@ class IocContainer:
                 use: t.Union[abc.Provider, T_UsingAny], /,
                 at: t.Union[_T_ScopeNames, None] = None, 
                 *, 
-                flush: bool = True,
                 **kwds) -> None:
         
         provider = self.create_provider(use, **kwds)
@@ -432,7 +431,7 @@ class IocContainer:
 
         seen = fallback_default_dict(set)
         
-        flush = flush is not False and self.flush
+        flush = self.flush
         registry = self.providers
 
         for scope in at:
@@ -441,7 +440,7 @@ class IocContainer:
                 skip = seen[at]
                 for tag in seq:
                     if not (tag in skip or skip.add(tag)):
-                        flush and flush(tag, at)
+                        flush(tag, at)
                         registry[at].append(tag, provider)
 
     @classmethod

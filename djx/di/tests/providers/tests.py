@@ -62,16 +62,18 @@ class SymbolTests:
                 print('\n', *(f' -+= {k} --> {v!r}\n' for k,v in ioc.injector.content.items()))
         
                 # vardump([(s,k) for s, d in ioc.providers.items() for k in d])
+                assert isinstance(inj[Early], Early)
 
                 assert inj[key] == val
 
-                assert isinstance(inj[Early], Early)
                 
                 vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
 
                 ioc.alias(Early, Late, at='main')
-
                 assert isinstance(inj[Early], Late)
+
+                ioc.alias(Late, key, at='main')
+                assert inj[Early] == val
 
                 vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
 
@@ -102,7 +104,7 @@ class SymbolTests:
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        _n = int(5e4)
+                        _n = int(5e2)
 
                         # injbar()
                         # injfoo()
@@ -127,4 +129,4 @@ class SymbolTests:
                         # assert injector[Bar] is not injector[Bar]
 
 
-        assert 0
+        assert 1

@@ -255,8 +255,8 @@ class AliasProvider(Provider):
     def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         params = self.params
         if params is None:
-            if prov := scope.providers.get(self.concrete):
-                return prov(self.concrete, scope, alias=token)
+            # if prov := scope.providers.get(self.concrete):
+            #     return prov(self.concrete, scope, alias=token)
             return AliasResolver(self.concrete, cache=self.cache)
         return AliasWithParamsResolver(self.concrete, cache=self.cache, params=params)
 

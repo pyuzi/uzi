@@ -177,9 +177,9 @@ class Provider(abc.Provider[T_Injected, T_Injectable, T_Resolver]):
     def make_resolver(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         ...
     
-    def __call__(self, token: T_Injectable, scope: T_Scope, *args, alias=None, **kwds) -> Resolver[T_Injected]:
+    def __call__(self, token: T_Injectable, scope: T_Scope, *args, **kwds) -> Resolver[T_Injected]:
         if res := self.make_resolver(token, scope, *args, **kwds):
-            self.resolvers[scope.name].add(token if alias is None else alias)
+            self.resolvers[scope.name].add(token)
         return res
 
     def __order__(self):

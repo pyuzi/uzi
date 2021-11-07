@@ -5,10 +5,10 @@ from collections.abc import Callable
 
 
 from djx.common.utils import export, Void
-from ..inspect import BoundArguments
+from .inspect import BoundArguments
 
-from ..abc import Resolver, T_Injectable, T_Injector, T, T_Provider, T_Resolver
-from .. import abc
+from .abc import Resolver, T_Injectable, T_Injector, T, T_Provider, T_Resolver
+from . import abc
 
 if not t.TYPE_CHECKING:
     __all__ = [
@@ -76,13 +76,14 @@ class InjectorResolver(Resolver[T_Injector]):
 class AliasResolver(ConcreteResolver[T, T_Injectable]):
     """Resolver Object"""
 
-    __slots__ = 'cache', '__call__',
+    __slots__ = 'params', 'cache', '__call__',
 
     alias: t.ClassVar[bool] = True
 
-    def __init__(self, concrete, *, cache=False, **kwds):
+    def __init__(self, concrete, *, cache=False, params=None, **kwds):
         super().__init__(concrete, **kwds)
         self.cache = cache
+        self.params = params
         if cache:
             def __call__(*a, **kw) -> T:
                 if a or kw:
@@ -101,7 +102,14 @@ class AliasResolver(ConcreteResolver[T, T_Injectable]):
 
     def clone(self, *args, **kwds):
         kwds.setdefault('cache', self.cache)
+        kwds.setdefault('params', self.params)
         return super().clone(*args, **kwds)
+
+    def bind(self: T_Resolver, inj: T_Injector) -> T_Resolver:
+        if not self.cache and self.params is None:
+            return inj.content[self.concrete]
+        else:
+            return super().bind(inj)  
 
 
                                                                                                                                                              
@@ -109,7 +117,7 @@ class AliasResolver(ConcreteResolver[T, T_Injectable]):
 class AliasWithParamsResolver(AliasResolver):
     """Resolver Object"""
 
-    __slots__ = 'params',
+    __slots__ = ()
 
     def __init__(self, concrete, *, cache=False, params=((), {}),  **kwds):
         super().__init__(concrete, **kwds)
@@ -138,7 +146,6 @@ class AliasWithParamsResolver(AliasResolver):
 
     def clone(self, *args, **kwds):
         kwds.setdefault('cache', self.cache)
-        kwds.setdefault('params', self.params)
         return super().clone(*args, **kwds)
 
 

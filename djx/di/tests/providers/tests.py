@@ -104,8 +104,8 @@ class SymbolTests:
 
                         _n = int(5e4)
 
-                        injbar()
-                        injfoo()
+                        # injbar()
+                        # injfoo()
 
                         profile = speed_profiler(_n, labels=('PY', 'DI'))
                     

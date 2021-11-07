@@ -162,8 +162,9 @@ class IocContainer:
         def provide_depends(self, token, scope: 'BaseScope', annotation: Depends=None):
             if annotation:
                 aka = token.__origin__ if annotation._on is ... else annotation._on
-                if akaa := scope.providers.get(aka):
-                    return akaa(token, scope)
+                return AliasResolver(aka)
+                # if akaa := scope.providers.get(aka):
+                    # return akaa(token, scope)
 
         self.resolver(abc.Injector, InjectorResolver(), at='any', priority=-10)
 

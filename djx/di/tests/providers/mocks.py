@@ -79,7 +79,7 @@ class _TestScope(Scope):
 @ioc.type(cache=True, at='main')
 class Foo:
     
-    def __init__(self, name: Depends[str, 'foo.name'], *, user: Depends[str, user_str], inj: Injector) -> None:
+    def __init__(self, name: Depends(str, on='foo.name'), *, user: Depends(str, on=user_str), inj: Injector) -> None:
         self.name = f'{name} -> #{ordered_id()}'
         self.user = user
         self.inj = inj
@@ -103,12 +103,12 @@ class Follow:
 
 
 @ioc.function(at=Scope.ANY, cache=True)
-def user_func_injectable(user: Depends[str, user_str], d2: Follow):
+def user_func_injectable(user: Depends(str, on=user_str), d2: Follow):
     return f'user_func_injectable -> {user=!r} #{ordered_id()}'
 
 
 @ioc.injectable(at=Scope.ANY, cache=True)
-def user_func_injectable(user: Depends[str, user_str], d2: Follow):
+def user_func_injectable(user: Depends(str, on=user_str), d2: Follow):
     return f'user_func_injectable -> {user=!r} #{ordered_id()}'
 
 
@@ -132,9 +132,9 @@ class Bar:
 
     def __init__(self, foo: Foo, 
                     flw: Follow, 
-                    sbar: Depends[str, 'bar'], 
-                    user: Depends[str, user_func_injectable], *, 
-                    sym: Depends[str, user_symb], baz: Baz, kw2=...) -> None:
+                    sbar: Depends(str, on='bar'), 
+                    user: Depends(str, on=user_func_injectable), *, 
+                    sym: Depends(str, on=user_symb), baz: Baz, kw2=...) -> None:
         self.foo = foo
         self.flw = flw
         self.sbar = sbar

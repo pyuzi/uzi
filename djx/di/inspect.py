@@ -28,27 +28,6 @@ _KEYWORD_ONLY = ins.Parameter.KEYWORD_ONLY
 
 
 
-# @export()
-# class Depends(type):
-
-#     __depends__: t.Union[list, t.Any]
-
-#     def __class_getitem__(cls, parameters):
-#         if not isinstance(parameters, tuple):
-#             parameters = (parameters,)
-        
-#         typ, *deps = parameters
-#         deps = [*deps] if len(deps) > 1 else deps[0] if deps else typ if isinstance(typ, type) else None
-
-#         return t.Union[cls('Depends', (), dict(__depends__=deps)), typ]
-
-#     def __repr__(cls) -> str:
-#         return f'Depends({cls.__depends__!r})'
-
-#     def __str__(cls) -> str:
-#         return f'Depends({cls.__depends__})'
-
-
 
 __last_id: int = 0
 
@@ -72,19 +51,20 @@ def builtin_values():
 # ins.isbuiltin()
 
 def annotated_deps(obj) -> t.Union[list, t.Any]:
-    from .providers import DependencyAnnotation
-    from .container import ioc
+    from . import AnnotatedDepends, ioc, Depends
 
     if ioc.is_provided(obj):
         return obj
-    elif isinstance(obj, DependencyAnnotation):
-        return obj.deps[0]
+    # elif isinstance(obj, AnnotatedDepends):
+    #     return obj.deps[0]
     elif ioc.is_provided(orig := get_origin(obj)):
         return obj
     elif orig in _expand_generics:
         for d in get_args(obj):
-            if rv := annotated_deps(d):
-                return rv
+            if d.__class__ is Depends:
+                return obj
+            # if rv := annotated_deps(d):
+            #     return rv
         
 
 

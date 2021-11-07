@@ -15,7 +15,7 @@ from djx.common.enum import IntEnum, auto
 from djx.common.proxy import unproxy
 
 from djx.common.saferef import ReferenceType, saferef, SafeRefSet
-from djx.common.typing import GenericLike
+from djx.common.typing import GenericLike, get_all_type_hints, get_origin
 from djx.common.utils import export, Void, cached_property, Missing, noop
 from .inspect import BoundArguments, ordered_id
 from . import abc
@@ -326,118 +326,5 @@ class MetaProvider(CallableProvider):
 
     _using_kwarg_: t.ClassVar = 'meta'
     
-    
-
-
-# class InjectorProvider(ValueProvider):
-#     __slots__ = ()
-
-#     def make_resolver(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
-#         return InjectorResolver()
-
-
-@export()
-class Depends:
-    """Annotates type as a `Dependency` that can be resolved by the di.
-    
-    Example: 
-        Depends[t] # type(injector[t]) == t 
-        
-        Depends[InjectableType]
-        Depends[typ, Injectable] # type(injector[Injectable]) = typ
-
-        Depends[type, Scope['scope'], injectable] # type(injector[Scope('scope')][injectable]) == typ
-        Depends[typ, Scope['scope']] ==  Depends[typ, typ, 'scope']  # type(injector[Scope('scope')][typ]) == typ 
-    """
-
-    __slots__ = ()
-
-    def __new__(cls):
-        raise TypeError("Type Depends cannot be instantiated.")
-
-    def __class_getitem__(cls, params: t.Union[T, tuple[T, ...]]) -> t.Annotated[T, 'Dependency']:
-        scope = None
-        if not isinstance(params, tuple):
-            deps = ((tp := params),)
-        elif(lp := len(params)) == 1:
-            tp = (deps := params)[0]
-        elif lp > 1:
-            if isinstance(params[1], ScopeAlias):
-                tp, scope, *deps = params
-            else:
-                tp, *deps = params
-        
-
-        deps or (deps := (tp,))
-        isinstance(deps, list) and (deps := tuple(deps))
-        _dep_types = (list, dict, Injectable, DependencyAnnotation)
-        if any(not isinstance(d, _dep_types) for d in deps):
-            raise TypeError("Depends[...] should be used "
-                            "with at least one type argument and "
-                            "an t.Optional ScopeAlias (Scope['name'])."
-                            "and 1 or more Injectables if the type arg "
-                            "is not the injectable")
-        
-        return t.Annotated[tp, DependencyAnnotation(deps, scope=scope)]
-
-    def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass {cls.__module__}.Depends")
-
-
-
-
-
-
-
-
-@export()
-@Injectable.register
-class DependencyAnnotation(t.Generic[T_Injectable, T_Injected, T_ScopeAlias]):
-    """Dependency Object"""
-    __slots__ = '_deps', '_scope', '_default', '__weakref__'
-
-    def __new__(cls, deps: T_Injectable, scope: ScopeAlias=..., *, default: t.Union[T_Injected, Callable[..., T_Injected]]=...):
-        if isinstance(deps, cls):
-            if scope in (..., None, deps.scope) and default in (..., deps.default):
-                return deps
-            else:
-                kwds = dict()
-                scope in (..., None) or kwds.update(scope=scope)
-                default is ... or kwds.update(default=default)
-                return deps.copy(**kwds)
-        return super().__new__(cls)
-
-    def __init__(self, deps: T_Injectable, scope: ScopeAlias=..., *, default: t.Union[T_Injected, FunctionType, MethodType]=...):
-        self._deps = tuple(deps) if isinstance(deps, list) \
-            else deps if isinstance(deps, tuple) else (deps,)
-        self._scope = Scope[(None if scope is ... else scope) or Scope.ANY]
-        self._default = default
-    
-    @property
-    def deps(self) -> T_Injectable:
-        return self._deps
-
-    @property
-    def scope(self) -> Scope[T_ScopeAlias]:
-        return self._scope
-
-    def __eq__(self, x) -> bool:
-        if isinstance(x, DependencyAnnotation):
-            return self._scope == x._scope and self._deps == x._deps
-        return NotImplemented
-
-    def __hash__(self) -> bool:
-        return hash((self.scope, self.deps))
-
-    def make_resolver(self, inj) -> T_Injectable:
-        # return inj[self._scope][self._deps]
-        inj = inj[self._scope]
-        return next((inj[d] for d in self._deps), self._default)
-
-    def copy(self, **kwds) -> T_Injectable:
-        kwds['scope'] = kwds.get('scope') or self._scope
-        kwds['deafult'] = kwds.setdefault('deafult', self._default)
-        return self.__class__(self._deps, **kwds)
-    __copy__ = copy
     
 

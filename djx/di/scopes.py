@@ -11,11 +11,12 @@ from collections.abc import Collection, Callable
 
 from djx.common.collections import fallback_default_dict, nonedict, orderedset, fallbackdict
 from djx.common.imports import ImportRef
-from djx.common.typing import GenericLike
+from djx.common.typing import GenericLike, get_origin
 
 
 from djx.common.utils import export, lookup_property, cached_property, noop
 from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
+from djx.common.utils.data import setdefault
 
 
 
@@ -314,6 +315,12 @@ class Scope(abc.Scope, metaclass=ScopeType[T_Scope, _T_Conf, T_Provider]):
         def fallback(key):
             if pro := get_provider(key):
                 return setdefault(key, pro(key, self))
+            elif origin := get_origin(key):
+                if pro := get_provider(origin):
+                    return setdefault(key, pro(key, self))
+                # else:
+            return setdefault(key, None)
+
 
         res = fallbackdict(fallback)
         setdefault = res.setdefault

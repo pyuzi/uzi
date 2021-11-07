@@ -240,10 +240,8 @@ class Proxy(t.Generic[_TP], metaclass=ProxyType):
         return getattr(_object_getattribute(self, '__proxy_target__'), name)
 
     # def __getattr__(self, name):
-    #     if name in _proxy_attrs:
-    #         raise AttributeError(name)
-        
-    #     return getattr(self.__proxy_target__, name)
+    #     vardump(f'__getattr__({name!r})')
+    #     raise AttributeError(f"{name=!r} don't know what to do here...")
 
     __str__ = _ProxyLookup(str)
     __bytes__ = _ProxyLookup(bytes)

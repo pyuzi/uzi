@@ -775,7 +775,16 @@ def _discover_scopes(sender, *, instance: IocContainer, **kwds):
     instance.discover_scopes(text.compact((os.environ.get(IOC_CONTAINER_ENV_KEY) or '').replace(',', ' ')).split(' '))
 
     from .injectors import Injector
-    from .resolvers import InjectorResolver
+    from .resolvers import InjectorResolver, AliasResolver
+    from .tools import Depends
+
+    @instance.provide(t.Annotated, at='any')
+    def provide_annotaed(self, token, scope: 'BaseScope'):
+        if dep := next((d for d in token.__metadata__ if d.__class__ is Depends), None):
+            aka = token.__origin__ if dep._on is ... else dep._on
+            if akaa := scope.providers.get(aka):
+                return akaa(token, scope)
+
 
     instance.resolver(abc.Injector, InjectorResolver(), at='any', priority=-10)
 

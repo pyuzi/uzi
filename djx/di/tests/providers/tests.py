@@ -102,7 +102,7 @@ class SymbolTests:
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        _n = int(5e3)
+                        _n = int(8e4)
 
                         profile = speed_profiler(_n, labels=('PY', 'DI'))
                     
@@ -124,4 +124,4 @@ class SymbolTests:
                         # assert injector[Bar] is not injector[Bar]
 
 
-        assert 1
+        assert 0

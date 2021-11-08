@@ -300,7 +300,7 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
                 return rv
         elif isinstance(key, (type, FunctionType)):
             del self.content[key]
-            self.ioc.injectable(key, key, at=self.name, flush=False)
+            self.ioc.injectable(key, key, at=self.name, priority=-10)
             return self.make(key, *args, **kwds)
 
         raise InjectorKeyError(f'{key} in {self!r}')

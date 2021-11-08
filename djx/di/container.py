@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Set, Iterable, Hashable
 from djx.common.collections import PriorityStack, fallback_default_dict, fallbackdict, frozendict, nonedict, orderedset
 from djx.common.imports import ImportRef
 from djx.common.proxy import proxy 
-from djx.common.saferef import SafeRefSet
+from djx.common.typing import get_origin
 from djx.common.utils import export, text, Missing, noop
 
 from . import abc, signals
@@ -163,13 +163,20 @@ class IocContainer:
             if annotation:
                 aka = token.__origin__ if annotation._on is ... else annotation._on
                 return AliasResolver(aka)
-                # if akaa := scope.providers.get(aka):
-                    # return akaa(token, scope)
+
+        # @self.provide(t.Literal, at='any', priority=-10)
+        # def provide_literal(self, token, scope: 'BaseScope'):
+
+        #     aka = token.__origin__ if annotation._on is ... else annotation._on
+        #     return AliasResolver(aka)
+        #     # if akaa := scope.providers.get(aka):
+        #         # return akaa(token, scope)
 
         self.resolver(abc.Injector, InjectorResolver(), at='any', priority=-10)
 
         self.alias(Injector, abc.Injector, at='any', priority=-10)
 
+        self.value({None, type(None)}, None, at='any')
         
 
     def __setattr__(self, name, val):
@@ -360,6 +367,20 @@ class IocContainer:
                     return True
         return False
 
+    def is_injectable(self, obj):
+        if self.is_provided(obj):
+            return True
+        elif origin := get_origin(obj):
+            is_injectable = self.is_injectable
+            if origin is t.Annotated:
+                return any(is_injectable(a.__class__) for a in obj.__metadata__)
+            elif origin is {t.Union, t.Literal}:
+                return all(is_injectable(a) for a in obj.__args__)
+            else:
+                return is_injectable(origin)
+        else:
+            return False
+
     def flush(self, tag: T_Injectable, scope: str=None):
         scope = self.scope_name(scope)
         if scope := self.scopes.get(scope):
@@ -369,8 +390,6 @@ class IocContainer:
             tags: t.Union[_T_Tags, None],
             use: t.Union[abc.Provider, T_UsingAny], /,
             at: t.Union[_T_ScopeNames, None] = None, 
-            *, 
-            flush: bool = True,
             **kwds) -> None:
                 ...
 
@@ -411,7 +430,6 @@ class IocContainer:
                 tags: t.Union[_T_Tags, None],
                 use: t.Union[abc.Provider, T_UsingAny], /,
                 at: t.Union[_T_ScopeNames, None] = None, 
-                *, 
                 **kwds) -> None:
         
         provider = self.create_provider(use, **kwds)
@@ -464,7 +482,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> _T_Tags:
         ...
 
@@ -475,7 +492,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
     @t.overload
@@ -485,7 +501,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[T_UsingAlias], T_UsingAlias]:
         ...
 
@@ -514,7 +529,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> _T_Tags:
         ...
     @t.overload
@@ -524,7 +538,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 
@@ -548,7 +561,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> _T_Tags:
         ...
     @t.overload
@@ -558,7 +570,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 
@@ -569,7 +580,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[T_UsingFunc], T_UsingFunc]:
         ...
 
@@ -598,7 +608,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> _T_Tags:
         ...
 
@@ -608,7 +617,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
     @t.overload
@@ -618,7 +626,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[T_UsingType], T_UsingType]:
         ...
 
@@ -646,7 +653,6 @@ class IocContainer:
                 cache:bool=None, 
                 kind: KindOfProvider,
                 priority: int = 1,  
-                flush: bool = True,
                 **opts) -> _T_Tags:
         ...    
     @t.overload
@@ -657,7 +663,6 @@ class IocContainer:
                 cache:bool=None, 
                 kind: KindOfProvider,
                 priority: int = 1,  
-                flush: bool = True,
                 **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
     @t.overload
@@ -668,7 +673,6 @@ class IocContainer:
                 cache:bool=None, 
                 kind: KindOfProvider,
                 priority: int = 1,  
-                flush: bool = True,
                 **opts) -> Callable[[T_UsingAny], T_UsingAny]:
         ...
 
@@ -704,7 +708,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> T_UsingFactory:
         ...
     @t.overload
@@ -714,7 +717,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[T_UsingFactory], T_UsingFactory]:
         ...
 
@@ -724,7 +726,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 
@@ -751,7 +752,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> T_UsingResolver:
         ...
     
@@ -761,7 +761,6 @@ class IocContainer:
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
             cache:bool=None, 
-            flush: bool = True,
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 

@@ -104,7 +104,7 @@ class SymbolTests:
                         injbaz = lambda: inj[Baz]
                         inj404 = lambda: inj['404']
 
-                        _n = int(5e2)
+                        _n = int(5e4)
 
                         # injbar()
                         # injfoo()
@@ -129,4 +129,4 @@ class SymbolTests:
                         # assert injector[Bar] is not injector[Bar]
 
 
-        assert 1
+        assert 0

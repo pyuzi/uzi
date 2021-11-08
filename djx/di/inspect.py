@@ -50,17 +50,17 @@ def builtin_values():
 
 # ins.isbuiltin()
 
-def annotated_deps(obj) -> t.Union[list, t.Any]:
-    from . import ioc, Depends
+# def annotated_deps(obj) -> t.Union[list, t.Any]:
+#     from . import ioc, Depends
 
-    if ioc.is_provided(obj):
-        return obj
-    elif ioc.is_provided(orig := get_origin(obj)):
-        return obj
-    elif orig in _expand_generics:
-        for d in get_args(obj):
-            if d.__class__ is Depends:
-                return obj
+#     if ioc.is_provided(obj):
+#         return obj
+#     elif ioc.is_provided(orig := get_origin(obj)):
+#         return obj
+#     elif orig in _expand_generics:
+#         for d in get_args(obj):
+#             if d.__class__ is Depends:
+#                 return obj
         
 
 
@@ -90,11 +90,11 @@ def signature(callable: Callable[..., t.Any], *, follow_wrapped=True, evaltypes=
 @export()
 class Parameter(ins.Parameter):
     
-    __slots__ = ('_dependency', '_type',)
+    __slots__ = '_dependency',
     
-    def __init__(self, name, kind, *, default=_empty, annotation=_empty):
-        super().__init__(name, kind, default=default, annotation=annotation)
-        self._dependency = annotated_deps(self._annotation) or None
+    # def __init__(self, name, kind, *, default=_empty, annotation=_empty):
+    #     super().__init__(name, kind, default=default, annotation=annotation)
+    #     self._dependency = annotated_deps(self._annotation) or None
 
     # @property
     # def is_dependency(self):
@@ -102,25 +102,21 @@ class Parameter(ins.Parameter):
 
     @property
     def dependency(self):
-        return self._dependency
-
+        try:
+            return self._dependency
+        except AttributeError:
+            from . import ioc
+            dep = self.annotation
+            self._dependency = dep if ioc.is_injectable(dep) else None
+            return self._dependency
+        
     @property
     def is_dependency(self):
-        return self._dependency is not None
+        return self.dependency is not None
 
     def __repr__(self):
         deps = f', <Depends: {self.dependency}>' if self.dependency else ''
         return f'<{self.__class__.__name__} {self}{deps}>'
-
-    def __reduce__(self):
-        return (type(self),
-                (self._name, self._kind),
-                {'_default': self._default,
-                 '_annotation': self._annotation})
-    
-    def __setstate__(self, state):
-        self._default = state['_default']
-        self._annotation = state['_annotation']
 
 
 @export()
@@ -168,7 +164,7 @@ class BoundArguments(ins.BoundArguments):
 
     def inject_args(self, inj: Injector, values: dict = None):
         deps = bool(self._signature.positional_dependencies)
-
+        make = inj.make
         if deps and values and self.arguments:
             for param_name, param in self._signature.positional_parameters.items():
                 if param_name in values:
@@ -177,7 +173,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -195,7 +191,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = values[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -213,7 +209,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -229,7 +225,7 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.positional_parameters.items():
                 if param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         break
                 else:
@@ -257,6 +253,7 @@ class BoundArguments(ins.BoundArguments):
     def inject_kwargs(self, inj: Injector, values: dict=None):
         kwargs = dict()
         deps = bool(self._signature.keyword_dependencies)
+        make = inj.make
         
         if deps and self.arguments and values:
             for param_name, param in self._signature.keyword_parameters.items():
@@ -266,7 +263,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         continue    
                 else:
@@ -283,7 +280,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = values[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         continue    
                 else:
@@ -300,7 +297,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         continue    
                 else:
@@ -315,7 +312,7 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.keyword_parameters.items():
                 if param.dependency is not None:
                     try:
-                        arg = inj.make(param.dependency)
+                        arg = make(param.dependency)
                     except KeyError:
                         continue    
                 else:

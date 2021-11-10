@@ -136,7 +136,9 @@ class InjectorVar(t.Generic[T_Injected]):
         elif value is Void:
             raise TypeError(f'{cls.__name__} one of value or call must be provided.')
         else:
-            self.get = self.make = make
+            self.make = make
+            self.get = lambda: value
+
 
         self.injector = injector
         self.value = value

@@ -38,47 +38,6 @@ logger = logging.getLogger(__name__)
 
 INJECTOR_TOKEN = f'{__package__}.Injector'
 
-_injection_stack: t.Final = ContextVar['InjectionStackInfo']('_injection_stack', default=None)
-_get_injection_stack = _injection_stack.get
-_set_injection_stack = _injection_stack.set
-_reset_injection_stack = _injection_stack.reset
-
-
-@export()
-class InjectionStackInfo:
-    __slots__ = 'dependency', 'resolver', 'args', 'kwargs', 'parent'
-
-    dependency: T_Injectable
-    resolver: T_InjectedVar
-    args: tuple
-    kwargs: dict
-
-    def __new__(cls, dependency, resolver, parent=None, args=(), kwargs=frozendict()):
-        self = super().__new__(cls)
-        _setattr = self.__setattr__
-        _setattr('dependency', dependency)
-        _setattr('resolver', resolver)
-        _setattr('parent', parent)
-        _setattr('args', args)
-        _setattr('kwargs', kwargs)
-        return self
-    
-    def __reduce__(self):
-        return self.__class__, (
-                self.dependency, 
-                self.resolver, 
-                self.parent, 
-                self.args, 
-                self.kwargs, 
-            )
-
-
-
-
-
-
-
-
 
 
 @export()
@@ -232,10 +191,6 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         return self.__ctx
 
     @property
-    def injection_stack(self):
-        return  _injection_stack.get()[::-1]
-        
-    @property
     def booted(self):
         return self.__booted
 
@@ -278,8 +233,6 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
             return self.make(injectable, *args, **kwds)
         except InjectorKeyError:
             return default
-    
-    
     
     def __getitem__(self, key: T_Injectable) -> T_Injected:
         pass

@@ -3,16 +3,14 @@ from logging import getLogger
 import typing as t 
 from abc import abstractmethod
 from djx.common.abc import Orderable
-from djx.common.collections import Arguments, nonedict
+from djx.common.collections import Arguments
 
-from collections.abc import  Callable, Hashable, Sequence
-from copy import copy
-
+from collections.abc import  Callable, Hashable
 
 
-from djx.common.saferef import SafeReferenceType, saferef, SafeRefSet
-from djx.common.utils import export, Void, cached_property, Missing, noop
-from .inspect import BoundArguments, ordered_id
+
+from djx.common.utils import export
+from .inspect import ordered_id
 from . import abc
 from .abc import (
     ScopeAlias, ResolverFunc, T_Injectable, T, T_UsingAlias,
@@ -51,8 +49,6 @@ class Provider(Orderable, t.Generic[T]):
     # _using_kwarg_: t.ClassVar = 'concrete'
     _sig: 'InjectableSignature'
 
-    # _resolvers: fallback_default_dict[str, SafeRefSet]
-
     __pos: int
 
     # def __init_subclass__(cls, hidden_attrs=(), **kwds) -> None:
@@ -87,14 +83,6 @@ class Provider(Orderable, t.Generic[T]):
     def _boot_(self):
         self.__pos = ordered_id()
 
-    # @property
-    # def resolvers(self):
-    #     try:
-    #         return self._resolvers
-    #     except AttributeError:
-    #         self._resolvers = fallback_default_dict(SafeRefSet)
-    #         return self._resolvers
-
     @property
     def signature(self):
         try:
@@ -119,19 +107,16 @@ class Provider(Orderable, t.Generic[T]):
     def get(self, key, default=None):
         return getattr(self, key, default)
 
-    def clone(self):
-        return copy(self)
+    # def clone(self):
+    #     return copy(self)
         
-    def replace(self, **kwds):
-        return self.clone()._assing(**kwds)
+    # def replace(self, **kwds):
+    #     return self.clone()._assing(**kwds)
 
     def implicit_tag(self):
         if isinstance(self.concrete, Hashable):
             return self.concrete
         return NotImplemented
-
-    def _cleanup_resolve_(self, scope: str, key: SafeReferenceType):
-        return self.resolvers.get(scope, nonedict()).pop(key, None) is not None
 
     @abstractmethod
     def provide(self, scope: 'Scope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
@@ -280,6 +265,7 @@ class CallableProvider(Provider):
         else:
             def resolve(at):
                 nonlocal cache
+
                 def make(*a, **kw):
                     nonlocal at, func, bound
                     return func(*bound.inject_args(at, kw), *a, **bound.inject_kwargs(at, kw))

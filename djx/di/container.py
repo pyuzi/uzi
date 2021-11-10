@@ -147,22 +147,28 @@ class IocContainer:
 
     def _register_default_providers_(self):
         from .injectors import Injector
-        from .resolvers import InjectorResolver, AliasResolver
         from .tools import Depends
+        from . import InjectorVar
         
-        is_provided = self.is_provided
+        is_provided = self.is_injectable
 
         @self.provide(t.Annotated, at='any', priority=-10)
-        def provide_annotaed(self, token, scope: 'BaseScope'):
+        def provide_annotaed(self, scope: 'BaseScope', token):
             if anno := next((d for d in token.__metadata__ if is_provided(d.__class__)), None):
                 if prov := scope.providers.get(anno.__class__):
-                    return prov(token, scope, annotation=anno)
+                    return prov(scope, token, annotation=anno)
 
         @self.provide(Depends, at='any', priority=-10)
-        def provide_depends(self, token, scope: 'BaseScope', annotation: Depends=None):
+        def provide_depends(self, scope: 'BaseScope', token, annotation: Depends=None):
             if annotation:
                 aka = token.__origin__ if annotation._on is ... else annotation._on
-                return AliasResolver(aka)
+                # vardump(scope, annotation, token, aka)
+                def resolve(at: Injector):
+                    nonlocal aka
+                    # vardump(scope, annotation, token, aka, at.content[aka].make())
+                    return at.content[aka]
+
+                return resolve
 
         # @self.provide(t.Literal, at='any', priority=-10)
         # def provide_literal(self, token, scope: 'BaseScope'):
@@ -172,7 +178,7 @@ class IocContainer:
         #     # if akaa := scope.providers.get(aka):
         #         # return akaa(token, scope)
 
-        self.resolver(abc.Injector, InjectorResolver(), at='any', priority=-10)
+        self.resolver(abc.Injector, lambda at:  InjectorVar(at, at), at='any', priority=-10)
 
         self.alias(Injector, abc.Injector, at='any', priority=-10)
 
@@ -371,13 +377,12 @@ class IocContainer:
         if self.is_provided(obj):
             return True
         elif origin := get_origin(obj):
-            is_injectable = self.is_injectable
             if origin is t.Annotated:
-                return any(is_injectable(a.__class__) for a in obj.__metadata__)
-            elif origin is {t.Union, t.Literal}:
-                return all(is_injectable(a) for a in obj.__args__)
+                return any(self.is_injectable(a.__class__) for a in obj.__metadata__)
+            elif origin in {t.Union, t.Literal}:
+                return all(self.is_injectable(a) for a in obj.__args__)
             else:
-                return is_injectable(origin)
+                return self.is_injectable(origin)
         else:
             return False
 

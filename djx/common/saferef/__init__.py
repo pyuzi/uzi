@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 @export()
-def saferef(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, _weaktype=weakref, _strongtype=None) -> ReferenceType[_T]:
-    if isinstance(obj, ReferenceType):
+def saferef(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, _weaktype=weakref, _strongtype=None) -> SafeReferenceType[_T]:
+    if isinstance(obj, SafeReferenceType):
         if (o := obj()) is None:
             return obj
         else:
@@ -56,7 +56,7 @@ def saferef(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, _weak
 
 
 if t.TYPE_CHECKING:
-    def ref(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, checkstatic:bool=True) -> ReferenceType[_T]:
+    def ref(obj: _T, callback=None, /, *, coerce: bool=True, strict=False, checkstatic:bool=True) -> SafeReferenceType[_T]:
         ...
 else:
     ref = saferef
@@ -90,7 +90,7 @@ StrongReferent.register(datetime.timezone)
 
 
 
-class ReferenceType(weakref[_T], metaclass=ABCMeta):
+class SafeReferenceType(weakref[_T], metaclass=ABCMeta):
 
     __slots__ = ()
 
@@ -103,7 +103,7 @@ class ReferenceType(weakref[_T], metaclass=ABCMeta):
 from ..proxy import CallableValueProxy
 
 @export()
-@ReferenceType.register
+@SafeReferenceType.register
 class StrongRef(CallableValueProxy):
 
     __slots__ = '__callback__',

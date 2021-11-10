@@ -17,7 +17,7 @@ from djx.common.collections import orderedset, fallback_chain_dict, fallbackdict
 from djx.common.imports import ImportRef
 from djx.common.proxy import unproxy
 from djx.common.utils.data import assign, delitem, getitem
-from djx.common.saferef import ReferenceType, saferef
+from djx.common.saferef import SafeReferenceType, saferef
 
 from djx.core import settings
 from djx.core.abc import Renderable
@@ -175,7 +175,7 @@ class RawTemplate:
         return rv
 
     @staticmethod
-    def _pop_compiled_(ref: ReferenceType['RawTemplate'], key) -> None:
+    def _pop_compiled_(ref: SafeReferenceType['RawTemplate'], key) -> None:
         if tmp := ref():
             tmp._compiled.pop(key, None)
         

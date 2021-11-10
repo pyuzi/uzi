@@ -8,17 +8,21 @@ http://www.python.org/dev/peps/pep-0205/
 # Naming convention: Variables named "wr" are weak reference objects;
 # they are called this instead of "ref" to avoid name collisions with
 # the module-global ref() function imported from _weakref.
+from functools import update_wrapper
+from types import FunctionType, new_class
+import typing as t 
 
-from weakref import _remove_dead_weakref
+
+from weakref import _remove_dead_weakref, WeakValueDictionary
 
 
 
-from collections.abc import MutableMapping, Mapping
+from collections.abc import MutableMapping, Mapping, Hashable
 
 from ._set import _IterationGuard
 
 
-from . import saferef as ref, ReferenceType, StrongRef, weakref
+from . import saferef as ref, SafeReferenceType, StrongRef, weakref
 
 
 
@@ -28,6 +32,10 @@ __all__ = [
 ]
 
 _dead = StrongRef(None)
+
+
+_TK = t.TypeVar('_TK', bound=Hashable)
+_TV = t.TypeVar('_TV')
 
 
 
@@ -50,11 +58,6 @@ class SafeValueRefDict:
 
     __factory__ = dict
 
-    def __init__(self, dict=None):
-
-        self.data = (self.__factory__ or dict)()
-
-
     def __init__(self, other=(), /, **kw):
         def remove(wr, selfref=weakref(self), _atomic_removal=_remove_dead_weakref):
             self = selfref()
@@ -69,7 +72,7 @@ class SafeValueRefDict:
         # A list of keys to be removed
         self._pending_removals = []
         self._iterating = set()
-        self.data = (self.__factory__ or dict)()
+        self.data = self.__factory__()
         self.update(other, **kw)
 
     def _commit_removals(self):
@@ -283,7 +286,7 @@ class SafeValueRefDict:
         return NotImplemented
 
 
-@ReferenceType.register
+@SafeReferenceType.register
 class _KeyedRef:
     """Specialized reference that includes a key corresponding to the value.
 
@@ -342,7 +345,7 @@ class _StrongKeyedRef(_KeyedRef, StrongRef):
 
 
 @MutableMapping.register
-class SafeKeyRefDict:
+class SafeKeyRefDict(t.Generic[_TK, _TV]):
     """ Mapping class that references keys weakly.
 
     Entries in the dictionary will be discarded when there is no
@@ -355,12 +358,38 @@ class SafeKeyRefDict:
 
     __slots__ = 'data', '_remove', '_pending_removals', '_iterating', '_dirty_len', '__weakref__'
 
-    __factory__ = dict
+    __factory__: t.Final[type[dict[_TK, _TV]]] = dict
 
-    def __init__(self, data=None):
+    data: dict[_TK, _TV]
 
-        self.data = (self.__factory__ or dict)()
 
+    @classmethod
+    def using(cls, factory):
+        if not callable(factory):
+            raise TypeError(f'factory must be a callable. got {type(factory)}.')
+        class safedict(cls):
+            __slots__ = ()
+            if isinstance(factory, FunctionType):
+                @classmethod
+                def __factory__(cls):
+                    return factory()
+            else:
+                __factory__ = factory
+
+        # for k in ('__module__', '__name__', '__qualname__', '__doc__',):
+        #     try:
+        #         v = getattr(cls, k)
+        #     except AttributeError:
+        #         pass
+        #     else:
+        #         setattr(safedict, k, v)
+
+        return safedict
+
+
+    def __init__(self, data=None, /):
+
+        self.data = self.__factory__()
         # A list of dead weakrefs (keys to be removed)
         self._pending_removals = []
         self._iterating = set()

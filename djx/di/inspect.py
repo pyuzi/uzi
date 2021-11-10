@@ -164,7 +164,8 @@ class BoundArguments(ins.BoundArguments):
 
     def inject_args(self, inj: Injector, values: dict = None):
         deps = bool(self._signature.positional_dependencies)
-        make = inj.make
+        make = inj.__getitem__
+
         if deps and values and self.arguments:
             for param_name, param in self._signature.positional_parameters.items():
                 if param_name in values:
@@ -253,7 +254,7 @@ class BoundArguments(ins.BoundArguments):
     def inject_kwargs(self, inj: Injector, values: dict=None):
         kwargs = dict()
         deps = bool(self._signature.keyword_dependencies)
-        make = inj.make
+        make = inj.__getitem__
         
         if deps and self.arguments and values:
             for param_name, param in self._signature.keyword_parameters.items():

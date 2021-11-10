@@ -8,7 +8,7 @@ from types import GenericAlias
 from collections.abc import MutableSet
 
 
-from . import saferef as ref, ReferenceType, weakref
+from . import saferef as ref, SafeReferenceType, weakref
 
 
 __all__ = ['SafeRefSet']
@@ -54,7 +54,7 @@ class SafeRefSet(t.Generic[_T]):
 
     __factory__ = set
 
-    data: set[ReferenceType[_T]]
+    data: set[SafeReferenceType[_T]]
 
     def __init__(self, data=None, factory=None):
 

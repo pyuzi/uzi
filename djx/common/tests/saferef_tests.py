@@ -1,6 +1,6 @@
 import pytest
 
-from ..saferef import saferef, StrongRef, weakref, ReferenceType
+from ..saferef import saferef, StrongRef, weakref, SafeReferenceType
 
 
 
@@ -22,7 +22,7 @@ class RefTests:
         r1 = saferef(t1)
 
         assert isinstance(r1, weakref)
-        assert isinstance(r1, ReferenceType)
+        assert isinstance(r1, SafeReferenceType)
         assert t1 is r1()
         assert r1 is saferef(t1)
         assert r1 == StrongRef(t1)
@@ -31,7 +31,7 @@ class RefTests:
         r2 = saferef(t2)
 
         assert isinstance(r2, StrongRef)
-        assert isinstance(r2, ReferenceType)
+        assert isinstance(r2, SafeReferenceType)
         assert t2 is r2()
         assert r2 == saferef(t2)
         assert r2 is saferef(t2)
@@ -52,7 +52,7 @@ class RefTests:
         r1 = saferef(t1, cb1)
 
         assert isinstance(r1, weakref)
-        assert isinstance(r1, ReferenceType)
+        assert isinstance(r1, SafeReferenceType)
         assert t1 is r1()
         assert r1 == saferef(t1)
         assert r1.__callback__ is cb1
@@ -74,7 +74,7 @@ class RefTests:
 
         r2 = saferef(t2, cb2)
 
-        assert isinstance(r2, ReferenceType)
+        assert isinstance(r2, SafeReferenceType)
         assert t2 is r2()
         assert r2 == saferef(t2)
         assert r2.__callback__ is cb2

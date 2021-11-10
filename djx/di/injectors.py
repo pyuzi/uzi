@@ -16,13 +16,13 @@ from djx.common.utils import export
 
 from djx.common.utils import Void
 
-from .providers import AliasResolver, ValueResolver
 from .abc import ( 
-    InjectorContext, InjectorKeyError, Resolver, Scope, ScopeAlias, T, Injectable,
+    InjectorContext, InjectorKeyError, Scope, ScopeAlias, T, Injectable,
     T_ContextStack, T_Injectable, T_Injected, T_Injector, T_Provider, T_Scope, 
-    T_Resolver
+    T_InjectedVar
 )
 from . import abc
+from .common import InjectorVar
 
 if t.TYPE_CHECKING:
     from .container import IocContainer
@@ -49,7 +49,7 @@ class InjectionStackInfo:
     __slots__ = 'dependency', 'resolver', 'args', 'kwargs', 'parent'
 
     dependency: T_Injectable
-    resolver: T_Resolver
+    resolver: T_InjectedVar
     args: tuple
     kwargs: dict
 
@@ -178,7 +178,7 @@ def _new_pk() -> None:
 
 
 @export()
-@abc.Injector[T_Scope, T_Injected, T_Provider, T_Injector].register
+@abc.Injector.register
 class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
     __slots__ = (
@@ -188,7 +188,7 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
     scope: 'Scope'
     parent: T_Injector
-    content: dict[T_Injectable, T_Resolver]
+    content: dict[T_Injectable, InjectorVar]
     
     __ctx: InjectorContext[T_Injector]
 
@@ -197,7 +197,7 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
     # __skipself: bool
     __booted: bool
 
-    def __init__(self, scope: T_Scope, parent: T_Injector=None, content: dict[T_Injectable, T_Resolver]=None) -> None:
+    def __init__(self, scope: T_Scope, parent: T_Injector=None, content: dict[T_Injectable, T_InjectedVar]=None) -> None:
         self.scope = scope
         self.parent = NullInjector() if parent is None else parent
         self.level = 0 if parent is None else parent.level + 1 
@@ -255,7 +255,6 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         for scope in scopes:
             try:
                 return _scopes(keyfn(scope))
-                # return self.make(keyfn(scope))
             except KeyError:
                 continue
 
@@ -280,34 +279,44 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
         except InjectorKeyError:
             return default
     
+    
+    
+    def __getitem__(self, key: T_Injectable) -> T_Injected:
+        pass
+
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.content.__getitem__(key)
         if res is not None:
-            # if not(args or kwds):
-            if res.value is not Void and not(args or kwds):
-                # assert not(args or kwds), (
-                #         f'{res} takes no arguments. Some where given for {key}'
-                #     )
+            if (args or kwds):
+                return res.make(*args, **kwds)
+            elif res.value is not Void:
                 return res.value
-                # return res.__call__()
             else:
-                return res.__call__(*args, **kwds)
+                return res.get()
+
+            # if res.value is not Void and not(args or kwds):
+            #     # assert not(args or kwds), (
+            #     #         f'{res} takes no arguments. Some where given for {key}'
+            #     #     )
+            #     return res.value
+            #     # return res.__call__()
+            # else:
+            #     return res.__call__(*args, **kwds)
         elif isinstance(key, ImportRef):
             concrete = key()
             if concrete is not None:
-                rv = self.make(concrete)
-                self.set(key, AliasResolver(concrete, bound=self))
+                rv = self.make(concrete, *args, **kwds)
+                self.ioc.alias(key, concrete, at=self.name, priority=-10)
                 return rv
         elif isinstance(key, (type, FunctionType)):
-            del self.content[key]
             self.ioc.injectable(key, key, at=self.name, priority=-10)
             return self.make(key, *args, **kwds)
 
         raise InjectorKeyError(f'{key} in {self!r}')
     
     def set(self, k: T_Injectable, val: T_Injected):
-        if not isinstance(val, Resolver):
-            val = ValueResolver(val, bound=self)
+        if not isinstance(val, InjectorVar):
+            val = InjectorVar(self, val)
         self.content[k] = val
     
     def remove(self, k: T_Injectable):
@@ -341,6 +350,13 @@ class Injector(t.Generic[T_Scope, T_Injected, T_Provider, T_Injector]):
 
     def __len__(self) -> bool:
         return len(self.content) 
+
+    # def __eq__(self, o) -> bool:
+    #     if isinstance(o, abc.Injector):
+    #         return self.scope == o.scope
+    #     elif isinstance(o, abc.Scope):
+    #         return o == self.scope
+    #     return NotImplemented
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}[{self.level}]({self.name!r})'

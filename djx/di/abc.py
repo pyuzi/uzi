@@ -1,28 +1,24 @@
 from functools import cache
 import inspect
 import typing as t
-from weakref import WeakSet
 from djx.common.collections import fallback_default_dict, orderedset, PriorityStack
-from djx.common.utils import Void
 import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import (
-    Mapping, MutableSequence, ItemsView, ValuesView, MutableMapping, 
+    Mapping, MutableMapping, 
     Sequence, Hashable, Container, Callable
 )
-from collections import defaultdict, deque
 from contextlib import AbstractContextManager, ExitStack
 from itertools import chain
 from types import FunctionType, GenericAlias, MethodType
 
-from djx.common.utils import cached_class_property, cached_property, class_property, export, text
+from djx.common.utils import cached_class_property, export, text
 
 from djx.common.abc import Orderable
-from djx.common.collections import frozendict
 from djx.common.typing import GenericAlias as _GenericAlias
 
 if t.TYPE_CHECKING:
-    from . import IocContainer, KindOfProvider
+    from . import InjectorVar, KindOfProvider
 else:
     __all__ = [
         'ANY_SCOPE',
@@ -56,7 +52,9 @@ _T_Conf = t.TypeVar('_T_Conf', bound='ScopeConfig', covariant=True)
 
 
 T_Provider = t.TypeVar('T_Provider', bound='Provider', covariant=True)
-T_Resolver = t.TypeVar('T_Resolver', bound='Resolver', covariant=True)
+T_Resolver = t.TypeVar('T_Resolver', bound='ResolverFunc', covariant=True)
+
+T_InjectedVar = t.TypeVar('T_InjectedVar', bound='InjectedVar', covariant=True)
 
 _T_Cache = MutableMapping['StaticIndentity', T_Injected]
 _T_Providers = Mapping['Injectable', t.Optional[T_Provider]]
@@ -64,43 +62,6 @@ _T_Providers = Mapping['Injectable', t.Optional[T_Provider]]
 _T_CacheFactory = Callable[..., _T_Cache]
 _T_ContextFactory = Callable[..., T_ContextStack]
 _T_InjectorFactory = Callable[[T_Scope, 'Injector'], T_Injector]
-
-
-
-@export()
-class Resolver(t.Generic[T_Injected], metaclass=ABCMeta):
-    """Resolver Object"""
-
-    __slots__ = ('bound', 'value', '__weakref__')
-
-    alias: t.ClassVar[bool] = False
-    concrete = None
-    bound: t.Union[T_Injector, None]
-    value: t.Union[T_Injected, type(Void)]
-
-    def __init__(self, value=Void, bound=None):
-        self.value = value
-        self.bound = bound
-
-    def bind(self: T_Resolver, inj: T_Injector) -> T_Resolver:
-        return self if inj is self.bound else self.clone(bound=inj)
-
-    def clone(self: T_Resolver, *args, **kwds) -> T_Resolver: 
-        kwds.setdefault('value', self.value)
-        kwds.setdefault('bound', self.bound)
-        return self.__class__(*args, **kwds)
-    
-    def __call__(self, *args, **kwds) -> T_Injected: 
-        return self.value
-
-    # def __str__(self) -> str: 
-    #     value, bound = self.value, self.bound
-    #     return f'{self.__class__.__name__}({bound=}, {value=!r})'
-
-    def __repr__(self) -> str: 
-        bound, value = self.bound, self.value #(self() if self.value is Void else self.value)
-        return f'{self.__class__.__name__}({bound=!s}, {value=!r})'
-    
 
 
 
@@ -440,7 +401,7 @@ class Scope(Orderable, Container, metaclass=ScopeType):
     def __reduce__(self):
         return self.__class__, self.name
 
-    def __eq__(self, x) -> bool:
+    def __eq__(self, x, orderby=None) -> bool:
         if isinstance(x, ScopeAlias):
             return x == self.key
         elif isinstance(x, (Scope, ScopeType)):
@@ -456,12 +417,12 @@ class Scope(Orderable, Container, metaclass=ScopeType):
 
 
 @export()
-class ProviderLike(Callable[['IocContainer', T_Injectable], Resolver[T_Injectable]], t.Generic[T_Injected, T_Injectable]):
+class ProviderLike(Callable[[Scope, T_Injectable], Callable[['Injector'], 'InjectorVar[T_Injected]']]):
 
     __slots__ = ()
 
     @abstractmethod
-    def __call__(self, ioc: 'IocContainer', token: T_Injectable) -> Resolver[T_Injected]:
+    def __call__(self, scope: Scope, token: T_Injectable) -> Callable[[T_Injector], 'InjectorVar[T_Injected]']:
         ...
 
     @classmethod
@@ -476,62 +437,16 @@ class ProviderLike(Callable[['IocContainer', T_Injectable], Resolver[T_Injectabl
 
 @export()
 @ProviderLike.register
-class Provider(Orderable, t.Generic[T_Injected, T_Injectable, T_Resolver], metaclass=ABCMeta):
+class Provider(Orderable, t.Generic[T], metaclass=ABCMeta):
     
     __slots__ = ()
-    
-    scope: str
-    priority: int
-    concrete: T_Injected
-    cache: bool
 
     kind: 'KindOfProvider'
 
-    # @abstractmethod
-    # def __getstate__(self):
-    #     ...
-
     @abstractmethod
-    def __setstate__(self, state):
+    def __call__(self, scope: Scope, token: T_Injectable, *args, **kwds) -> Callable[[T_Injector], 'InjectorVar[T_Injected]']:
         ...
 
-    def replace(self, **kwds):
-        rv = self.clone()
-        rv.__setstate__(kwds)
-        return rv        
-
-    @abstractmethod
-    def clone(self: T_Provider) -> T_Provider:
-        ...
-
-    @t.overload
-    def flush(self, scope: str, /) -> Sequence[T_Injectable]:
-        ...
-    @t.overload
-    def flush(self, scopes: Sequence[str]=..., /, all: bool=False) -> dict[str, Sequence[T_Injectable]]:
-        ...
-
-    @abstractmethod
-    def flush(self, scopes: t.Union[Sequence[str], str]=..., *, all: bool=False):
-        ...
-
-    @abstractmethod
-    def __call__(self, token: T_Injectable, scope: T_Scope) -> Resolver[T_Injected]:
-        ...
-
-
-
-T_UsingAlias = Injectable[T_Injected]
-T_UsingValue = T_Injected
-
-T_UsingFunc = T_UsingFunc = Callable[..., T_Injected]
-T_UsingType = type[T_Injected]
-T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
-
-T_UsingFactory = Callable[[Injectable[T_Injected], Scope, Provider], Resolver[T_Injected]]
-T_UsingResolver = Resolver[T_Injected]
-
-T_UsingAny = t.Union[T_UsingCallable, T_UsingFactory, T_UsingResolver, T_UsingAlias, T_UsingValue]
 
 
 
@@ -575,7 +490,7 @@ class InjectorContext(ExitStack, Callable[..., T_ContextStack], t.Generic[T_Inje
 
 
 @export()
-class Injector(AbstractContextManager[T_Injector], t.Generic[T_Scope, T_Injected, T_Provider, T_Injector], metaclass=ABCMeta):
+class Injector(AbstractContextManager[T_Injector], metaclass=ABCMeta):
 
     __slots__ = ()
 
@@ -583,7 +498,7 @@ class Injector(AbstractContextManager[T_Injector], t.Generic[T_Scope, T_Injected
     parent: T_Injector
     level: int
 
-    content: Mapping[T_Injectable, Resolver] 
+    content: Mapping[T_Injectable, 'InjectorVar'] 
 
     # @property
     # @abstractmethod
@@ -657,4 +572,40 @@ class Injector(AbstractContextManager[T_Injector], t.Generic[T_Scope, T_Injected
     def __delitem__(self, k: T_Injectable): 
         ...
    
+
+
+
+@export()
+class ResolverFunc(Callable[[Injector], T_Injected], t.Generic[T_Injected]):
+
+    @abstractmethod
+    def __call__(self, injector: Injector) -> t.Union['InjectorVar[T_Injected]', None]:
+        ...
+
+    @classmethod
+    def __subclasshook__(cls, sub):
+        if cls is ResolverFunc:
+            try:
+                return issubclass(sub, (FunctionType, MethodType, type)) or callable(getattr(sub, '__call__'))
+            except AttributeError:
+                pass
+            
+        return NotImplemented
+
+
+
+
+T_UsingAlias = Injectable[T_Injected]
+T_UsingVariant = Injectable[T_Injected]
+T_UsingValue = T_Injected
+
+T_UsingFunc = Callable[..., T_Injected]
+T_UsingType = type[T_Injected]
+T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
+
+T_UsingFactory = Callable[[Provider, Scope, Injectable[T_Injected]], t.Union[ResolverFunc[T_Injected], None]]
+
+T_UsingResolver = ResolverFunc[T_Injected]
+
+T_UsingAny = t.Union[T_UsingCallable, T_UsingFactory, T_UsingResolver, T_UsingAlias, T_UsingValue]
 

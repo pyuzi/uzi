@@ -78,6 +78,10 @@ class ContainerTests:
         assert ioc.make(Foo)
         assert ioc.make(Bar)
 
+        assert isinstance(ioc[t.Union[FooBarBaz, Bar]], Bar)
+        assert isinstance(ioc[t.Union[FooBarBaz, Foo, Bar]], Foo)
+        assert ioc[t.Union[FooBarBaz, FooBar, None]] is None
+
         # assert 0, '\n'
  
 

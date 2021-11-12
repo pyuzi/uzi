@@ -361,14 +361,15 @@ class DependsProvider(AliasProvider):
         if at := None if token.at is ... else token.at:
             at = scope.ioc.scopekey(at)
 
+            def resolve(inj: 'Injector'):
+                nonlocal real, at
+                return inj[at].vars[real]
+        
+        else:
+            def resolve(inj: 'Injector'):
+                nonlocal real
+                return inj.vars[real]
 
-        def resolve(inj: 'Injector'):
-            nonlocal real, at
-            if at:
-                inj = inj[at]
-
-            return inj.vars[real]
-    
         return ResolverInfo(resolve, {real})
 
 

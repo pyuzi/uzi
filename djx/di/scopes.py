@@ -55,8 +55,8 @@ MAIN_SCOPE = 'main'
 LOCAL_SCOPE = 'local'
 REQUEST_SCOPE = 'request'
 COMMAND_SCOPE = 'command'
-
-
+    
+export('ANY_SCOPE', 'MAIN_SCOPE', 'LOCAL_SCOPE', 'REQUEST_SCOPE', 'COMMAND_SCOPE')
 
 
 @export()

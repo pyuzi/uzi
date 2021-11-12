@@ -137,8 +137,8 @@ class IocContainer:
             
             self.signals.setup.send(self.__class__, instance=self)
             
-            self._run_onboot_callbacks(exhaust=True)
             self._register_default_providers_()
+            self._run_onboot_callbacks(exhaust=True)
 
             self.signals.boot.send(self.__class__, instance=self)
 
@@ -148,29 +148,10 @@ class IocContainer:
             self.signals.ready.send(self.__class__, instance=self)
 
     def _register_default_providers_(self):
-        
+        self.register(t.Union, UnionProvider(), at='any')
         self.register(t.Annotated, AnnotationProvider(), at='any')
         self.register(Depends, DependsProvider(), at='any')
         self.resolver(Injector, lambda at: InjectorVar(at, at), at='any', priority=-10)
-
-
-        # @self.provide(t.Annotated, at='any', priority=-10)
-        # def provide_annotaed(self, scope: 'BaseScope', token):
-        #     if anno := next((d for d in token.__metadata__ if is_provided(d.__class__)), None):
-        #         if prov := scope.providers.get(anno.__class__):
-        #             return prov(scope, token, annotation=anno)
-
-        # @self.provide(Depends, at='any', priority=-10)
-        # def provide_depends(self, scope: 'BaseScope', token, annotation: Depends=None):
-        #     if annotation:
-        #         aka = token.__origin__ if annotation.on is ... else annotation.on
-        #         def resolve(at: Injector):
-        #             nonlocal aka
-        #             return at.vars[aka]
-
-        #         return resolve
-
-
 
     def __setattr__(self, name, val):
         getattr(self, name)

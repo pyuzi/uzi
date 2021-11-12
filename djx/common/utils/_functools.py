@@ -26,20 +26,25 @@ def noop(*a, **kw):
     pass
 
 
-def export(obj: _T =..., /, *, name=None, exports=None, module=None) -> _T:
+def export(obj: _T =..., /, *objs, name=None, exports=None, module=None) -> _T:
     
     if module is None:
-        module = calling_scope().get('__name__')
+        module = calling_frame().get('__name__')
 
-    def add_to_all(_obj: _T) -> _T:
+    def add_to_all(_obj: _T, *_objs) -> _T:
         _module = sys.modules[module or _obj.__module__]
         _exports = exports or getattr(_module, '__all__', None)
         if _exports is None:
             _exports = []
             setattr(_module, '__all__', _exports)
-        _exports.append(name or _obj.__name__)
+        
+        _exports.append(name or (_obj if _obj.__class__ is str else _obj.__name__))
+
+        for _obj in _objs:
+            _exports.append(name or (_obj if _obj.__class__ is str else _obj.__name__))
+
         return _obj
-    return add_to_all if obj is ... else add_to_all(obj)
+    return add_to_all if obj is ... else add_to_all(obj, *objs)
 
 
 class class_only_method(classmethod):
@@ -704,7 +709,7 @@ def add_metaclass(metaclass):
 
 
 
-def calling_scope(depth=2, *, globals: bool=None, locals: bool=None):
+def calling_frame(depth=2, *, globals: bool=None, locals: bool=None):
     """Get the globals() or locals() scope of the calling scope"""
     if globals is locals is None:
         globals = True

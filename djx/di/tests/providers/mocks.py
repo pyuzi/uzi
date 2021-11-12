@@ -1,23 +1,20 @@
 import typing as t
-from dataclasses import dataclass
 
-from statistics import median, median_high, mean
 
 import pytest
 
 from ...inspect import ordered_id
 
-from djx.common.saferef import StrongRef as symbol
 
-from djx.di import ioc, Depends, Scope, InjectedProperty, Injector, abc
+from djx.di import (
+    ioc, Depends, Scope, InjectedProperty, Injector,
+    Injectable, unique_id
+)
 
 
-abc.Injectable.register(symbol)
 
-
-user_str = 'test-str'
-user_symb = symbol('test-import')
-noop_symb = symbol('noop-symbol')
+token_abc = Injectable('abc')
+token_xyz = Injectable('xyz')
 
 
 class Level2Scope(Scope):
@@ -76,11 +73,13 @@ class _TestScope(Scope):
         
 
 
-@ioc.type(cache=True, at='main')
+I_FooName = Injectable('foo.name')
+
+@ioc.type(cache=True, at='any')
 class Foo:
     
-    def __init__(self, name: Depends(str, on='foo.name'), *, user: Depends(str, on=user_str), inj: Injector) -> None:
-        self.name = f'{name} -> #{ordered_id()}'
+    def __init__(self, name: Depends(str, on=I_FooName), *, user: Depends(str, on=token_abc), inj: Injector) -> None:
+        self.name = f'{name} -> #{unique_id(Foo)}'
         self.user = user
         self.inj = inj
     
@@ -91,7 +90,7 @@ class Foo:
         return f'Foo({self.name!r}' #' u={self.user!r} inj={self.inj!r})'
 
 
-ioc.value('foo.name', 'My Name Is Foo!!')
+ioc.value(I_FooName, 'My Name Is Foo!!')
 
 
 @ioc.alias(use=Foo, cache=False)
@@ -102,39 +101,40 @@ class Follow:
 
 
 
-@ioc.function(at=Scope.ANY, cache=True)
-def user_func_injectable(user: Depends(str, on=user_str), d2: Follow):
-    return f'user_func_injectable -> {user=!r} #{ordered_id()}'
+@ioc.function(at='any', cache=True)
+def user_func_injectable(user: Depends(str, on=token_abc), d2: Follow):
+    return f'user_func_injectable -> {user=!r} #{unique_id()}'
 
 
-@ioc.injectable(at=Scope.ANY, cache=True)
-def user_func_injectable(user: Depends(str, on=user_str), d2: Follow):
-    return f'user_func_injectable -> {user=!r} #{ordered_id()}'
+@ioc.injectable(at='any', cache=True)
+def user_func_injectable(user: Depends(str, on=token_abc), d2: Follow):
+    return f'user_func_injectable -> {user=!r} #{unique_id()}'
 
 
 @ioc.injectable(at='any', cache=False)
 class Baz:
 
     def __init__(self):
-        self.abc = f'Baz -> #{ordered_id()}'
+        self.abc = f'Baz -> #{unique_id()}'
     
 
 
 
+I_Bar = Injectable('I_Bar')
 
-ioc.alias('bar', user_func_injectable, cache=False)
+ioc.alias(I_Bar, user_func_injectable, cache=False)
 
 
-@ioc.injectable(cache=False, at=Scope.ANY)
+@ioc.injectable(cache=False, at='any')
 class Bar:
 
-    infoo = InjectedProperty(Foo)
+    infoo = InjectedProperty(Foo, scope='level_4')
 
     def __init__(self, foo: Foo, 
                     flw: Follow, 
-                    sbar: Depends(str, on='bar'), 
+                    sbar: Depends(str, on=I_Bar), 
                     user: Depends(str, on=user_func_injectable), *, 
-                    sym: Depends(str, on=user_symb), baz: Baz, kw2=...) -> None:
+                    sym: Depends(str, on=token_xyz), baz: Baz, kw2=...) -> None:
         self.foo = foo
         self.flw = flw
         self.sbar = sbar
@@ -142,7 +142,7 @@ class Bar:
         self.sym = sym
         self.baz = baz
         self.kw2 = kw2
-        self.pk = ordered_id()
+        self.pk = unique_id(Bar)
  
     def __repr__(self):
         nl = "\n"
@@ -154,15 +154,15 @@ class Bar:
         return f'Bar#{self.pk}(foo={self.foo!r}: user={self.user!r})'
     
 
-@ioc.function(user_symb)
+@ioc.function(token_xyz)
 def user_func_symb():
-    return f'user_func_symb {user_symb} -> #{ordered_id()}'
+    return f'user_func_symb {token_xyz} -> #{unique_id(token_xyz)}'
     
 
-@ioc.injectable(user_str, cache=False)
+@ioc.injectable(token_abc, cache=False)
 @ioc.injectable()
 def user_func_str(p=None):
-    return f'user_func_str {user_str} -> {p=!r} -> #{ordered_id()}'
+    return f'user_func_str {token_abc} -> {p=!r} -> #{unique_id(token_abc)}'
     
 
 

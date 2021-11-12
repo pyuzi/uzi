@@ -33,9 +33,9 @@ def speed_profiler(ops_per_sec):
         return _profiler
 
     def make(n_=int(1e4), g_=None, /, **kwds):
-        from djx.common.utils._functools import calling_scope
+        from djx.common.utils._functools import calling_frame
         if g_ is None:
-            g_ = dict(calling_scope(locals=True))
+            g_ = dict(calling_frame(locals=True))
 
         kwds = {**dict(n=n_, globals=g_, title=None, repeat=2, labels=(), dec=3), **kwds}
 

@@ -1,3 +1,14 @@
+import typing as t 
+
+
+from djx.common.utils import export
+
+
+
+@export()
+class InjectorKeyError(KeyError):
+    pass
+
 
 
 

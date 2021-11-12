@@ -51,12 +51,9 @@ class Orderable(metaclass=ABCMeta):
     
     def __order__(self):
         return self
-    
 
     def __eq__(self, it, orderby=None) -> bool:
-        if it is self:
-            return True
-        elif isinstance(it, Orderable):
+        if isinstance(it, Orderable):
             return it == (orderby or self.__class__.__order__)(self)
         return NotImplemented
 

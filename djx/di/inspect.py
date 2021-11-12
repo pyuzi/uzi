@@ -9,13 +9,14 @@ from djx.common.utils import export
 from djx.common.typing import get_origin, get_args, eval_type
 from djx.common.imports import ImportRef
 
-from .abc import Injector
+
+if t.TYPE_CHECKING:
+    from . import Injector
+
 
 
 _empty = ins.Parameter.empty
 
-
-_expand_generics = {t.Annotated}
 
 
 
@@ -126,7 +127,7 @@ class BoundArguments(ins.BoundArguments):
 
     _signature: 'InjectableSignature'
 
-    def apply_injected(self, injector: Injector, *, set_defaults: bool = False) -> None:
+    def apply_injected(self, injector: 'Injector', *, set_defaults: bool = False) -> None:
         """Set the values for injectable arguments.
 
         This should be called before apply_defaults
@@ -162,9 +163,8 @@ class BoundArguments(ins.BoundArguments):
         self.arguments = dict(new_arguments)
 
 
-    def inject_args(self, inj: Injector, values: dict = None):
+    def inject_args(self, inj: 'Injector', values: dict = None):
         deps = bool(self._signature.positional_dependencies)
-        make = inj.__getitem__
 
         if deps and values and self.arguments:
             for param_name, param in self._signature.positional_parameters.items():
@@ -174,7 +174,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         break
                 else:
@@ -192,7 +192,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = values[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         break
                 else:
@@ -210,7 +210,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         break
                 else:
@@ -226,7 +226,7 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.positional_parameters.items():
                 if param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         break
                 else:
@@ -251,10 +251,9 @@ class BoundArguments(ins.BoundArguments):
 
 
     
-    def inject_kwargs(self, inj: Injector, values: dict=None):
+    def inject_kwargs(self, inj: 'Injector', values: dict=None):
         kwargs = dict()
         deps = bool(self._signature.keyword_dependencies)
-        make = inj.__getitem__
         
         if deps and self.arguments and values:
             for param_name, param in self._signature.keyword_parameters.items():
@@ -264,7 +263,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         continue    
                 else:
@@ -281,7 +280,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = values[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         continue    
                 else:
@@ -298,7 +297,7 @@ class BoundArguments(ins.BoundArguments):
                     arg = self.arguments[param_name]
                 elif param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         continue    
                 else:
@@ -313,7 +312,7 @@ class BoundArguments(ins.BoundArguments):
             for param_name, param in self._signature.keyword_parameters.items():
                 if param.dependency is not None:
                     try:
-                        arg = make(param.dependency)
+                        arg = inj[param.dependency]
                     except KeyError:
                         continue    
                 else:
@@ -442,7 +441,7 @@ class InjectableSignature(ins.Signature):
             )
 
 
-    def inject(self, _injector: Injector, *args: t.Any, **kwargs: t.Any) -> BoundArguments:
+    def inject(self, _injector: 'Injector', *args: t.Any, **kwargs: t.Any) -> BoundArguments:
         rv = self.bind_partial(*args, **kwargs)
         rv.apply_injected(_injector)
         return rv

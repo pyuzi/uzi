@@ -4,7 +4,7 @@ import inspect as ins
 import pytest
 
 
-from djx.di import IocContainer, Injector, abc, Scope, ioc
+from djx.di import IocContainer, Injector, ioc
 
 
 

@@ -1,45 +1,49 @@
-from collections import defaultdict, deque
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from collections import deque
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
-from functools import partial, update_wrapper, wraps
+from functools import update_wrapper
 from logging import getLogger
 import os
 from threading import RLock
-from types import FunctionType, GenericAlias, MethodType, new_class
+from types import FunctionType, GenericAlias, MethodType
 import typing as t
 
-from collections.abc import Callable, Mapping, Set, Iterable, Hashable
+from collections.abc import Callable, Mapping, Set, Iterable
 
-from djx.common.collections import PriorityStack, fallback_default_dict, fallbackdict, frozendict, nonedict, orderedset
+from djx.common.collections import PriorityStack, fallback_default_dict, fallbackdict, frozendict
 from djx.common.imports import ImportRef
 from djx.common.proxy import proxy 
 from djx.common.typing import get_origin
-from djx.common.utils import export, text, Missing, noop
+from djx.common.utils import export, text
 
-from . import abc, signals
+from . import signals
 
-from .abc import (
-    Injectable, ScopeAlias, T_UsingFactory, T_UsingFunc, 
-    T_Injectable, T_Injected, MAIN_SCOPE,
-    T_UsingAny, T_UsingAlias, T_UsingResolver, T_UsingType, T_UsingValue,
+from .common import (
+    Depends,
+    Injectable,
+    T_Injectable, T_Injected,
+    KindOfProvider, InjectorVar,
 )
 
-from .common import KindOfProvider
+
+from .scopes import ScopeAlias, Scope as BaseScope, MAIN_SCOPE
+from .injectors import Injector
+from .providers import (
+    Provider, AnnotationProvider, 
+    UnionProvider, DependsProvider,
+    T_UsingAny, T_UsingAny, 
+    T_UsingAlias, T_UsingResolver, 
+    T_UsingFactory, T_UsingFunc, 
+    T_UsingType, T_UsingValue,
+)
 
 
-if t.TYPE_CHECKING:
-    from . import Scope as BaseScope, Provider, Injector
-    from .providers import T_UsingAny
-else:
-    __all__ = [
-        'IOC_SCOPES_ENV_KEY',
-        'IOC_CONTAINER_ENV_KEY'
-    ]
+
 
 logger = getLogger(__name__)
 
-IOC_CONTAINER_ENV_KEY = 'IOC_CONTAINER'
-IOC_SCOPES_ENV_KEY = 'IOC_SCOPES'
+IOC_CONTAINER_ENV_KEY = export('IOC_CONTAINER', name='IOC_CONTAINER_ENV_KEY')
+IOC_SCOPES_ENV_KEY = export('IOC_SCOPES', name='IOC_SCOPES_ENV_KEY')
 
 
 _T = t.TypeVar('_T')
@@ -53,16 +57,17 @@ class IocContainer:
 
     __slots__ = (
         'providers', '_lock', '_onboot', 'bootstrapped',
-        'default_scope', 'Scope', 'scopes', 'scope_aliases', 
+        'default_scope', 'scopes', 'scope_aliases', 
         '_main', 'ctxvar',
     )
 
-    providers: fallback_default_dict[str, PriorityStack[abc.Injectable, 'Provider']]
-    dep_class: type['Provider']
+    providers: fallback_default_dict[str, PriorityStack[Injectable, Provider]]
+    dep_class: type[Provider]
 
     _onboot: t.Union[deque[Callable[['IocContainer'], t.Any]], None]
 
-    Scope:  type['BaseScope']
+    Scope:  t.ClassVar[type['BaseScope']] = BaseScope
+
     scopes: fallbackdict[str, 'BaseScope']
     scope_aliases: fallbackdict[str, str]
     default_scope: str
@@ -71,20 +76,17 @@ class IocContainer:
     ctxvar: ContextVar['Injector']
     signals: t.ClassVar = signals
 
+    _non_providable: t.ClassVar[frozenset[Injectable]] = frozenset([None, type(None)])
 
     def __init__(self, 
                 default_scope: str=MAIN_SCOPE, *,
-                base_scope: type['Scope']=None,
                 scope_aliases: t.Union[Mapping, None]=None,
                 ctxvar=None):
-        from .scopes import Scope
 
         setattr = object.__setattr__
         setattr(self, '_lock', RLock())
         setattr(self, '_onboot', deque())
         setattr(self, 'bootstrapped', False)
-
-        setattr(self, 'Scope', base_scope or Scope)
 
         setattr(self, 'providers', fallback_default_dict(self._new_dep_stack))
         setattr(self, 'scopes', fallbackdict(self._new_scope_instance))
@@ -146,50 +148,35 @@ class IocContainer:
             self.signals.ready.send(self.__class__, instance=self)
 
     def _register_default_providers_(self):
-        from .injectors import Injector
-        from .tools import Depends
-        from . import InjectorVar
         
-        is_provided = self.is_injectable
+        self.register(t.Annotated, AnnotationProvider(), at='any')
+        self.register(Depends, DependsProvider(), at='any')
+        self.resolver(Injector, lambda at: InjectorVar(at, at), at='any', priority=-10)
 
-        @self.provide(t.Annotated, at='any', priority=-10)
-        def provide_annotaed(self, scope: 'BaseScope', token):
-            if anno := next((d for d in token.__metadata__ if is_provided(d.__class__)), None):
-                if prov := scope.providers.get(anno.__class__):
-                    return prov(scope, token, annotation=anno)
 
-        @self.provide(Depends, at='any', priority=-10)
-        def provide_depends(self, scope: 'BaseScope', token, annotation: Depends=None):
-            if annotation:
-                aka = token.__origin__ if annotation._on is ... else annotation._on
-                # vardump(scope, annotation, token, aka)
-                def resolve(at: Injector):
-                    nonlocal aka
-                    # vardump(scope, annotation, token, aka, at.content[aka].make())
-                    return at.content[aka]
+        # @self.provide(t.Annotated, at='any', priority=-10)
+        # def provide_annotaed(self, scope: 'BaseScope', token):
+        #     if anno := next((d for d in token.__metadata__ if is_provided(d.__class__)), None):
+        #         if prov := scope.providers.get(anno.__class__):
+        #             return prov(scope, token, annotation=anno)
 
-                return resolve
+        # @self.provide(Depends, at='any', priority=-10)
+        # def provide_depends(self, scope: 'BaseScope', token, annotation: Depends=None):
+        #     if annotation:
+        #         aka = token.__origin__ if annotation.on is ... else annotation.on
+        #         def resolve(at: Injector):
+        #             nonlocal aka
+        #             return at.vars[aka]
 
-        # @self.provide(t.Literal, at='any', priority=-10)
-        # def provide_literal(self, token, scope: 'BaseScope'):
+        #         return resolve
 
-        #     aka = token.__origin__ if annotation._on is ... else annotation._on
-        #     return AliasResolver(aka)
-        #     # if akaa := scope.providers.get(aka):
-        #         # return akaa(token, scope)
 
-        self.resolver(abc.Injector, lambda at:  InjectorVar(at, at), at='any', priority=-10)
-
-        self.alias(Injector, abc.Injector, at='any', priority=-10)
-
-        self.value({None, type(None)}, None, at='any')
-        
 
     def __setattr__(self, name, val):
         getattr(self, name)
         AttributeError(f'cannot set readonly attribute {name!r} on {self.__class__.__name__}')
 
-    def proxy(self, tag: Injectable[T_Injected], *, default=..., callable: bool=None) -> T_Injected:
+    def proxy(self, tag: Injectable, *, default=..., callable: bool=None) -> T_Injected:
         if default is ...:
             def resolve() -> T_Injected:
                 return self.injector.make(tag)
@@ -262,15 +249,15 @@ class IocContainer:
         else:
             return decorate(func)
 
-    def use(self, inj: t.Union[str, ScopeAlias, 'Injector'] = 'main') -> AbstractContextManager['Injector']:
+    def use(self, inj: t.Union[str, ScopeAlias, Injector] = 'main') -> AbstractContextManager[Injector]:
         return self._ctxmanager_(inj)
 
     @contextmanager
-    def _ctxmanager_(self, inj: t.Union[str, ScopeAlias, 'Injector'] = 'main'):
+    def _ctxmanager_(self, inj: t.Union[str, ScopeAlias, Injector] = 'main'):
         cur = self.injector
         token = None
         if self.scopekey(inj) not in cur:
-            if isinstance(inj, abc.Injector):
+            if isinstance(inj, Injector):
                 if cur is not inj[cur.scope]:
                     raise RuntimeError(f'{inj!r} must be a descendant of {cur!r}.')
                 cur = inj
@@ -366,7 +353,7 @@ class IocContainer:
         return self.injector.__getitem__(key)
 
     def is_provided(self, obj, scope=None):
-        if obj is not None:
+        if obj not in self._non_providable:
             scope = self.scope_name(scope, None)
             for dct in ((self.providers[scope],) if scope else self.providers.values()):
                 if obj in dct:
@@ -393,47 +380,37 @@ class IocContainer:
     @t.overload
     def register(self, 
             tags: t.Union[_T_Tags, None],
-            use: t.Union[abc.Provider, T_UsingAny], /,
+            use: t.Union[Provider, T_UsingAny], /,
             at: t.Union[_T_ScopeNames, None] = None, 
             **kwds) -> None:
                 ...
 
     def register(self, 
             provide: t.Union[_T_Tags, None] , /,
-            use: t.Union[abc.Provider, T_UsingAny], 
+            use: t.Union[Provider, T_UsingAny], 
             at: t.Union[_T_ScopeNames, None] = None, 
             **kwds):
-        # if __debug__:
-        #     # logger.debug(f'Cheking legacy scope params.')
-        #     if 'scope' in kwds:
-        #         raise ValueError(f'scope kwarg no longer supported. {kwds["scope"]!r} given in --> {provide=!r}, {use=!r}')
-            
-        #     if isinstance(provide, str) and provide in self.Scope._active_types():
-        #         raise ValueError(f'scope arg no longer supported. {provide!r} given in --> {use=!r}')
-        
+    
         if self.bootstrapped:
             self._register_provider(provide, use, at=at, **kwds)
         else:
             self.on_boot(self._register_provider, provide, use, at=at, **kwds)
 
-    def create_provider(self, provider: t.Union[abc.Provider, T_UsingAny], **kwds: dict) -> 'Provider':
-        if isinstance(provider, abc.Provider):
+    def create_provider(self, provider: t.Union[Provider, T_UsingAny], **kwds: dict) -> Provider:
+        if isinstance(provider, Provider):
             if kwds:
-                kind = KindOfProvider(kwds.pop('kind', None) or provider.kind)
-                if kind is not provider.kind:
-                    raise TypeError(f'incompatible kinds {provider.kind} to {kind}')
-                return provider.replace(**kwds)
+                raise ValueError(f'got unexpected keyword arguments {tuple(kwds)}')
             return provider
 
         cls = self._get_provider_class(KindOfProvider(kwds.pop('kind')), kwds)
         return cls(provider, **kwds)
 
-    def _get_provider_class(self, kind: 'KindOfProvider', kwds: dict) -> type['Provider']:
+    def _get_provider_class(self, kind: KindOfProvider, kwds: dict) -> type[Provider]:
         return kind.default_impl
 
     def _register_provider(self, 
                 tags: t.Union[_T_Tags, None],
-                use: t.Union[abc.Provider, T_UsingAny], /,
+                use: t.Union[Provider, T_UsingAny], /,
                 at: t.Union[_T_ScopeNames, None] = None, 
                 **kwds) -> None:
         
@@ -463,6 +440,9 @@ class IocContainer:
                 skip = seen[at]
                 for tag in seq:
                     if not (tag in skip or skip.add(tag)):
+                        if not isinstance(tag, Injectable):
+                            raise TypeError(f'injector tag must be Injectable not {tag.__class__.__name__} ({tag})')
+
                         flush(tag, at)
                         registry[at].append(tag, provider)
 

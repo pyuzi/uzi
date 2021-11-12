@@ -51,14 +51,14 @@ class SymbolTests:
 
         with ioc.use('test') as inj:
             with inj.context:
-                key = 'late'
+                key = Injectable('late')
                 val ='This was injected late'
                 assert inj.get(key) is None
 
                 ioc.value(key, val)
 
                 print('', *inj.scope.providers.maps, end='\n\n', sep='\n -><=')
-                print('\n', *(f' -+= {k} --> {v!r}\n' for k,v in ioc.injector.content.items()))
+                print('\n', *(f' -+= {k} --> {v!r}\n' for k,v in ioc.injector.vars.items()))
         
                 # vardump([(s,k) for s, d in ioc.providers.items() for k in d])
                 assert isinstance(inj[Early], Early)
@@ -108,8 +108,10 @@ class SymbolTests:
 
                             _n = int(5e4)
 
-                            # injbar()
-                            # injfoo()
+
+                            vardump(_ioc_=ioc.injector, _inj_=inj)
+                            injbar()
+                            injfoo()
 
                             profile = speed_profiler(_n, labels=('PY', 'DI'))
                         
@@ -117,6 +119,7 @@ class SymbolTests:
                             profile(mkfoo, injfoo, 'Foo')
                             profile(mkbar, injbar, 'Bar')
 
+                            vardump([injbafoo(), injbafoo(), injbafoo()])
                     
                             wrapbar = ioc.wrap(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
                             wrapfunc = ioc.wrap(user_func_str, kwargs=dict(p='PATCHED USER'))

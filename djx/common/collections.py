@@ -54,44 +54,26 @@ class frozendict(dict[_TK, _TV]):
 
     __slots__ = '_hash', #'_frozen_',
 
-    if t.TYPE_CHECKING:
-        # _frozen_: t.Final[bool] = True
-        _hash: int = 0
+    # if t.TYPE_CHECKING:
+    #     _hash: int = 0
 
-    # def __init__(self, *args, **kwds) -> None:
-    #     self._frozen_ = False
-    #     super().__init__(*args, **kwds)
-    #     self._frozen_ = True
-    
     def __delitem__(self, k):
-        # if self._frozen_ is True:
         raise TypeError(f'{self.__class__.__name__} is immutable')
-        # return super().__delitem__(k)
 
     def __setitem__(self, k, v):
-        # if self._frozen_ is True:
         raise TypeError(f'{self.__class__.__name__} is immutable')
-        # return super().__setitem__(k,v)
 
     def setdefault(self, k, v):
-        # if self._frozen_ is True:
         raise TypeError(f'{self.__class__.__name__} is immutable')
-        # return super().setdefault(k,v)
 
     def pop(self, k, *v):
-        # if self._frozen_ is True:
         raise TypeError(f'{self.__class__.__name__} is immutable')
-        # return super().pop(k, *v)
 
     def popitem(self):
-        # if self._frozen_ is True:
         raise TypeError(f'{self.__class__.__name__} is immutable')
-        # return super().popitem()
 
     def update(self, *v, **kw):
-        # if self._frozen_ is True:
         raise TypeError(f'{self.__class__.__name__} is immutable')
-        # return super().update(*v, **kw)
 
     def __hash__(self):
         try:
@@ -111,7 +93,7 @@ class frozendict(dict[_TK, _TV]):
         return ash
 
     def _hash_items_(self):
-        return self.items()
+        return ((k, self[k]) for k in sorted(self))
 
     def __reduce__(self):
         return self.__class__, (self,), 
@@ -1638,7 +1620,7 @@ class Arguments(t.Generic[_T_Args, _T_Kwargs]):
             items = self._hash_items_()
             if items is not None:
                 try:
-                    self._hash = ash = hash((frozendict, tuple(items)))
+                    self._hash = ash = hash((Arguments, tuple(items)))
                 except TypeError as e:
                     raise TypeError(f'unhashable type: {self.__class__.__name__!r}') from e
 

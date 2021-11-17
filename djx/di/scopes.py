@@ -394,7 +394,7 @@ class Scope(Orderable, metaclass=ScopeType):
             self.prepare()
         
         rv = self.injector_class(self, parent)
-        __debug__ and logger.debug(f'created({self}): {rv!r}')
+        # __debug__ and logger.debug(f'created({self}): {rv!r}')
 
         self.setup_injector_vars(rv)
         wrv = ref(rv)
@@ -415,16 +415,17 @@ class Scope(Orderable, metaclass=ScopeType):
         inj.vars = None
     
     def setup_injector_vars(self, inj: Injector):
-        get_resolver: Callable[..., 'InjectorVar'] = self.resolvers.__getitem__
+        resolvers: Callable[..., 'InjectorVar'] = self.resolvers
         def fallback(token):
-            res = get_resolver(token)
+            nonlocal resolvers, setdefault, inj, parent
+            res = resolvers[token]
             if res is None:
-                return setdefault(token, inj.parent.vars[token])
-            else:
-                return setdefault(token, res(inj))
-
+                return setdefault(token, parent[token]) 
+            return setdefault(token, res(inj))
+            
         inj.vars = fallbackdict(fallback)
         setdefault = inj.vars.setdefault
+        parent = inj.parent.vars
         return inj
 
     def add_dependant(self, scope: 'Scope'):

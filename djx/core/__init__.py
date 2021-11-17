@@ -9,5 +9,9 @@ __version__ = ".".join(map(str, version))
 
 
 
-from .abc import settings
+from djx.abc import Settings
+from djx.di import ioc
 from .util import app_is_installed
+
+
+settings: Settings = ioc.proxy(Settings)

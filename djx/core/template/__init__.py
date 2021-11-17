@@ -20,7 +20,7 @@ from djx.common.utils.data import assign, delitem, getitem
 from djx.common.saferef import SafeReferenceType, saferef
 
 from djx.core import settings
-from djx.core.abc import Renderable
+from djx.abc import Renderable
 
 from django.template.backends.base import BaseEngine as Backend
 

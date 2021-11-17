@@ -22,7 +22,7 @@ from types import FunctionType, GenericAlias, MethodType
 
 
 from .exc import InjectorKeyError
-from .typing import get_all_type_hints, get_origin
+from .typing import get_all_type_hints, get_origin, InjectableForm
 
 
 logger = getLogger(__name__)
@@ -90,12 +90,24 @@ class InjectionToken:
 
 
 @export()
+# @InjectableForm.register
 class InjectableAlias(GenericAlias):
 
     __slots__ = ()
 
-    def __call__(self):
-        raise TypeError(f"Type {self!r} cannot be instantiated.")
+    @property
+    def __injectable_origin__(self):
+        return Injectable
+
+    # def __eq__(self, x):
+    #     if isinstance(x, InjectableAlias):
+    #         return self.__origin__ == x.__origin__
+    #     else:
+    #         return self.__origin__.__eq__(x)
+
+    # def __hash__(self):
+    #     return hash(self.__origin__)
+
 
 
 
@@ -114,9 +126,11 @@ class InjectableType(ABCMeta):
     
 
 @export()
-class Injectable(Hashable, metaclass=InjectableType):
+class Injectable(metaclass=InjectableType):
 
     __slots__ = ()
+
+    __class_getitem__ = classmethod(GenericAlias)
 
     def __init_subclass__(cls, *args, **kwargs):
         raise TypeError(f"Cannot subclass Injectable")
@@ -149,14 +163,18 @@ class Injectable(Hashable, metaclass=InjectableType):
             typs = ', '.join(f'{p.__class__.__name__!r}' for p in params if not isinstance(p, cls))
             raise TypeError(f'parameters must be Injectable types not ({typs})')
 
-    # @classmethod
-    # def __subclasshook__(cls, sub):
-    #     if cls is Injectable:
-    #         pass
-    #     return NotImplemented
+    @classmethod
+    @cache
+    def __class_getitem__(cls, params: tuple):
+        if not isinstance(params, tuple):
+            params = params,
+        
+        if len(params) > 1:
+            params = t.Union[params],
+        elif not params:
+            raise ValueError(f'atleast 1 type parameter is required 0 given.')
 
-
-
+        return InjectableAlias(params[0], params)
 
 
 

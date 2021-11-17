@@ -17,7 +17,7 @@ _T = t.TypeVar('_T')
 _T_Func = t.Callable[[t.Any], _T]
 
 
-from djx.schemas.decorator import ValidatedFunction
+from djx.schemas.decorator import _ExperimentValidatedFunction
 
 if t.TYPE_CHECKING:
     from djx.schemas.decorator import ConfigType
@@ -51,7 +51,7 @@ class Action(t.Generic[_T]):
         try:
             return self._validated
         except AttributeError:
-            self._validated = ValidatedFunction(self, self._config)
+            self._validated = _ExperimentValidatedFunction(self, self._config)
             return self._validated
 
     @cached_property

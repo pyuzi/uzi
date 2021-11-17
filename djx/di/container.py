@@ -13,7 +13,6 @@ from collections.abc import Callable, Mapping, Set, Iterable
 from djx.common.collections import PriorityStack, fallback_default_dict, fallbackdict, frozendict
 from djx.common.imports import ImportRef
 from djx.common.proxy import proxy 
-from djx.common.typing import get_origin
 from djx.common.utils import export, text
 
 from . import signals
@@ -25,7 +24,7 @@ from .common import (
     KindOfProvider, InjectorVar,
 )
 
-
+from .typing import get_origin
 from .scopes import ScopeAlias, Scope as BaseScope, MAIN_SCOPE
 from .injectors import Injector
 from .providers import (
@@ -246,15 +245,15 @@ class IocContainer:
                 cur = self.scopes[inj].create(cur)
             token = self.ctxvar.set(cur)
 
-            if __debug__:
-                logger.debug(f'set current: {cur!r}')
+            # if __debug__:
+            #     logger.debug(f'set current: {cur!r}')
 
         try:
             with cur:
                 yield cur
         finally:
-            if __debug__ and token:
-                logger.debug(f'reset current: {token.old_value!r} {id(token.old_value)!r}')
+            # if __debug__ and token:
+            #     logger.debug(f'reset current: {token.old_value!r} {id(token.old_value)!r}')
             token is None or self.ctxvar.reset(token)
 
     def on_boot(self, func: t.Union[Callable, None]=None, /, *args, **kwds):
@@ -422,7 +421,7 @@ class IocContainer:
                 for tag in seq:
                     if not (tag in skip or skip.add(tag)):
                         if not isinstance(tag, Injectable):
-                            raise TypeError(f'injector tag must be Injectable not {tag.__class__.__name__} ({tag})')
+                            raise TypeError(f'injector tag must be Injectable not {tag.__class__.__name__}: {tag}')
 
                         flush(tag, at)
                         registry[at].append(tag, provider)
@@ -747,7 +746,6 @@ class IocContainer:
 
 
 
-
 def _default_make_container():
     return IocContainer('main')
 
@@ -781,4 +779,15 @@ def _make_env_ioc():
     
 
 
-ioc: IocContainer = export(proxy(_make_env_ioc, cache=True), name='ioc')
+ioc: IocContainer = proxy(_make_env_ioc, cache=True, callable=True)
+
+
+if t.TYPE_CHECKING:
+    def get_ioc_container():
+        return ioc
+else:
+    get_ioc_container = ioc
+
+
+
+export('ioc', 'get_ioc_container')

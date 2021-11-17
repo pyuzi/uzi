@@ -3,6 +3,7 @@
     Forked from pydantic.
 """
 
+from itertools import chain
 import sys
 from typing import (  # type: ignore
     TYPE_CHECKING,
@@ -19,6 +20,7 @@ from typing import (  # type: ignore
     Set,
     Tuple,
     Type,
+    TypeVar,
     Union,
     _eval_type,
     cast,
@@ -126,7 +128,6 @@ else:
         if type(tp).__name__ in AnnotatedTypeNames:
             return cast(Type[Any], Annotated)  # mypy complains about _SpecialForm
         return _typing_get_origin(tp) or getattr(tp, '__origin__', None)
-
 
 if sys.version_info < (3, 7):  # noqa: C901 (ignore complexity)
 
@@ -426,3 +427,30 @@ class GenericLike(ABC):
 
 
 GenericLike.register(GenericAlias)
+
+
+
+
+def get_true_types(*types: Type[Any], limit=sys.maxsize, depth=sys.maxsize) -> list[type[Any]]:
+    it = iter_true_types(*types, depth=depth)
+    return [t for i, t in enumerate(it) if i < limit]
+
+
+
+def iter_true_types(*types: Type[Any], depth=sys.maxsize) -> Generator[type, None, None]:
+    if 0 < depth:
+        for tp in types:
+            if isinstance(tp, type):
+                yield tp
+            elif isinstance(tp, TypeVar):
+                if tp.__constraints__:
+                    yield from iter_true_types(tp.__constraints__, depth=depth-1)
+                elif tp.__bound__ is not None:
+                    yield from iter_true_types(tp.__bound__, depth=depth-1)
+            elif orig := get_origin(tp):
+                if orig is {Annotated, Union}:
+                    yield from iter_true_types(*tp.__args__, depth=depth-1)
+                elif isinstance(orig, type):
+                    yield orig
+                else:
+                    yield from iter_true_types(orig, depth=depth-1)

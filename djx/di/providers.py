@@ -1,6 +1,7 @@
 # from __future__ import annotations
 from logging import getLogger
 from operator import le
+from types import GenericAlias
 import typing as t 
 from abc import abstractmethod
 from djx.common.abc import Orderable
@@ -86,13 +87,18 @@ class Provider(Orderable, t.Generic[_T_Using]):
         self.__pos = ordered_id()
 
     @property
+    def factory(self):
+        if callable(res := getattr(self.concrete, '__inject_new__', self.concrete)):
+            return res
+
+    @property
     def signature(self):
         try:
             return self._sig
         except AttributeError:
             from .inspect import signature
-            if callable(self.concrete):
-                self._sig = signature(self.concrete, evaltypes=True)
+            if func := self.factory:
+                self._sig = signature(func, evaltypes=True)
             else:
                 self._sig = None
             return self._sig
@@ -209,7 +215,7 @@ class CallableProvider(Provider):
 
     def provide(self, scope: 'Scope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
 
-        func = self.concrete
+        func = self.factory
         cache = self.cache
 
         sig = self.signature

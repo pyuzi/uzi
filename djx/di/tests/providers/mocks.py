@@ -3,7 +3,6 @@ import typing as t
 
 import pytest
 
-from ...inspect import ordered_id
 
 
 from djx.di import (
@@ -75,7 +74,7 @@ class _TestScope(Scope):
 
 I_FooName = Injectable('foo.name')
 
-@ioc.type(cache=True, at='any')
+@ioc.type(cache=True, at='main')
 class Foo:
     
     def __init__(self, name: Depends(str, on=I_FooName), *, user: Depends(str, on=token_abc), inj: Injector) -> None:
@@ -111,13 +110,6 @@ def user_func_injectable(user: Depends(str, on=token_abc), d2: Follow):
     return f'user_func_injectable -> {user=!r} #{unique_id()}'
 
 
-@ioc.injectable(at='any', cache=False)
-class Baz:
-
-    def __init__(self):
-        self.abc = f'Baz -> #{unique_id()}'
-    
-
 
 
 I_Bar = Injectable('I_Bar')
@@ -134,7 +126,7 @@ class Bar:
                     flw: Follow, 
                     sbar: Depends(str, on=I_Bar), 
                     user: Depends(str, on=user_func_injectable), *, 
-                    sym: Depends(str, on=token_xyz), baz: Baz, kw2=...) -> None:
+                    sym: Depends(str, on=token_xyz), baz: 'Baz', kw2=...) -> None:
         self.foo = foo
         self.flw = flw
         self.sbar = sbar
@@ -163,6 +155,13 @@ def user_func_symb():
 @ioc.injectable()
 def user_func_str(p=None):
     return f'user_func_str {token_abc} -> {p=!r} -> #{unique_id(token_abc)}'
+    
+
+@ioc.injectable(at='any', cache=False)
+class Baz:
+
+    def __init__(self):
+        self.abc = f'Baz -> #{unique_id()}'
     
 
 

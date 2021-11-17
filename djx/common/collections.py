@@ -1,3 +1,4 @@
+from abc import ABCMeta
 from collections import ChainMap, UserString as _BaseUserStr
 from inspect import signature
 import sys
@@ -23,8 +24,9 @@ from .abc import FluentMapping, Orderable
 
 _empty = object()
 
-_TK = t.TypeVar('_TK', bound=Hashable)
-_TV = t.TypeVar('_TV')
+_T_Key = t.TypeVar('_T_Key', bound=Hashable)
+_T_Val = t.TypeVar('_T_Val', covariant=True)
+_T_Default = t.TypeVar('_T_Default', covariant=True)
 
 
 
@@ -40,9 +42,9 @@ def _none_fn(k=None):
 
 
 
-_FallbackCallable =  Callable[[_TK], t.Optional[_TV]]
-_FallbackMap = Mapping[_TK, t.Optional[_TV]]
-_FallbackType =  t.Union[_FallbackCallable[_TK, _TV], _FallbackMap[_TK, _TV], _TV, None] 
+_FallbackCallable =  Callable[[_T_Key], t.Optional[_T_Val]]
+_FallbackMap = Mapping[_T_Key, t.Optional[_T_Val]]
+_FallbackType =  t.Union[_FallbackCallable[_T_Key, _T_Val], _FallbackMap[_T_Key, _T_Val], _T_Val, None] 
 
 _TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 
@@ -50,12 +52,28 @@ _TF = t.TypeVar('_TF', bound=_FallbackType[t.Any, t.Any])
 
 
 @export()
-class frozendict(dict[_TK, _TV]):
+class frozendict(dict[_T_Key, _T_Val]):
 
     __slots__ = '_hash', #'_frozen_',
 
     # if t.TYPE_CHECKING:
     #     _hash: int = 0
+
+    _blank_instance_ = ...
+
+    def __init_subclass__(cls, blank=...) -> None:
+        cls._blank_instance_ = ... if blank is True \
+            else None if not blank \
+                else None if cls._blank_instance_ is None else ...
+
+        return super().__init_subclass__()
+
+    def __new__(cls, *args, **kwargs):
+        if (args or kwargs) or cls._blank_instance_ is None:
+            return super().__new__(cls)
+        elif cls._blank_instance_ is ...:
+            cls._blank_instance_ = super().__new__(cls)
+        return cls._blank_instance_
 
     def __delitem__(self, k):
         raise TypeError(f'{self.__class__.__name__} is immutable')
@@ -73,6 +91,9 @@ class frozendict(dict[_TK, _TV]):
         raise TypeError(f'{self.__class__.__name__} is immutable')
 
     def update(self, *v, **kw):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def clear(self):
         raise TypeError(f'{self.__class__.__name__} is immutable')
 
     def __hash__(self):
@@ -114,7 +135,7 @@ class frozendict(dict[_TK, _TV]):
 
 
 @export()
-class factorydict(frozendict[_TK, _TV]):
+class factorydict(frozendict[_T_Key, _T_Val]):
 
     __slots__ = '__getitem__',
 
@@ -131,10 +152,10 @@ class factorydict(frozendict[_TK, _TV]):
     __copy__ = copy
 
     def items(self):
-        return ItemsView[tuple[_TK, _TV]](self)
+        return ItemsView[tuple[_T_Key, _T_Val]](self)
 
     def values(self):
-        return ValuesView[_TV](self)
+        return ValuesView[_T_Val](self)
     
     def _hash_items_(self):
         return None
@@ -148,21 +169,10 @@ class factorydict(frozendict[_TK, _TV]):
 
 
 @export()
-class nonedict(factorydict[_TK, None], t.Generic[_TK]):
+class nonedict(factorydict[_T_Key, None], t.Generic[_T_Key]):
 
     __slots__ = ()
 
-    _instance_ = None
-
-    def __init_subclass__(cls) -> None:
-        cls._instance_ = None
-        return super().__init_subclass__()
-
-    def __new__(cls):
-        if cls._instance_ is None:
-            cls._instance_ = super().__new__(cls)
-        return cls._instance_
-    
     def __init__(self):
         super().__init__(_none_fn)
 
@@ -177,7 +187,7 @@ class nonedict(factorydict[_TK, None], t.Generic[_TK]):
     def __reduce__(self):
         return self.__class__, ()
 
-    def __contains__(self, key: _TK) -> False:
+    def __contains__(self, key: _T_Key) -> False:
         return False
 
     def __bool__(self) -> False:
@@ -191,35 +201,30 @@ class nonedict(factorydict[_TK, None], t.Generic[_TK]):
         return ()
 
 
-@export()
-@FluentMapping.register
-class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
-    """A dict that retruns a fallback value when a missing key is retrived.
-    
-    Unlike defaultdict, the fallback value will not be set.
-    """
-    __slots__ = ('_fb', '_fallback', '_fb_func')
 
-    _fb: _FallbackType[_TK, _TV]
-    _fallback: _FallbackType[_TK, _TV]
-    _fb_func: _FallbackCallable[_TK, _TV]
-    _default_fb: t.ClassVar[_FallbackType[_TK, _TV]] = None
+def key_error_fallback(k):
+    raise KeyError(k)
 
-    def __init__(self, fallback: _FallbackType[_TK, _TV]=None, *args, **kwds):
-        super().__init__(*args, **kwds)
-        self.fallback = fallback
+
+
+class FallbackMappingMixin:
+
+    __slots__ = ()
+
+    _default_fb: t.ClassVar[_FallbackType[_T_Key, _T_Val]] = frozendict()
 
     @property
-    def fallback(self) -> _FallbackType[_TK, _TV]:
+    def fallback(self) -> _FallbackType[_T_Key, _T_Val]:
         if self._fallback is None:
             self._initfallback_()
         return self._fallback
     
     @fallback.setter
-    def fallback(self, fb: _FallbackType[_TK, _TV]):
+    def fallback(self, fb: _FallbackType[_T_Key, _T_Val]):
         self._fb = fb
+        if hasattr(self, '_fallback'):
+            del self._fb_func
         self._fallback = None
-        del self._fb_func
 
     def _initfallback_(self):
         if self._fallback is None:
@@ -252,6 +257,28 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
         return self._fb_func
 
     def __missing__(self, k):
+        if fn := self._fb_func:
+            return fn(k)
+        raise KeyError(k)
+
+
+
+@export()
+@FluentMapping.register
+class fallbackdict(FallbackMappingMixin, dict[_T_Key, _T_Val], t.Generic[_T_Key, _T_Val]):
+    """A dict that retruns a fallback value when a missing key is retrived.
+    
+    Unlike defaultdict, the fallback value will not be set.
+    """
+    __slots__ = ('_fb', '_fallback', '_fb_func')
+
+    _default_fb: t.ClassVar[_FallbackType[_T_Key, _T_Val]] = nonedict()
+
+    def __init__(self, fallback: _FallbackType[_T_Key, _T_Val]=None, *args, **kwds):
+        super().__init__(*args, **kwds)
+        self.fallback = fallback
+
+    def __missing__(self, k):
         return self._fb_func(k)
 
     def __getattr__(self, k: str):
@@ -259,14 +286,6 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
             self._fb_func = None
             return self._initfallback_()
         raise AttributeError(k)        
-    
-    # def __getattribute__(self, k: str):
-    #     try:
-    #         return super().__getattribute__(k)
-    #     except AttributeError:
-    #         if k == '__missing__':
-    #             return self._initfallback_()
-    #         raise
     
     def __reduce__(self):
         # return self.__class__, (self._fb, super().copy())
@@ -290,16 +309,11 @@ class fallbackdict(dict[_TK, _TV], t.Generic[_TK, _TV]):
     #     return self.__class__(deepcopy(self._fb, memo), super().__deepcopy__(memo))
 
 
-@cache
-def _has_self_arg(val):
-    sig = signature(val(), follow_wrapped=False)
-    return 'self' in sig.parameters
-
 
 
 
 @export()
-class fallback_default_dict(fallbackdict[_TK, _TV]):
+class fallback_default_dict(fallbackdict[_T_Key, _T_Val]):
 
     __slots__ = ()
 
@@ -312,30 +326,11 @@ class fallback_default_dict(fallbackdict[_TK, _TV]):
 
 
 @export()
-class fallback_chain_dict(fallbackdict[_TK, _TV]):
+class fallback_chain_dict(fallbackdict[_T_Key, _T_Val]):
 
     _default_fb = fallbackdict
-    
-    # @property
-    # def fallback(self) -> _FallbackType[_TK, _TV]:
-    #     self.__missing__ # is None and self._set_missing_
-    #     return self._fallback
 
-    # @fallback.setter
-    # def fallback(self, fb: _FallbackType[_TK, _TV]):
-    #     if fb is None:
-    #         fb = self._default_fallback
-
-    #     if isinstance(fb, Mapping):
-    #         self._fallback = fb
-    #         self.__missing__ = fb.__getitem__
-    #     elif callable(fb):
-    #         self._fallback = fb
-    #         self.__missing__ = None
-    #     else:
-    #         raise ValueError('fallback must be provided.')
-
-    def get(self, key, default=None) -> t.Union[_TV, None]:
+    def get(self, key, default=None) -> t.Union[_T_Val, None]:
         try:
             return self[key]
         except KeyError:
@@ -343,15 +338,6 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
 
     def __contains__(self, o) -> bool:
         return super().__contains__(o) or self.fallback.__contains__(o)
-
-    # @property
-    # def parent(self):                          
-    #     'New fallback_chain_dict from maps[1:].'
-    #     rv = self.fallback
-    #     if isinstance(rv, self.__class__):
-    #         rv = self.__class__(rv)
-
-    #     return self.fallback
 
     def __iter__(self):
         seen = set()
@@ -362,10 +348,6 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
         for k in super().__iter__():
             if k not in seen:
                 yield k
-        
-        # yield from dict.fromkeys(
-        #     (k for s in (self.fallback.__iter__(), super().__iter__()) for k in s)
-        # ).__iter__()
 
     def __len__(self):
         return super().__len__() + len(self.fallback.keys() - self.ownkeys())
@@ -389,29 +371,29 @@ class fallback_chain_dict(fallbackdict[_TK, _TV]):
         return self.__class__(self, *args, **kwds)
 
     def keys(self):
-        return KeysView[_TK](self)
+        return KeysView[_T_Key](self)
 
     def items(self):
-        return ItemsView[tuple[_TK, _TV]](self)
+        return ItemsView[tuple[_T_Key, _T_Val]](self)
 
     def values(self):
-        return ValuesView[_TV](self)
+        return ValuesView[_T_Val](self)
 
 
     if t.TYPE_CHECKING:
             
-        def ownkeys(self) -> KeysView[_TK]:
+        def ownkeys(self) -> KeysView[_T_Key]:
             ...
 
-        def ownitems(self) -> ItemsView[tuple[_TK, _TV]]:
+        def ownitems(self) -> ItemsView[tuple[_T_Key, _T_Val]]:
             ...
 
-        def ownvalues(self) -> ValuesView[_TV]:
+        def ownvalues(self) -> ValuesView[_T_Val]:
             ...
 
-    ownkeys = dict[_TK, _TV].keys
-    ownitems = dict[_TK, _TV].items
-    ownvalues = dict[_TK, _TV].values
+    ownkeys = dict[_T_Key, _T_Val].keys
+    ownitems = dict[_T_Key, _T_Val].items
+    ownvalues = dict[_T_Key, _T_Val].values
 
 
 
@@ -426,44 +408,14 @@ class SizedReversible(Sized, Reversible):
 
 
 
-# @t.overload
-# def enumerate_reversed(obj: SizedReversible[_TV], start=None, stop=0, step=-1) -> tuple[int, _TV]:
-#     ...
-
-# def enumerate_reversed(obj: SizedReversible[_TV], *args, **kwds) -> tuple[int, _TV]:
-    
-#     assert isinstance(obj, SizedReversible), 'must be Sized and Reversible'
-
-
-#     s = slice(*args, **kwds)
-#     start, stop, step = s.start or len(obj), s.stop or 0, s.step or -1
-
-#     it = reversed(obj) 
-#     _1 = 1 if step > 0 else -1
-#     if step > 0:
-#         i = 
-#     i = nexti = min(start, len(obj)-1) 
-
-#     for v in it:
-#         if i == nexti:
-#             yield i, v
-#             nexti += step
-#             if nexti < stop:
-#                 break
-
-#         i += _1
-
-
-
-
-_dict_keys = type(dict[_TK]().keys())
+_dict_keys = type(dict[_T_Key]().keys())
 
 @Sequence.register
-class _orderedsetabc(t.Generic[_TK]):
+class _orderedsetabc(t.Generic[_T_Key]):
 
     __slots__ = '__data__', '__set__'
 
-    __data__: dict[_TK, _TK]
+    __data__: dict[_T_Key, _T_Key]
     __set__: _dict_keys
 
     # __class_getitem__ = classmethod(GenericAlias)
@@ -471,10 +423,10 @@ class _orderedsetabc(t.Generic[_TK]):
     # def __class_getitem__(cls, params):
     #     return GenericAlias(cls, tuple(params) if isinstance(params, (tuple, list)) else (params,))
 
-    def __init__(self, iterable: Iterable[_TK]=None):
+    def __init__(self, iterable: Iterable[_T_Key]=None):
         self.__data__ = self._init_data_set_(iterable)
 
-    def _init_data_set_(self, iterable: Iterable[_TK]):
+    def _init_data_set_(self, iterable: Iterable[_T_Key]):
         if isinstance(iterable, _orderedsetabc):
             return iterable.__data__.copy()
         elif iterable is None:
@@ -502,7 +454,7 @@ class _orderedsetabc(t.Generic[_TK]):
     def __len__(self) -> int:
         return self.__data__.__len__()
 
-    def __iter__(self) -> Iterator[_TK]:
+    def __iter__(self) -> Iterator[_T_Key]:
         yield from self.__data__
 
     def __contains__(self, o) -> int:
@@ -556,7 +508,7 @@ class _orderedsetabc(t.Generic[_TK]):
 
         return NotImplemented
 
-    def __reversed__(self) -> Iterator[_TK]:
+    def __reversed__(self) -> Iterator[_T_Key]:
         return self.__data__.__reversed__()
 
     def __sub__(self, other):
@@ -629,12 +581,12 @@ class _orderedsetabc(t.Generic[_TK]):
         return f'{self.__class__.__name__}({items})'
 
     t.overload
-    def __getitem__(self, key: int) -> _TK:
+    def __getitem__(self, key: int) -> _T_Key:
         ...
     t.overload
-    def __getitem__(self: _TV, key: slice) -> _TV:
+    def __getitem__(self: _T_Val, key: slice) -> _T_Val:
         ...
-    def __getitem__(self: _TV, key: t.Union[int, slice]) -> t.Union[_TK, _TV]:
+    def __getitem__(self: _T_Val, key: t.Union[int, slice]) -> t.Union[_T_Key, _T_Val]:
         if isinstance(key, int):
             try:
                 return next(self._islice_(key, key+1))
@@ -660,13 +612,13 @@ class _orderedsetabc(t.Generic[_TK]):
         raise ValueError(value)
 
     @t.overload
-    def _islice_(self, start=0, stop=None, step=None, *, reverse: t.Union[float, bool]=0.501) -> _TK:
+    def _islice_(self, start=0, stop=None, step=None, *, reverse: t.Union[float, bool]=0.501) -> _T_Key:
         ...
     @t.overload
-    def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=False, reverse: t.Union[float, bool]=0.501) -> _TK:
+    def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=False, reverse: t.Union[float, bool]=0.501) -> _T_Key:
         ...
     @t.overload
-    def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=True, reverse: t.Union[float, bool]=0.501) -> tuple[int, _TK]:
+    def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=True, reverse: t.Union[float, bool]=0.501) -> tuple[int, _T_Key]:
         ...
     def _islice_(self, start=0, stop=None, step=None, *, enumerate: bool=False, reverse: t.Union[float, bool]=None):
         size = len(self)
@@ -783,7 +735,7 @@ class _orderedsetabc(t.Generic[_TK]):
     
 @export()
 @Set.register
-class frozenorderedset(_orderedsetabc[_TK]):
+class frozenorderedset(_orderedsetabc[_T_Key]):
     
     __slots__ = ()
     
@@ -805,7 +757,7 @@ class frozenorderedset(_orderedsetabc[_TK]):
 
 @export()
 @MutableSet.register
-class orderedset(_orderedsetabc[_TK], t.Generic[_TK]):
+class orderedset(_orderedsetabc[_T_Key], t.Generic[_T_Key]):
     
     __slots__ = ()
 
@@ -824,7 +776,7 @@ class orderedset(_orderedsetabc[_TK], t.Generic[_TK]):
         """Remove an element. If not a member, raise a KeyError."""
         del self.__data__[value]
 
-    def update(self, *iterables: Iterable[_TK]):
+    def update(self, *iterables: Iterable[_T_Key]):
         """Add an element."""
         self.__data__.update(dict.fromkeys(k for it in iterables if it is not self for k in it))
     
@@ -1000,19 +952,159 @@ class FluentPriorityStack(PriorityStack[_T_Stack_K, _T_Stack_V, _T_Stack_S]):
     
 
 
-_TypeOfTypedDict = type(t.TypedDict('_Type', {}, total=False))
+
+
+################################################################################
+### MappingProxy
+################################################################################
+
+@Mapping.register
+class MappingProxy(FallbackMappingMixin, t.Generic[_T_Key, _T_Val], metaclass=ABCMeta):
+
+    __slots__ = '__data__', '_fb', '_fallback', '_fb_func'
+
+    __data__: Mapping[_T_Key, _T_Val]
+    
+    def __new__(cls, mapping: Mapping[_T_Key, _T_Val], *, fallback: _FallbackType[_T_Key, _T_Val]=key_error_fallback, mutable: bool=False):
+        if cls is MappingProxy:
+            if mutable is True:
+                cls = MutableMappingProxy
+
+        self: MappingProxy[_T_Key, _T_Val] = object.__new__(cls)
+        if isinstance(mapping, cls):
+            self.__data__ = mapping.__data__
+        else:
+            self.__data__ = mapping
+
+        self.fallback = fallback
+
+        return self
+
+    @classmethod
+    def _from_args_(cls, mapping, fallback=key_error_fallback, /) -> None:
+        return cls(mapping, fallback=fallback)    
+
+    def get(self, k: _T_Key, default: t.Union[_T_Default, None]=None) -> t.Union[_T_Val, _T_Default, None]:
+        return self.__data__.get(k, default)
+    
+    def copy(self):
+        return self.__class__(self.__data__, self._fb)
+
+    __copy__ = copy
+
+    def keys(self):
+        "D.keys() -> a set-like object providing a view on D's keys"
+        return self.__data__.keys()
+
+    def items(self):
+        "D.items() -> a set-like object providing a view on D's items"
+        return self.__data__.items()
+
+    def values(self):
+        "D.values() -> an object providing a view on D's values"
+        return self.__data__.values()
+
+    def __eq__(self, other):
+        return other == self.__data__
+
+    def __bool__(self) -> bool:
+        return not not self.__data__
+
+    def __getitem__(self, k: _T_Key) -> _T_Val:
+        try:
+            return self.__data__[k]
+        except KeyError:
+            return self.__missing__(k)
+    
+    def __contains__(self, k: _T_Key) -> bool:
+        return k in self.__data__
+
+    def __hash__(self):
+        return hash(self.__data__)
+
+    def __reversed__(self):
+        return self.__data__.__reversed__()
+
+    def __iter__(self):
+        return iter(self.__data__)
+
+    def __len__(self) -> bool:
+        return len(self.__data__)
+
+    def __reduce__(self):
+        return self.__class__._from_args_, (self.__data__, self._fb), 
+
+    def __deepcopy__(self, memo=None):
+        return self.__class__(deepcopy(self.__data__, memo), self._fb)
+
+    def __delitem__(self, k):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def __setitem__(self, k, v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def clear(self):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def setdefault(self, k, v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def pop(self, k, *v):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def popitem(self):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+    def update(self, *v, **kw):
+        raise TypeError(f'{self.__class__.__name__} is immutable')
+
+
+
+
+@MutableMapping.register
+class MutableMappingProxy(MappingProxy[_T_Key, _T_Val]):
+
+    __slots__ = ()
+
+    __data__: MutableMapping[_T_Key, _T_Val]
+
+    def __delitem__(self, k:_T_Key):
+        del self.__data__[k]
+
+    def __setitem__(self, k: _T_Key, v: _T_Val):
+        self.__data__[k] = v
+    
+    def setdefault(self, k: _T_Key, default: t.Union[_T_Default, None]=None) -> t.Union[_T_Val, _T_Default]:
+        return self.__data__.setdefault(k, default)
+
+    def pop(self, k: _T_Key, *default: _T_Default) -> t.Union[_T_Val, _T_Default]:
+        return self.__data__.pop(k, *default)
+
+    if t.TYPE_CHECKING:
+        def pop(self, k: _T_Key, default: _T_Default=...) -> t.Union[_T_Val, _T_Default]:
+            ...
+
+    def clear(self):
+        return self.__data__.clear()
+
+    def popitem(self):
+        return self.__data__.popitem()
+
+    def update(self, *a, **kw):
+        return self.__data__.update(*a, **kw)
+
 
 
 
 
 
 @export()
-class AttributeMapping(MutableMapping[_TK, _TV], t.Generic[_TK, _TV]):
+class AttributeMapping(MutableMapping[_T_Key, _T_Val], t.Generic[_T_Key, _T_Val]):
 
     __slots__ = ('__weakref__', '__dict__')
 
-    __dict_class__: t.ClassVar[type[dict[_TK, _TV]]] = dict 
-    __dict__: dict[_TK, _TV]
+    __dict_class__: t.ClassVar[type[dict[_T_Key, _T_Val]]] = dict 
+    __dict__: dict[_T_Key, _T_Val]
 
     
     __type_cache: t.Final[dict[type[Mapping], type['AttributeMapping']]] = fallbackdict()
@@ -1042,7 +1134,7 @@ class AttributeMapping(MutableMapping[_TK, _TV], t.Generic[_TK, _TV]):
             
         return GenericAlias(cls, params)
 
-    def __createdict___(self, args) -> tuple[dict[_TK, _TV], tuple]:
+    def __createdict___(self, args) -> tuple[dict[_T_Key, _T_Val], tuple]:
         cls = self.__class__.__dict_class__
         if not args:
             return cls(), args
@@ -1076,10 +1168,10 @@ class AttributeMapping(MutableMapping[_TK, _TV], t.Generic[_TK, _TV]):
     # def __setattr__(self, key, value):
     #     self.__dict__[key] = value
 
-    def __setitem__(self, key: _TK, value: _TV):
+    def __setitem__(self, key: _T_Key, value: _T_Val):
         self.__dict__[key] = value
 
-    def __getitem__(self, key: _TK)-> _TV:
+    def __getitem__(self, key: _T_Key)-> _T_Val:
         try:
             return self.__dict__[key]
         except KeyError:
@@ -1124,6 +1216,7 @@ class AttributeMapping(MutableMapping[_TK, _TV], t.Generic[_TK, _TV]):
         
 
 _T_Str = t.TypeVar('_T_Str', bound=str)
+
 
 
 
@@ -1473,8 +1566,6 @@ class KwargDict(frozendict[str, _T_Kwargs]):
         return super().merge(arg, **kwargs)
         
 
-
-
 @export()
 class Arguments(t.Generic[_T_Args, _T_Kwargs]):
 
@@ -1601,17 +1692,6 @@ class Arguments(t.Generic[_T_Args, _T_Kwargs]):
     def __len__(self):
         return self._args.__len__() + self._kwargs.__len__()
 
-    # def __contains__(self, x):
-    #     if isinstance(x, int):
-    #         if size := len(self._args):
-    #             if x < 0 > (x := size + x):
-    #                 return False
-                
-    #             return size > x
-
-
-    #     return self._args.__len__() + self._kwargs.__len__()
-
     def __hash__(self):
         try:
             ash = self._hash
@@ -1640,4 +1720,30 @@ class Arguments(t.Generic[_T_Args, _T_Kwargs]):
     def _hash_items_(self) -> None:
         return self._args, self._kwargs
     
-    
+    def __getitem__(self, key: t.Union[str, int]) -> t.Union[_T_Args, _T_Kwargs]:
+        if key.__class__ is int:
+            return self.args[key]
+        try:
+            return self.kwargs[key]
+        except KeyError:
+            try:
+                return self.args[key]
+            except IndexError as e:
+                raise IndexKeyError(key) from e
+            except (TypeError, ValueError) as e:
+                raise KeyError(key) from e
+
+    def __contains__(self, key: t.Union[str, int]):
+        if key.__class__ is int:
+            return len(self.args) > key
+        else:
+            return key in self.kwargs
+
+    def __iter__(self):
+        yield from range(len(self._args))
+        yield from self._kwargs
+
+
+
+class IndexKeyError(IndexError, KeyError):
+    ...

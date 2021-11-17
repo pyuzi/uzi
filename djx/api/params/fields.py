@@ -1,97 +1,325 @@
 import typing as t 
 
+from collections.abc import Iterable, Callable, Mapping, Hashable
 
 from djx.common.utils import export
+from djx.common.collections import orderedset
+from djx.di import Injectable
 from pydantic.fields import FieldInfo
 
+from .. import abc
 
 
-
-from ..common import ParamType
+from .core import T_ParamDataType
 
 
 @export()
 class ParamFieldInfo(FieldInfo):
-    
-    _paramtype: t.ClassVar[ParamType] = ParamType.any()
 
-    __slots__ = 'paramtype',
+    __slots__ = 'param_src',
 
+    param_src: tuple[Injectable, Hashable]
+
+    @t.overload
     def __init__(
         self,
-        default: t.Any,
+        default: t.Any=...,
         *,
-        alias: str = None,
-        title: str = None,
-        description: str = None,
-        gt: float = None,
-        ge: float = None,
-        lt: float = None,
-        le: float = None,
-        min_length: int = None,
-        max_length: int = None,
-        regex: str = None,
-        deprecated: bool = None,
-        # param_name: str = None,
-        # param_type: Any = None,
+        source: T_ParamDataType,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
         **extra: t.Any,
-    ):
-        # self.deprecated = deprecated
-        # self.param_name: str = None
-        # self.param_type: Any = None
-        # self.model_field: t.Optional[ModelField] = None
-        super().__init__(
-            default,
-            alias=alias,
-            title=title,
-            description=description,
-            gt=gt,
-            ge=ge,
-            lt=lt,
-            le=le,
-            min_length=min_length,
-            max_length=max_length,
-            regex=regex,
-            **extra,
-        )
+    ):...
 
-    # @classmethod
-    # def _in(cls) -> str:
-    #     "Openapi param.in value"
-    #     return cls.__name__.lower()
+    def __init__(self, 
+                default: t.Any = ..., *,
+                source: T_ParamDataType, 
+                **kwargs: t.Any) -> None:
+        super().__init__(default=default, **kwargs)
 
-
-@export()
-class PathFieldInfo(ParamFieldInfo):
-    _paramtype: t.ClassVar[ParamType] = ParamType.path
+        if isinstance(source, list):
+            source = tuple(source)
+        elif not isinstance(source, tuple):
+            source = source, ...
+        self.param_src = source        
 
 
 
-@export()
-class QueryFieldInfo(ParamFieldInfo):
-    _paramtype: t.ClassVar[ParamType] = ParamType.query
 
-
-@export()
-class HeaderFieldInfo(ParamFieldInfo):
-    _paramtype: t.ClassVar[ParamType] = ParamType.header
-
-
-@export()
-class CookieFieldInfo(ParamFieldInfo):
-    _paramtype: t.ClassVar[ParamType] = ParamType.cookie
-
+@t.overload
+def Param(
+        default: t.Any=...,
+        source: T_ParamDataType = None,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
 
 @export()
-class BodyFieldInfo(ParamFieldInfo):
-    _paramtype: t.ClassVar[ParamType] = ParamType.body
+def Param(default=..., source=None, **kwds):
+    return ParamFieldInfo(default, source=source or abc.Params, **kwds)
 
+
+
+
+
+@t.overload
+def Path(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
 
 @export()
-class FormFieldInfo(ParamFieldInfo):
-    _paramtype: t.ClassVar[ParamType] = ParamType.form
+def Path(default=..., **kwds):
+    return Param(default, abc.Kwargs, **kwds)
 
+
+
+@t.overload
+def Query(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
 
 @export()
-class FileFieldInfo(ParamFieldInfo):
-    _paramtype: t.ClassVar[ParamType] = ParamType.file
+def Query(default=..., **kwds):
+    return Param(default, abc.Query, **kwds)
+
+
+
+@t.overload
+def Body(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
+
+@export()
+def Body(default=..., **kwds):
+    return Param(default, abc.Body, **kwds)
+
+
+
+@t.overload
+def Form(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
+
+@export()
+def Form(default=..., **kwds):
+    return Param(default, abc.Form, **kwds)
+
+
+
+@t.overload
+def Input(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
+
+@export()
+def Input(default=..., **kwds):
+    return Param(default, abc.Input, **kwds)
+
+
+
+@t.overload
+def File(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
+
+@export()
+def File(default=..., **kwds):
+    return Param(default, abc.Files, **kwds)
+
+
+
+
+@t.overload
+def Cookie(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
+
+@export()
+def Cookie(default=..., **kwds):
+    return Param(default, abc.Cookies, **kwds)
+
+
+@t.overload
+def Header(
+        default: t.Any=...,
+        *,
+        default_factory: t.Union[Callable[[], t.Any], None] = None,
+        alias: t.Union[str, None] = None,
+        title: t.Union[str, None] = None,
+        description: t.Union[str, None] = None,
+        const: t.Union[bool, None] = None,
+        gt: t.Union[float, None] = None,
+        ge: t.Union[float, None] = None,
+        lt: t.Union[float, None] = None,
+        le: t.Union[float, None] = None,
+        multiple_of: t.Union[float, None] = None,
+        min_items: t.Union[int, None] = None,
+        max_items: t.Union[int, None] = None,
+        min_length: t.Union[int, None] = None,
+        max_length: t.Union[int, None] = None,
+        regex: t.Union[str, None] = None,
+        deprecated: t.Union[bool, None] = None,
+        **extra: t.Any) -> ParamFieldInfo:
+    ...
+
+@export()
+def Header(default=..., **kwds):
+    return Param(default, abc.Headers, **kwds)
+
+

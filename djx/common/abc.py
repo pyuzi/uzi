@@ -1,7 +1,9 @@
-
+import typing as t 
 from abc import ABCMeta, abstractmethod
 
-from collections.abc import Set, Mapping
+from collections.abc import (
+    Collection, Mapping, MutableMapping, Set, MutableSet, Sequence, MutableSequence
+)
 
 from .utils import export
 
@@ -92,4 +94,45 @@ Orderable.register(tuple)
 Orderable.register(Set)
 Orderable.register(frozenset)
 Orderable.register(set)
+
+
+
+@export()
+class Immutable(metaclass=ABCMeta):
+    """SupportsOrdering Object"""
+    __slots__ = ()
+
+    __mutable__: t.ClassVar[t.Union[type[t.Any], tuple[type[t.Any]]]] = ...
+    __immutable__: t.ClassVar[t.Union[type[t.Any], tuple[type[t.Any]]]] = ...
+    
+    def __init_subclass__(cls, *, mutable=..., immutable=...) -> None:
+        if mutable is not ...:
+            cls.__mutable__ = mutable
+        if immutable is not ...:
+            cls.__immutable__ = immutable
+        
+
+    @classmethod
+    def __subclasshook__(cls, sub: type) -> bool:
+        if Immutable in cls.__bases__ and cls.__mutable__ and cls.__immutable__:
+            return issubclass(sub, cls.__immutable__) and not issubclass(sub, cls.__mutable__)
+        return NotImplemented
+
+
+@export()
+class ImmutableSequence(Immutable, immutable=Sequence, mutable=MutableSequence):
+
+    __slots__ = ()
+
+
+@export()
+class ImmutableSet(Immutable, immutable=Set, mutable=MutableSet):
+
+    __slots__ = ()
+
+
+@export()
+class ImmutableMapping(Immutable, immutable=Mapping, mutable=MutableMapping):
+
+    __slots__ = ()
 

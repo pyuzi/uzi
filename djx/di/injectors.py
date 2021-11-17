@@ -209,31 +209,27 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
     
     def get(self, injectable: T_Injectable, default: T=None, /, *args, **kwds) -> t.Union[T_Injected, T]: 
         try:
-            return self.make(injectable, *args, **kwds)
+            return self[injectable]
         except InjectorKeyError:
             return default
     
     def __getitem__(self, key: T_Injectable) -> T_Injected:
         res = self.vars[key]
-        if res is not None:
-            if res.value is not Void:
-                return res.value
-            else:
-                return res.get()
-
-        return self.__missing__(key)
-
+        if res is None:
+            return self.__missing__(key)
+        elif res.value is Void:
+            return res.get()
+        return res.value
+        
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.vars[key]
-        if res is not None:
-            if (args or kwds):
-                return res.make(*args, **kwds)
-            elif res.value is not Void:
-                return res.value
-            else:
-                return res.get()
-
-        return self.__missing__(key, args, kwds)
+        if res is None:
+            return self.__missing__(key)
+        elif (args or kwds):
+            return res.make(*args, **kwds)
+        elif res.value is Void:
+            return res.get()
+        return res.value
     
     def __missing__(self, key, args=(), kwds=frozendict()):
         if isinstance(key, ImportRef):
@@ -249,6 +245,9 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
         raise InjectorKeyError(f'{key} in {self!r}')
     
     def set(self, k: T_Injectable, val: T_Injected):
+        if not isinstance(k, Injectable):
+            raise TypeError(f'injector tag must be Injectable not {k.__class__.__name__}: {k}')
+            
         if not isinstance(val, InjectorVar):
             val = InjectorVar(self, val)
         self.vars[k] = val

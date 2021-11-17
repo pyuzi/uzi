@@ -192,6 +192,13 @@ class EnumMeta(BaseEnumMeta):
         return MappingProxyType(cls._value2member_map_)
 
 
+# def _generate_next_value_(name, start, count, last_values):
+#     max(start, *(v for v in last_values ))
+#     if last_values:
+#         last = last_values[-1]
+#     else:
+#         return start
+#     if isinstance()
 
 @export()
 class Enum(BaseEnum, metaclass=EnumMeta):
@@ -237,8 +244,7 @@ class IntFlag(BaseIntFlag, metaclass=EnumMeta):
     def __repr__(self) -> str:
         b = f"{{:0>{_bit_width(self.__class__)}}}".format(f'{abs(self._value_):b}')
         return f'<b{b!r}: {super().__repr__()}>'
-        
-
+    
 
 
 @cache
@@ -253,3 +259,6 @@ class StrEnum(str, Enum):
     name: str
     label: str
     value: t.Any
+
+    def _generate_next_value_(name, start, count, last_values):
+        return name

@@ -13,10 +13,13 @@ from django.http.response import HttpResponseBase as HttpResponse
 
 
 from djx.di import ioc
-from djx.core import abc
+from djx.abc import api as abc
+
+
+abc.Request.register(HttpRequest)
+abc.Response.register(HttpResponse)
 
 ioc.alias(HttpRequest, abc.Request, at='request')
-
 
 # from djx.schemas import Schema, GenericSchema
 

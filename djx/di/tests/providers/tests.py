@@ -108,6 +108,8 @@ class SymbolTests:
 
                             _n = int(5e4)
 
+                            vardump([injfoo(), injfoo(), injfoo()])
+                            vardump([injbafoo(), injbafoo(), injbafoo()])
 
                             vardump(_ioc_=ioc.injector, _inj_=inj)
                             injbar()
@@ -119,7 +121,6 @@ class SymbolTests:
                             profile(mkfoo, injfoo, 'Foo')
                             profile(mkbar, injbar, 'Bar')
 
-                            vardump([injbafoo(), injbafoo(), injbafoo()])
                     
                             wrapbar = ioc.wrap(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
                             wrapfunc = ioc.wrap(user_func_str, kwargs=dict(p='PATCHED USER'))

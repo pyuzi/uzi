@@ -6,6 +6,7 @@ from enum import (
     IntEnum as BaseIntEnum,
     IntFlag as BaseIntFlag,
     Flag as BaseFlag,
+    auto as _auto,
     unique,
     auto,
 )
@@ -20,6 +21,9 @@ from .utils import export, text
 
 __all__ = []
 
+if t.TYPE_CHECKING:
+    def auto():
+        return _auto()
 
 
 # def __json__(self):

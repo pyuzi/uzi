@@ -51,11 +51,16 @@ class ParamFieldInfo(FieldInfo):
                 **kwargs: t.Any) -> None:
         super().__init__(default=default, **kwargs)
 
-        if isinstance(source, list):
-            source = tuple(source)
-        elif not isinstance(source, tuple):
-            source = source, ...
-        self.param_src = source        
+        if isinstance(source, (list, tuple)):
+            if 0 < len(source) < 3:
+                source, aka, *_ = *source, self.alias or ...
+            else:
+                raise ValueError(f'param scource {source.__class__.__name__} must 1 or 2 items not {len(source)}')
+        else:
+            aka = self.alias or ...
+            
+        self.param_src = source, aka
+
 
 
 
@@ -233,7 +238,7 @@ def Input(
 
 @export()
 def Input(default=..., **kwds):
-    return Param(default, abc.Input, **kwds)
+    return Param(default, abc.Inputs, **kwds)
 
 
 

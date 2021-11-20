@@ -2,22 +2,34 @@ import typing as t
 from django.urls import path, include
 from djx.api.params import Body, Query, Param, Input
 from djx.api.params.fields import Path
+from djx.di import get_ioc_container
 from ninja import NinjaAPI
 import ninja as nja
 from django.http import JsonResponse, HttpRequest
 from djx.common import json
 
 
-from .views import ViewFunction
+from .func_views import ViewFunction
 
 
 
 
-
+ioc = get_ioc_container()
 
 njapi = NinjaAPI()
 
 
+@ioc.injectable(cache=True)
+class Foo:
+    __slots__ = 'foo'
+
+    foo: t.Any
+
+
+
+
+_T = t.TypeVar('_T')
+_T_Foo = t.TypeVar('_T_Foo', bound=Foo)
 
 
 
@@ -36,18 +48,17 @@ njapi = NinjaAPI()
 
 
 
-
 @ViewFunction
 def func(
         p1: t.Annotated[t.Literal['xyz', 'abc'], Path()],
         p2: t.Annotated[int, Path()],
-        a: t.Annotated[str, Query()], 
-        b: t.Annotated[str, Query()],
+        a: str, # t.Annotated[str, Query()], 
+        b: str, # t.Annotated[str, Query()],
         age: t.Annotated[int, Body()],
-        foo: t.Annotated[bool, Body()], 
+        foo: Foo, 
         bar: t.Annotated[str, Body()], 
         baz: t.Annotated[str, Body()]):
-    return JsonResponse(dict(a=a, b=b, p1=p1, p2=p2, age=age, foo=foo, bar=bar, baz=baz))
+    return JsonResponse(dict(a=a, b=b, p1=p1, p2=p2, age=age, foo=f'{foo.__class__.__module__}.{foo.__class__.__name__}', bar=bar, baz=baz))
 
 
 def valid_view(req, *a, **kw):
@@ -82,6 +93,8 @@ def plain_view(req, *a, **kw):
 def ninja_view(request: HttpRequest, 
         p1: t.Literal['xyz', 'abc'],
         p2: int,
+        # xx: t.Iterable[str] = None,
+        # yy: t.Iterable[int] = None,
         a: str = nja.Query(...), 
         b: str = nja.Query(...), 
         age: int = nja.Body(...),
@@ -89,6 +102,7 @@ def ninja_view(request: HttpRequest,
         bar: str = nja.Body(...),
         baz: str = nja.Body(...)
         ) -> JsonResponse:
+    
     return JsonResponse(dict(a=a, b=b, p1=p1, p2=p2, age=age, foo=foo, bar=bar, baz=baz))
 
 

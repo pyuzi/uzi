@@ -225,6 +225,7 @@ class FallbackMappingMixin:
         if hasattr(self, '_fallback'):
             del self._fb_func
         self._fallback = None
+        # self._fallback = self._fb_func = None
 
     def _initfallback_(self):
         if self._fallback is None:
@@ -964,13 +965,14 @@ class MappingProxy(FallbackMappingMixin, t.Generic[_T_Key, _T_Val], metaclass=AB
     __slots__ = '__data__', '_fb', '_fallback', '_fb_func'
 
     __data__: Mapping[_T_Key, _T_Val]
-    
+    _default_fb = key_error_fallback
+
     def __new__(cls, mapping: Mapping[_T_Key, _T_Val], *, fallback: _FallbackType[_T_Key, _T_Val]=key_error_fallback, mutable: bool=False):
         if cls is MappingProxy:
             if mutable is True:
                 cls = MutableMappingProxy
 
-        self: MappingProxy[_T_Key, _T_Val] = object.__new__(cls)
+        self: cls[_T_Key, _T_Val] = object.__new__(cls)
         if isinstance(mapping, cls):
             self.__data__ = mapping.__data__
         else:
@@ -1016,6 +1018,13 @@ class MappingProxy(FallbackMappingMixin, t.Generic[_T_Key, _T_Val], metaclass=AB
         except KeyError:
             return self.__missing__(k)
     
+    def __missing__(self, k):
+        if self._fallback is None:
+            return self._initfallback_()(k)
+        else:
+            return self._fb_func(k)
+        # raise KeyError(k)
+
     def __contains__(self, k: _T_Key) -> bool:
         return k in self.__data__
 
@@ -1574,23 +1583,29 @@ class Arguments(t.Generic[_T_Args, _T_Kwargs]):
     _args: tuple[_T_Args]
     _kwargs: KwargDict[_T_Kwargs]
 
-    __argsclass__ = tuple
-    __kwargsclass__ = KwargDict
+    __argsclass__: t.ClassVar[type[tuple[_T_Args]]] = tuple
+    __kwargsclass__: t.ClassVar[type[Mapping[str, _T_Kwargs]]] = KwargDict
 
     def __new__(cls, args: Sequence[_T_Args]=(), kwargs: Mapping[str, _T_Kwargs]=KwargDict()):
         self = object.__new__(cls)
-
-        if args.__class__ is cls.__argsclass__:
-            self._args = args
-        else:
-            self._args = cls.__argsclass__(args or ())
-
-        if kwargs.__class__ is cls.__kwargsclass__:
-            self._kwargs = kwargs
-        else:
-            self._kwargs = cls.__kwargsclass__(kwargs or ())
-
+        self._args = cls._make_args(args)
+        self._kwargs = cls._make_kwargs(kwargs)
         return self
+    
+    @classmethod
+    def _make_args(cls, args) -> tuple[_T_Kwargs]:
+        if isinstance(args, cls.__argsclass__):
+            return args
+        else:
+            return cls.__argsclass__(args or ())
+
+
+    @classmethod
+    def _make_kwargs(cls, kwargs):
+        if isinstance(kwargs, cls.__kwargsclass__):
+            return kwargs
+        else:
+            return cls.__kwargsclass__(kwargs or {})
 
     @classmethod
     def coerce(cls, obj) -> 'Arguments[_T_Args, _T_Kwargs]':
@@ -1732,6 +1747,7 @@ class Arguments(t.Generic[_T_Args, _T_Kwargs]):
                 raise IndexKeyError(key) from e
             except (TypeError, ValueError) as e:
                 raise KeyError(key) from e
+            raise KeyError(key)
 
     def __contains__(self, key: t.Union[str, int]):
         if key.__class__ is int:

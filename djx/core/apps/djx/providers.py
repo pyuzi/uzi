@@ -2,7 +2,9 @@ from collections import ChainMap
 from collections.abc import Mapping
 
 import typing as t
-from djx.common.collections import Arguments, MappingProxy, frozendict 
+from django.http.request import QueryDict
+from djx.abc.api import FormList, QueryList
+from djx.common.collections import Arguments, MappingProxy, factorydict, frozendict 
 
 
 
@@ -15,10 +17,10 @@ from djx.di.scopes import Scope
 
 from djx.abc import Settings
 from djx.api.abc import (
-    Args, Input, Kwargs, Request, Query, RawBody,
+    Args, Inputs, Kwargs, Request, Query, RawBody,
     Body, Form, Params, Files, 
     Cookies, Headers, BodyParser, 
-    Session, PathParams
+    Session, Arguments
 )
 
 from djx.core.http import HttpRequest as DjangoRequest
@@ -37,20 +39,20 @@ ioc.function(Settings, django_settings, at='main', cache=True, priority=-1)
 
 
 
-def _provide_request_attr(name):
+# def _provide_request_attr(name):
     
-    def provide(self: Provider, scope: Scope, token):
-        def resolve(inj: Injector):
-            if var := inj.vars[DjangoRequest]:
-                # req = var.get()
-                # def make():
-                #     nonlocal name, var, req
-                #     return getattr(req, name)
+#     def provide(self: Provider, scope: Scope, token):
+#         def resolve(inj: Injector):
+#             if var := inj.vars[DjangoRequest]:
+#                 # req = var.get()
+#                 # def make():
+#                 #     nonlocal name, var, req
+#                 #     return getattr(req, name)
                     
-                return InjectorVar(inj, value=getattr(var.value, name)) 
+#                 return InjectorVar(inj, value=getattr(var.value, name)) 
 
-        return resolve, {DjangoRequest}
-    return provide
+#         return resolve, {DjangoRequest}
+#     return provide
 
 
 _injkwds = dict(
@@ -66,6 +68,14 @@ def _provider(self: Provider, scope: Scope, token):
         if var := inj.vars[DjangoRequest]:
             return InjectorVar(inj, value=var.value.POST) 
     return resolve, {DjangoRequest}
+
+
+@ioc.provide(FormList, **_injkwds)
+def _provider(self: Provider, scope: Scope, token):
+    def resolve(inj: Injector):
+        return InjectorVar(inj, value=factorydict(inj[Form].getlist)) 
+    
+    return resolve, {Form}
 
 
 
@@ -85,6 +95,16 @@ def _provider(self: Provider, scope: Scope, token):
             return InjectorVar(inj, value=var.value.GET) 
     return resolve, {DjangoRequest}
 
+
+@ioc.provide(QueryList, **_injkwds)
+def _provider(self: Provider, scope: Scope, token):
+    def resolve(inj: Injector):
+        return InjectorVar(inj, value=factorydict(inj[Query].getlist)) 
+    
+    return resolve, {Query}
+
+
+
 @ioc.provide(Cookies, **_injkwds)
 def _provider(self: Provider, scope: Scope, token):
     def resolve(inj: Injector):
@@ -92,13 +112,6 @@ def _provider(self: Provider, scope: Scope, token):
             return InjectorVar(inj, value=var.value.COOKIES) 
     return resolve, {DjangoRequest}
 
-
-# @ioc.provide(Headers, **_injkwds)
-# def _provider(self: Provider, scope: Scope, token):
-#     def resolve(inj: Injector):
-#         if var := inj.vars[DjangoRequest]:
-#             return InjectorVar(inj, value=var.value.META) 
-#     return resolve, {DjangoRequest}
 
 
 
@@ -196,8 +209,8 @@ def _make_arguments(self: Provider, scope: Scope, token):
 
 
 
-@ioc.function(PathParams, **_injkwds)
-def _make_arguments(args: Args, kwargs: Kwargs):
+@ioc.function(Arguments, **_injkwds)
+def _make_arguments(args: Args=None, kwargs: Kwargs=None):
     return Arguments(args, kwargs)
 
 
@@ -205,7 +218,7 @@ def _make_arguments(args: Args, kwargs: Kwargs):
 
 
 @ioc.function(Params, **_injkwds)
-def _makeparams(path: PathParams=None, 
+def _makeparams(path: Kwargs=None, 
                 query: Query=None, 
                 body: Body=None, 
                 headers: Headers=None, /):
@@ -216,7 +229,7 @@ def _makeparams(path: PathParams=None,
                 query,
                 body if isinstance(body, Mapping) else None,
                 headers,
-            ) if m and (ok := True)
+            ) if m is not None
         ))
 
     if ok is False:
@@ -229,7 +242,7 @@ def _makeparams(path: PathParams=None,
 
 
 
-@ioc.function(Input, **_injkwds)
+@ioc.function(Inputs, **_injkwds)
 def _make_input(query: Query=None, 
                 body: Body=None, /):
 

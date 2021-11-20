@@ -16,7 +16,7 @@ class ParamSource(StrEnum, fields='dep,_list,_map'):
     
     args: 'ParamSource'       = auto(), abc.Args
     kwargs: 'ParamSource'     = auto(), abc.Kwargs
-    path: 'ParamSource'       = auto(), abc.PathParams,
+    path: 'ParamSource'       = auto(), abc.Arguments,
     
     query: 'ParamSource'      = auto(), abc.Query,
     body: 'ParamSource'       = auto(), abc.Body,
@@ -28,7 +28,7 @@ class ParamSource(StrEnum, fields='dep,_list,_map'):
     cookie: 'ParamSource'     = auto(), abc.Cookies, 
 
     params: 'ParamSource'     = auto(), abc.Params, 
-    input: 'ParamSource'      = auto(), abc.Input, 
+    input: 'ParamSource'      = auto(), abc.Inputs, 
 
 
 vardump(ParamSource.__members__)

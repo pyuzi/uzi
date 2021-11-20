@@ -18,7 +18,7 @@ from django.contrib import admin
 
 # from . import views as v
 
-
+from djx.api.urls import njapi
 
 urlpatterns = [
     # path("admin/", admin.site.urls),

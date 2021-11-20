@@ -22,18 +22,9 @@ class ClientHandler(BaseClientHandler):
     di_scope = REQUEST_SCOPE
     
     def get_response(self, request):
-        ioc = self.ioc
-        # inj, token = ioc.use(self.di_scope)
-        # inj[Request] = request
-
-        # # logger.debug('___START___')
-        # res = BaseClientHandler.get_response(self, request)
-        # # logger.debug('___ENDD___')
-        # token is None or ioc.ctxvar.reset(token)  
-
-        # return res
-        with self.ioc.use(self.di_scope) as inj:
+        with self.ioc.use(REQUEST_SCOPE) as inj:
             inj[Request] = request
+            request.injector = inj
             return super().get_response(request)
 
     # def get_response(self, request: HttpRequest) -> HttpResponse:

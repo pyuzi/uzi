@@ -12,6 +12,7 @@ from typing import (  # type: ignore
     ClassVar,
     Dict,
     Generator,
+    Generic,
     List,
     Mapping,
     NewType,
@@ -431,6 +432,45 @@ GenericLike.register(GenericAlias)
 
 
 
+def _collect_type_vars(*types,  recursive: bool=True, _skip=None):
+    """Collect all type variable contained in types in order of
+    first appearance (lexicographic order). For example::
+
+        _collect_type_vars((T, List[S, T])) == (T, S)
+    """
+    if _skip is None:
+        _skip = set()
+    
+    for t in types:
+        if not (t in _skip or _skip.add(t)):
+            if isinstance(t, TypeVar): 
+                yield t
+            elif isinstance(t, GenericAlias):
+                yield from _collect_type_vars(*t.__parameters__, recursive=recursive, _skip=_skip)
+            elif recursive and isinstance(t, type):
+                yield from _collect_type_vars(*getattr(t, '__orig_bases__', ()), recursive=True, _skip=_skip)
+        
+
+
+
+# def get_all_type_vars(tp: Type[Any]) -> dict[TypeVar, type[Any]]:
+#     origin = get_origin(tp)
+#     if origin is Annotated:
+#         return get_all_type_vars(tp.__origin__)
+#     elif origin is Union:
+#         res = {}
+#         for a in reversed(tp.__args__):
+#             res.update(get_all_type_vars(a))
+#         return res
+#     elif origin:
+#         pass
+#     elif isinstance(tp, type):
+#         orig = getattr(tp, '__orig_bases__')
+#     it = iter_true_types(*types, depth=depth)
+#     return [t for i, t in enumerate(it) if i < limit]
+
+
+
 def get_true_types(*types: Type[Any], limit=sys.maxsize, depth=sys.maxsize) -> list[type[Any]]:
     it = iter_true_types(*types, depth=depth)
     return [t for i, t in enumerate(it) if i < limit]
@@ -444,13 +484,14 @@ def iter_true_types(*types: Type[Any], depth=sys.maxsize) -> Generator[type, Non
                 yield tp
             elif isinstance(tp, TypeVar):
                 if tp.__constraints__:
-                    yield from iter_true_types(tp.__constraints__, depth=depth-1)
+                    yield from iter_true_types(*tp.__constraints__, depth=depth-1)
                 elif tp.__bound__ is not None:
                     yield from iter_true_types(tp.__bound__, depth=depth-1)
-            elif orig := get_origin(tp):
-                if orig is {Annotated, Union}:
-                    yield from iter_true_types(*tp.__args__, depth=depth-1)
-                elif isinstance(orig, type):
-                    yield orig
-                else:
-                    yield from iter_true_types(orig, depth=depth-1)
+            elif not (orig := get_origin(tp)):
+                continue
+            elif orig is Union:
+                yield from iter_true_types(*tp.__args__, depth=depth-1)
+            elif orig is Annotated:
+                yield from iter_true_types(tp.__origin__, depth=depth-1)
+            else:
+                yield from iter_true_types(orig, depth=depth-1)

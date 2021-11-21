@@ -1,19 +1,20 @@
 # from __future__ import annotations
+from collections import ChainMap
 from logging import getLogger
 from operator import le
-from types import GenericAlias
 import typing as t 
+from inspect import Parameter, Signature
 from abc import abstractmethod
 from djx.common.abc import Orderable
-from djx.common.collections import Arguments
+from djx.common.collections import Arguments, frozendict, orderedset
 
-from collections.abc import  Callable, Hashable
-from djx.common.typing import NoneType, get_args, get_origin
+from collections.abc import  Callable, Hashable, Mapping, Sequence
+from djx.common.typing import get_args, typed_signature
 
 
 
 from djx.common.utils import export
-from .inspect import ordered_id
+from .util import unique_id
 
 
 from .common import (
@@ -23,7 +24,7 @@ from .common import (
 
 
 if t.TYPE_CHECKING:
-    from . import Scope, InjectableSignature, Injector, Depends
+    from . import Scope, InjectableSignature, Injector, Depends, IocContainer
 
 
 logger = getLogger(__name__)
@@ -55,10 +56,14 @@ T_UsingAny = t.Union[T_UsingCallable, T_UsingFactory, T_UsingResolver, T_UsingAl
 @export()
 class Provider(Orderable, t.Generic[_T_Using]):
 
-    # __slots__ = ()
+    # __slots__ = ('target', 'arguments', '')
 
-    concrete: _T_Using
+    ioc: 'IocContainer' = None
+
+    target: _T_Using
     arguments: Arguments
+
+    deps: dict[str, Injectable]
 
 
     kind: t.Final[KindOfProvider] = None
@@ -69,7 +74,7 @@ class Provider(Orderable, t.Generic[_T_Using]):
 
     def __init__(self, concrete: t.Any=..., /, **kwds) -> None:
 
-        self.concrete = concrete
+        self.target = concrete
 
         self.arguments = Arguments.coerce(kwds.pop('arguments', None))\
             .extend(kwds.pop('args', None) or (), kwds.pop('kwargs', None) or ())
@@ -81,27 +86,33 @@ class Provider(Orderable, t.Generic[_T_Using]):
         self._boot_()
         
     def _defaults_(self) -> dict:
-        return
+        return dict(deps=frozendict())
 
     def _boot_(self):
-        self.__pos = ordered_id()
+        self.__pos = unique_id()
 
     @property
     def factory(self):
-        if callable(res := getattr(self.concrete, '__inject_new__', self.concrete)):
+        if callable(res := getattr(self.target, '__inject_new__', self.target)):
             return res
 
+    # @property
+    # def signature(self) -> Signature:
+    #     try:
+    #         return self._sig
+    #     except AttributeError:
+    #         from .inspect import signature
+    #         if func := self.factory:
+
+    #             self._sig = signature(func, evaltypes=True)
+    #         else:
+    #             self._sig = None
+    #         return self._sig
+
     @property
-    def signature(self):
-        try:
-            return self._sig
-        except AttributeError:
-            from .inspect import signature
-            if func := self.factory:
-                self._sig = signature(func, evaltypes=True)
-            else:
-                self._sig = None
-            return self._sig
+    def signature(self) -> t.Union[Signature, None]:
+        if func := self.factory:
+            return typed_signature(func)
 
     def _assing(self, **kwds):
         setattr = self.__setattr__
@@ -122,8 +133,8 @@ class Provider(Orderable, t.Generic[_T_Using]):
     #     return self.clone()._assing(**kwds)
 
     def implicit_tag(self):
-        if isinstance(self.concrete, Hashable):
-            return self.concrete
+        if isinstance(self.target, Hashable):
+            return self.target
         return NotImplemented
 
     @abstractmethod
@@ -131,7 +142,7 @@ class Provider(Orderable, t.Generic[_T_Using]):
         ...
     
     def can_provide(self, scope: 'Scope', dep: T_Injectable) -> bool:
-        if func := getattr(self.concrete, '__can_provide__', None):
+        if func := getattr(self.target, '__can_provide__', None):
             return bool(func(self, scope, dep))
         return True
 
@@ -145,7 +156,7 @@ class Provider(Orderable, t.Generic[_T_Using]):
         return (self.priority, self.__pos)
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self.concrete!r})'
+        return f'{self.__class__.__name__}({self.target!r})'
 
 
 
@@ -156,7 +167,7 @@ class FactoryProvider(Provider[T_UsingFactory]):
     __slots__ = ()
 
     def provide(self, scope: 'Scope', dep: T_Injectable,  *args, **kwds) -> ResolverInfo:
-        return ResolverInfo.coerce(self.concrete(self, scope, dep, *args, **kwds))
+        return ResolverInfo.coerce(self.target(self, scope, dep, *args, **kwds))
 
 
 
@@ -166,7 +177,7 @@ class ResolverProvider(Provider[T_UsingResolver]):
     __slots__ = ()
 
     def provide(self, scope: 'Scope', dep: T_Injectable,  *args, **kwds) -> ResolverInfo:
-        return ResolverInfo.coerce(self.concrete)
+        return ResolverInfo.coerce(self.target)
 
 
 
@@ -177,7 +188,7 @@ class ValueProvider(Provider[T_UsingValue]):
     __slots__ = ()
 
     def provide(self, scope: 'Scope', dep: T_Injectable,  *args, **kwds) -> ResolverInfo:
-        value = self.concrete
+        value = self.target
         return ResolverInfo(lambda at: InjectorVar(at, value))
 
     def can_provide(self, scope: 'Scope', dep: T_Injectable) -> bool:
@@ -186,15 +197,207 @@ class ValueProvider(Provider[T_UsingValue]):
 
 
 
+class InjectedArgumentsDict(dict[str, t.Any]):
+    
+    __slots__ = 'inj',
+
+    inj: 'Injector'
+
+    def __init__(self, inj: 'Injector', /, deps=()):
+        dict.__init__(self, deps)
+        self.inj = inj
+
+    def get(self, key: str, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __getitem__(self, key: str):
+        return self.inj[super().__getitem__(key)]
+
+
+_EMPTY = Parameter.empty
+
+_T_Empty = t.Literal[_EMPTY]
+
+_T_ArgViewTuple = tuple[str, t.Any, t.Union[Injectable, _T_Empty], t.Any]
+class ArgumentView:
+
+    __slots__ = '_args', '_kwargs', '_kwds', '_var_arg', '_var_kwd', '_non_kwds',
+
+    _args: tuple[_T_ArgViewTuple, ...]
+    _kwargs: tuple[_T_ArgViewTuple, ...]
+    _kwds: tuple[_T_ArgViewTuple, ...]
+    _var_arg: t.Union[_T_ArgViewTuple, None]
+    _var_kwd: t.Union[_T_ArgViewTuple, None]
+
+    def __new__(cls, args=(), kwargs=(), kwds=(), var_arg=None, var_kwd=None):
+        self = object.__new__(cls)
+        self._args = tuple(args)
+        self._kwargs = tuple(kwargs)
+        self._kwds = tuple(kwds)
+        self._var_arg = var_arg
+        self._var_kwd = var_kwd
+        if var_kwd:
+            self._non_kwds = frozenset(a for a, *_ in kwargs),
+        else:
+            self._non_kwds = frozenset()
+
+        return self
+
+    def args(self, inj: 'Injector', vals: dict[str, t.Any]=frozendict()):
+        for n, v, i, d in self._args:
+            if v is not _EMPTY:
+                yield v
+                continue
+            elif i is not _EMPTY:
+                if d is _EMPTY:
+                    yield inj[i]
+                else:
+                    yield inj.get(i, d)
+                continue
+            elif d is not _EMPTY:
+                yield d
+                continue
+            return
+        
+        if _var := self._var_arg:
+            n, v, i = _var
+            if v is not _EMPTY:
+                yield from v
+            elif i is not _EMPTY:
+                yield from inj.get(i, ())
+        else:
+        # elif  self._kwargs:
+            # yield from self.kwargs(inj, vals)
+            for n, v, i, d in self._kwargs:
+                v = vals.pop(n, v)
+                if v is not _EMPTY:
+                    yield v
+                    continue
+                elif i is not _EMPTY:
+                    if d is _EMPTY:
+                        yield inj[i]
+                    else:
+                        yield inj.get(i, d)
+                    continue
+                elif d is not _EMPTY:
+                    yield d
+                    continue
+                break
+
+    def var_arg(self, inj: 'Injector', vals: Mapping[str, t.Any]=frozendict()):
+        if _var := self._var_arg:
+            n, v, i = _var
+            if v is not _EMPTY:
+                yield from v
+            elif i is not _EMPTY:
+                yield from inj.get(i, ())
+
+    def kwargs(self, inj: 'Injector', vals: dict[str, t.Any]=frozendict()):
+        if vals:
+            for n, v, i, d in self._kwargs:
+                v = vals.pop(n, v)
+                if v is not _EMPTY:
+                    yield v
+                    continue
+                elif i is not _EMPTY:
+                    if d is _EMPTY:
+                        yield inj[i]
+                    else:
+                        yield inj.get(i, d)
+                    continue
+                elif d is not _EMPTY:
+                    yield d
+                    continue
+                break
+        else:
+            for n, v, i, d in self._kwargs:
+                if v is not _EMPTY:
+                    yield v
+                    continue
+                elif i is not _EMPTY:
+                    if d is _EMPTY:
+                        yield inj[i]
+                    else:
+                        yield inj.get(i, d)
+                    continue
+                elif d is not _EMPTY:
+                    yield d
+                    continue
+                break
+
+    def kwds(self, inj: 'Injector', vals: dict[str, t.Any]=frozendict()):
+        kwds = dict()
+        if vals:
+            for n, v, i, d in self._kwds:
+                v = vals.pop(n, v)
+                if v is not _EMPTY:
+                    kwds[n] = v
+                    continue
+                elif i is not _EMPTY:
+                    if d is _EMPTY:
+                        kwds[n] = inj[i]
+                    else:
+                        kwds[n] = inj.get(i, d)
+                    continue
+                elif d is not _EMPTY:
+                    kwds[n] = v
+                    continue
+                break
+        else:
+            for n, v, i, d in self._kwds:
+                if v is not _EMPTY:
+                    kwds[n] = v
+                    continue
+                elif i is not _EMPTY:
+                    if d is _EMPTY:
+                        kwds[n] = inj[i]
+                    else:
+                        kwds[n] = inj.get(i, d)
+                    continue
+                elif d is not _EMPTY:
+                    kwds[n] = v
+                    continue
+                break
+
+        if _var := self._var_kwd:
+            n, v, i = _var
+            if v is not _EMPTY:
+                kwds.update(v)
+            elif i is not _EMPTY:
+                kwds.update(inj.get(i, ()))
+
+        vals and kwds.update(vals)
+        return kwds
+
+    def var_kwd(self, inj: 'Injector', vals: Mapping[str, t.Any]=frozendict()):
+        kwds = dict()
+        if _var := self._var_kwd:
+            n, v, i = _var
+            if v is not _EMPTY:
+                kwds.update(v)
+            elif i is not _EMPTY:
+                kwds.update(inj.get(i, ()))
+
+        vals and kwds.update(vals)
+        return kwds
+
+
 
 @export()
 class CallableProvider(Provider):
 
-    __slots__ = ('_sig', '_params')
-    concrete: Callable[..., _T_Using]
+    # __slots__ = ('_sig', '_params')
+    target: Callable[..., _T_Using]
+
+    EMPTY = _EMPTY
+
+    _argument_view_cls = ArgumentView
 
     def _defaults_(self) -> dict:
-        return dict(cache=None)
+        return dict(cache=None, deps=frozendict())
         
     @property
     def params(self):
@@ -209,9 +412,88 @@ class CallableProvider(Provider):
 
     def check(self):
         super().check()
-        assert callable(self.concrete), (
-                f'`concrete` must be a valid Callable. Got: {type(self.concrete)}'
+        assert callable(self.target), (
+                f'`concrete` must be a valid Callable. Got: {type(self.target)}'
             )
+
+    def get_available_deps(self, sig: Signature, scope: 'Scope', deps: Mapping):
+        return { n: d for n, d in deps.items() if scope.is_provided(d) }
+
+    def get_explicit_deps(self, sig: Signature, scope: 'Scope'):
+        ioc = scope.ioc
+        return  { n: d for n, d in self.deps.items() if ioc.is_injectable(d) }
+
+    def get_implicit_deps(self, sig: Signature, scope: 'Scope'):
+        ioc = scope.ioc
+        return  { n: p.annotation
+            for n, p in sig.parameters.items() 
+                if  p.annotation is not _EMPTY and ioc.is_injectable(p.annotation)
+        }
+
+    def eval_arg_params(self, sig: Signature, defaults: Mapping[str, t.Any], deps: Mapping[str, Injectable]):
+        return [ 
+            (p.name, defaults.get(p.name, self.EMPTY), deps.get(p.name, self.EMPTY), p.default) 
+                for p in self.iter_arg_params(sig)
+        ]
+
+    def iter_arg_params(self, sig: Signature):
+        for p in sig.parameters.values():
+            if p.kind is Parameter.POSITIONAL_ONLY:
+                yield p
+
+    def eval_kwarg_params(self, sig: Signature, defaults: Mapping[str, t.Any], deps: Mapping[str, Injectable]):
+        return [ 
+            (p.name, defaults.get(p.name, self.EMPTY), deps.get(p.name, self.EMPTY), p.default) 
+                for p in self.iter_kwarg_params(sig)
+        ]
+
+    def iter_kwarg_params(self, sig: Signature):
+        for p in sig.parameters.values():
+            if p.kind is Parameter.POSITIONAL_OR_KEYWORD:
+                yield p
+
+    def eval_var_arg_param(self, sig: Signature, defaults: Mapping[str, t.Any], deps: Mapping[str, Injectable]):
+        if p := self.get_var_arg_param(sig):
+            return p.name, defaults.get(p.name, self.EMPTY), deps.get(p.name, self.EMPTY)
+
+    def get_var_arg_param(self, sig: Signature):
+        return next((p for p in sig.parameters.values() if p.kind is Parameter.VAR_POSITIONAL), None)
+
+    def eval_kwd_params(self, sig: Signature, defaults: Mapping[str, t.Any], deps: Mapping[str, Injectable]):
+        return [ 
+            *(
+                (p.name, defaults.get(p.name, self.EMPTY), deps.get(p.name, self.EMPTY), p.default) 
+                for p in self.iter_kwd_params(sig)
+            ),
+            *( 
+                (extra := (orderedset(defaults.keys()) | deps.keys()) - sig.parameters.keys()) 
+                    and (
+                        (n, defaults.get(n, self.EMPTY), deps.get(n, self.EMPTY), self.EMPTY) 
+                        for n in extra
+                     ) 
+            )
+        ] 
+
+    def iter_kwd_params(self, sig: Signature):
+        for p in sig.parameters.values():
+            if p.kind is Parameter.KEYWORD_ONLY:
+                yield p
+
+    def eval_var_kwd_param(self, sig: Signature, defaults: Mapping[str, t.Any], deps: Mapping[str, Injectable]):
+        if p := self.get_var_kwd_param(sig):
+            return p.name, defaults.get(p.name, self.EMPTY), deps.get(p.name, self.EMPTY)
+
+    def get_var_kwd_param(self, sig: Signature):
+        return next((p for p in sig.parameters.values() if p.kind is Parameter.VAR_KEYWORD), None)
+
+    def create_arguments_view(self, sig: Signature, defaults: Mapping[str, t.Any], deps: Mapping[str, Injectable]):
+        return ArgumentView(
+            self.eval_arg_params(sig, defaults, deps),
+            self.eval_kwarg_params(sig, defaults, deps),
+            self.eval_kwd_params(sig, defaults, deps),
+            self.eval_var_arg_param(sig, defaults, deps),
+            self.eval_var_kwd_param(sig, defaults, deps)
+        )
 
     def provide(self, scope: 'Scope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
 
@@ -220,25 +502,106 @@ class CallableProvider(Provider):
 
         sig = self.signature
         arguments = self.arguments
+
         bound = sig.bind_partial(*arguments.args, **arguments.kwargs) or None
         
-        if bound is None:
+        if not sig.parameters:
+        
             def resolve(at):
                 nonlocal func, cache
                 return InjectorVar(at, make=func, cache=cache)
-        else:
-            def resolve(at):
-                nonlocal cache
 
-                def make(*a, **kw):
-                    nonlocal at, func, bound
-                    return func(*bound.inject_args(at, kw), *a, **bound.inject_kwargs(at, kw))
+            return ResolverInfo(resolve)
 
-                return InjectorVar(at, make=make, cache=cache)
+        defaults = frozendict(bound.arguments)
 
-        return ResolverInfo(resolve)
+        
+        expl_deps = self.get_explicit_deps(sig, scope)
+        impl_deps = self.get_implicit_deps(sig, scope)
+
+        all_deps = dict(impl_deps, **expl_deps)
+        deps = self.get_available_deps(sig, scope, all_deps)
+        argv = self.create_arguments_view(sig, defaults, deps)
+        
+        def resolve(at: 'Injector'):
+            nonlocal cache
+            def make(*a, **kw):
+                nonlocal func, argv, at
+                return func(*argv.args(at, kw), *a, **argv.kwds(at, kw))
+
+            return InjectorVar(at, make=make, cache=cache)
+
+        return ResolverInfo(resolve, set(all_deps.values()))
 
 
+#    def _get_args(self, values: dict):
+    # def _get_args(self, values: dict):
+    #     for name in self.args:
+    #         yield values[name]
+
+    #     if self.var_arg:
+    #         yield from values[self.var_arg]
+
+    # def _get_var_arg(self, values: dict):
+    #     return values[self.var_arg]
+
+    # def _get_kwargs(self, values: dict):
+    #     kwds = dict()
+    #     for name in self.kwargs:
+    #         kwds[name] = values[name]
+    
+    #     if self.var_kwarg:
+    #         kwds.update(values[self.var_kwarg])
+
+    #     return kwds
+
+    # def _get_var_kwarg(self, values: dict):
+    #     return values[self.var_kwarg]
+
+    # def _create_wrapper(self, *, fargs=..., fkwargs=..., func=None, fvalidate=None) -> Callable[..., Any]:
+
+    #     if fargs is ...:
+    #         if self.args:
+    #             fargs = self.__class__._get_args
+    #         elif self.var_arg:
+    #             fargs = self.__class__._get_var_arg
+    #         else:
+    #             fargs = None
+
+    #     if fkwargs is ...:
+    #         if self.kwargs:
+    #             fkwargs = self.__class__._get_kwargs
+    #         elif self.var_kwarg:
+    #             fkwargs = self.__class__._get_var_kwarg
+    #         else:
+    #             fkwargs = None
+
+    #     if func is None:
+    #         func = self.func
+
+    #     if fvalidate is None:
+    #         fvalidate = self.__class__._validate_arguments
+
+    #     if fargs and fkwargs:
+    #         def run(*a, **kw):
+    #             nonlocal self, func, fargs, fkwargs, fvalidate
+    #             vals = fvalidate(self, a, kw)
+    #             return func(*fargs(self, vals), **fkwargs(self, vals))
+    #     elif fargs:
+    #         def run(*a, **kw):
+    #             nonlocal self, func, fargs, fvalidate
+    #             vals = fvalidate(self, a, kw)
+    #             return func(*fargs(self, vals))
+    #     elif fkwargs:
+    #         def run(**kw):
+    #             nonlocal self, func, fkwargs, fvalidate
+    #             vals = fvalidate(self, (), kw)
+    #             return func(**fkwargs(self, vals))
+    #     else:
+    #         def run():
+    #             return func()
+
+    #     return run
 
 
 
@@ -274,12 +637,12 @@ class AliasProvider(Provider[T_UsingAlias]):
         return dict(cache=None)
     
     def can_provide(self, scope: 'Scope', token: Injectable) -> bool:
-        return scope.is_provided(self.concrete)
+        return scope.is_provided(self.target)
 
     def provide(self, scope: 'Scope', dep: T_Injectable,  *_args, **_kwds) -> ResolverInfo:
         
         arguments = self.arguments or None
-        real = self.concrete
+        real = self.target
         cache = self.cache
 
         if not (arguments or cache):

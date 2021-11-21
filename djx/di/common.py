@@ -4,9 +4,6 @@ from logging import getLogger
 import sys
 import typing as t
 
-from threading import Lock
-
-from collections import Counter
 from collections.abc import Mapping, Iterable, Hashable
 from djx.common.collections import Arguments, frozendict
 from djx.common.proxy import unproxy
@@ -43,18 +40,6 @@ T_Default = t.TypeVar("T_Default")
 T_Injectable = t.TypeVar('T_Injectable', bound='Injectable', covariant=True)
 
 export('T_Injected', 'T_Injectable', 'T_Default')
-
-
-__uid_map = Counter()
-__uid_lock = Lock()
-
-@export()
-def unique_id(ns=None):
-    global __uid_map, __uid_lock
-    with __uid_lock:
-        __uid_map[ns] += 1
-        return __uid_map[ns]
-
 
 
 
@@ -260,8 +245,8 @@ class KindOfProvider(IntEnum, fields='default_impl', frozen=False):
         default_impl: 'ProviderType'
 
     def _set_default_impl(self, cls: 'ProviderType'):
-        if self.default_impl is not None:
-            raise ValueError(f'{cls}. {self}.impl already set to {self.default_impl}')
+        # if self.default_impl not in {cls, None}:
+        #     raise ValueError(f'{cls}. {self}.impl already set to {self.default_impl}')
         self.__member_data__[self.name].default_impl = cls
         cls.kind = self
         return cls

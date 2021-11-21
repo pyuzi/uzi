@@ -7,8 +7,10 @@ import pytest
 
 from djx.di import (
     ioc, Depends, Scope, InjectedProperty, Injector,
-    Injectable, unique_id
+    Injectable, 
 )
+
+from djx.di.util import unique_id
 
 
 

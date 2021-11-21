@@ -207,7 +207,8 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
         ctx.wrap(self.parent.context)
         ctx.push(self._shutdown)
     
-    def get(self, injectable: T_Injectable, default: T=None, /, *args, **kwds) -> t.Union[T_Injected, T]: 
+    # def get(self, injectable: T_Injectable, default: T=None, /, *args, **kwds) -> t.Union[T_Injected, T]: 
+    def get(self, injectable: T_Injectable, default: T=None) -> t.Union[T_Injected, T]: 
         try:
             return self[injectable]
         except InjectorKeyError:

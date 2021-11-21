@@ -3,8 +3,9 @@
     Forked from pydantic.
 """
 
-from itertools import chain
+
 import sys
+import inspect
 from typing import (  # type: ignore
     TYPE_CHECKING,
     AbstractSet,
@@ -29,6 +30,7 @@ from typing import (  # type: ignore
 )
 from abc import ABC, abstractmethod
 from typing_extensions import Annotated, Literal
+
 
 try:
     from typing import _TypingBase as typing_base  # type: ignore
@@ -495,3 +497,31 @@ def iter_true_types(*types: Type[Any], depth=sys.maxsize) -> Generator[type, Non
                 yield from iter_true_types(tp.__origin__, depth=depth-1)
             else:
                 yield from iter_true_types(orig, depth=depth-1)
+
+
+
+
+
+
+def typed_signature(callable: Callable[..., Any], *, follow_wrapped=True, globalns=None, localns=None) -> inspect.Signature:
+    sig = inspect.signature(callable, follow_wrapped=follow_wrapped)
+
+    if follow_wrapped:
+        callable = inspect.unwrap(callable, stop=(lambda f: hasattr(f, "__signature__")))
+    
+    if globalns is None:
+        from djx.common.imports import ImportRef
+            
+        globalns = getattr(callable, '__globals__', None) \
+            or getattr(ImportRef(callable).module(None), '__dict__', None)
+
+    params = (
+            p.replace(annotation=eval_type(p.annotation, globalns, localns)) 
+                for p in sig.parameters.values()
+        )
+    
+    return sig.replace(
+            parameters=params, 
+            return_annotation=eval_type(sig.return_annotation, globalns, localns)
+        )
+

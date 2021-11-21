@@ -2,7 +2,7 @@ from abc import ABCMeta
 import logging
 import typing as t
 
-from weakref import ref
+# from weakref import ref
 from cachetools.ttl import TTLCache
 from cachetools.lfu import LFUCache
 from functools import cache, partial
@@ -12,7 +12,7 @@ from django.db import models as m
 
 from djx.common.collections import PriorityStack, fallbackdict, nonedict
 
-from djx.di import ioc, ordered_id, InjectedClassVar
+from djx.di import ioc, InjectedClassVar
 from djx.core import settings
 from djx.common.imports import ImportRef
 from djx.common.proxy import unproxy, proxy
@@ -156,7 +156,7 @@ class ModelUrn(str, t.Generic[_T_Model]):
 
     __cache: t.ClassVar[ModelUrnObjectCache] = InjectedClassVar(ModelUrnObjectCache)
     __type_map: t.ClassVar[PriorityStack[tuple, type['ModelUrn']]] = PriorityStack()
-    _pos: t.ClassVar[int] = ordered_id()
+    # _pos: t.ClassVar[int] = unique_id()
 
     model: t.ClassVar[type[_T_Model]] = None
     fieldname: t.ClassVar[str] = 'pk'

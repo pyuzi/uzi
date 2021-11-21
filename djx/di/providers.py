@@ -399,17 +399,6 @@ class CallableProvider(Provider):
     def _defaults_(self) -> dict:
         return dict(cache=None, deps=frozendict())
         
-    @property
-    def params(self):
-        try:
-            return self._params
-        except AttributeError:
-            args = self.get('args') or ()
-            kwds = self.get('kwargs') or {}
-
-            self._params = self.signature.bind_partial(*args, **kwds) or None
-            return self._params
-
     def check(self):
         super().check()
         assert callable(self.target), (
@@ -532,77 +521,6 @@ class CallableProvider(Provider):
             return InjectorVar(at, make=make, cache=cache)
 
         return ResolverInfo(resolve, set(all_deps.values()))
-
-
-#    def _get_args(self, values: dict):
-    # def _get_args(self, values: dict):
-    #     for name in self.args:
-    #         yield values[name]
-
-    #     if self.var_arg:
-    #         yield from values[self.var_arg]
-
-    # def _get_var_arg(self, values: dict):
-    #     return values[self.var_arg]
-
-    # def _get_kwargs(self, values: dict):
-    #     kwds = dict()
-    #     for name in self.kwargs:
-    #         kwds[name] = values[name]
-    
-    #     if self.var_kwarg:
-    #         kwds.update(values[self.var_kwarg])
-
-    #     return kwds
-
-    # def _get_var_kwarg(self, values: dict):
-    #     return values[self.var_kwarg]
-
-    # def _create_wrapper(self, *, fargs=..., fkwargs=..., func=None, fvalidate=None) -> Callable[..., Any]:
-
-    #     if fargs is ...:
-    #         if self.args:
-    #             fargs = self.__class__._get_args
-    #         elif self.var_arg:
-    #             fargs = self.__class__._get_var_arg
-    #         else:
-    #             fargs = None
-
-    #     if fkwargs is ...:
-    #         if self.kwargs:
-    #             fkwargs = self.__class__._get_kwargs
-    #         elif self.var_kwarg:
-    #             fkwargs = self.__class__._get_var_kwarg
-    #         else:
-    #             fkwargs = None
-
-    #     if func is None:
-    #         func = self.func
-
-    #     if fvalidate is None:
-    #         fvalidate = self.__class__._validate_arguments
-
-    #     if fargs and fkwargs:
-    #         def run(*a, **kw):
-    #             nonlocal self, func, fargs, fkwargs, fvalidate
-    #             vals = fvalidate(self, a, kw)
-    #             return func(*fargs(self, vals), **fkwargs(self, vals))
-    #     elif fargs:
-    #         def run(*a, **kw):
-    #             nonlocal self, func, fargs, fvalidate
-    #             vals = fvalidate(self, a, kw)
-    #             return func(*fargs(self, vals))
-    #     elif fkwargs:
-    #         def run(**kw):
-    #             nonlocal self, func, fkwargs, fvalidate
-    #             vals = fvalidate(self, (), kw)
-    #             return func(**fkwargs(self, vals))
-    #     else:
-    #         def run():
-    #             return func()
-
-    #     return run
-
 
 
 @KindOfProvider.func._set_default_impl

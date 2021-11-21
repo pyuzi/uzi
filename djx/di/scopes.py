@@ -24,7 +24,7 @@ from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
-from .inspect import ordered_id
+from .util import unique_id
 from .injectors import Injector, InjectorContext
 from .common import (
     Injectable, 
@@ -89,7 +89,7 @@ class ScopeConfig(BaseMetadata['Scope'], Orderable):
 
     @metafield[int](inherit=False)
     def _pos(self, value) -> int:
-        return ordered_id()
+        return unique_id()
     
     @metafield[str](inherit=True)
     def name(self, value: str, base: str=None) -> str:
@@ -471,7 +471,7 @@ class Scope(Orderable, metaclass=ScopeType):
         self.ioc.scope_ready(self)
 
     def _prepare(self):
-        self.__pos = self.__pos or ordered_id()
+        self.__pos = self.__pos or unique_id()
         self.ioc.alias(self, Injector, at=self.name, priority=-10)
         __debug__ and logger.debug(f'prepare({self!r})')
 

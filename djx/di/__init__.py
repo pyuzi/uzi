@@ -1,6 +1,5 @@
 
 from .common import *
-from .inspect import *
 from .scopes import * 
 from .injectors import *
 from .providers import * 

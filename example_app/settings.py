@@ -35,7 +35,7 @@ INSTALLED_APPS = [
     "djx.core",
 
     'rest_framework',
-
+    'django_filters',
     
     "django.contrib.admin",
     "django.contrib.auth",

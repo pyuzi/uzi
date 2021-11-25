@@ -48,12 +48,9 @@ class ListModelMixin(GenericView[_T_Model]):
     class Config:
         abstract = True
 
-
     @action(http_methods=HttpMethod.GET)
     def list(self):
-
-        objs = self.objects.all()
-        payload = self.get_payload(objs, many=True)
+        payload = self.get_payload(self.objects, many=True)
         return Response(payload.json(), content_type = 'application/json')
 
 
@@ -71,10 +68,9 @@ class RetrieveModelMixin(GenericView[_T_Model]):
 
     @action(http_methods=HttpMethod.GET)
     def retrieve(self):
-        # if self.config.l
         obj = self.object
         payload = self.get_payload(obj)
-        return Response(payload)
+        return Response(payload.json(), content_type='application/json')
 
 
 
@@ -99,11 +95,13 @@ class UpdateModelMixin(GenericView[_T_Model]):
         return Response(payload.json(), content_type='application/json')
 
     @action(http_methods=HttpMethod.PUT | HttpMethod.PATCH)
-    def partial_update(self, partial=None):
+    def partial_update(self):
         return self.update(partial=True)
 
     def perform_update(self, obj: _T_Model, data: Schema):
-        return assign(obj, data.dict())
+        obj = assign(obj, data.dict(exclude_unset=True))
+        obj.save()
+        return obj
 
 
 @export()

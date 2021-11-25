@@ -320,6 +320,14 @@ class ModelViewConfig(ViewConfig[_T_Model]):
     def filter_pipeline(self) -> Callable[['View[_T_Model]']]:
         return self._make_filter_pipeline()
 
+    @metafield[type[t.Any]]()
+    def filterset_class(self, value, base=None):
+        return value or base
+
+    @metafield[list[str]]()
+    def filterset_fields(self, value, base=None):
+        return list(value or base or ())
+
     @metafield[str]()
     def lookup_field(self, value, base=None):
         return value or base or 'pk'
@@ -342,5 +350,5 @@ class ModelViewConfig(ViewConfig[_T_Model]):
         return value or base
 
     def _make_filter_pipeline(self):
-        return # [h for b in self.filter_pipes if (h := ioc.make(b, config=self))]
+        return [h for b in self.filter_pipes if (h := ioc.make(b))]
 

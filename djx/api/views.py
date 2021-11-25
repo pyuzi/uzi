@@ -1,4 +1,5 @@
 
+import io
 import typing as t
 import logging
 
@@ -173,13 +174,13 @@ class ViewType(type):
         def view(req: Request, *args, **kwargs):
             nonlocal cls, ioc, get_action, initkwargs
             inj = ioc.injector
+
             # inj[Args] = args
             # inj[Kwargs] = frozendict(kwargs)
 
             # vardump(inj, *inj.scope.providers.keys())
             self: View = inj[token]
             action = get_action(self, req)
-
             return self.dispatch(req, action, *args, **kwargs)
 
         # take name and docstring from class
@@ -203,7 +204,7 @@ class ViewType(type):
 class View(t.Generic[_T_Entity], metaclass=ViewType):
     """ResourceManager Object"""
     
-    __slots__ = 'action', 'request', 'ioc', # '__dict__'
+    __slots__ = 'action', 'request', 'args', 'kwargs', '_params', '_ioc', # '__dict__'
 
     if t.TYPE_CHECKING:
         __config__: t.Final[ViewConfig] = ...
@@ -213,7 +214,7 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
 
     parser: BodyParser
 
-    ioc: t.Final[IocContainer]
+    # ioc: t.Final[IocContainer]
     request: t.Final[Request]
     action: t.Final[ActionConfig]
 
@@ -221,15 +222,17 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
     class Config:
         abstract = True
 
-    def __init__(self, request: Request, ioc: IocContainer, **kwargs):
+    def __init__(self, ioc: IocContainer=None, **kwargs):
         """
         Constructor. Called in the URLconf; can contain helpful extra
         keyword arguments, and other things.
         """
         # Go through keyword arguments, and either save their values to our
         # instance, or raise an error.
-        self.request = request
-        self.ioc = ioc
+
+        if ioc is not None:
+            self._ioc = ioc
+
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -242,9 +245,13 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
         """
         return self.action or self.__config__
 
-    # @property
-    # def data(self):
-    #     raise AttributeError('data')
+    @property
+    def ioc(self):
+        try:
+            return self._ioc
+        except AttributeError:
+            self._ioc = ioc = self.config.ioc.current()
+            return ioc
         
     @property
     def object(self) -> _T_Entity:
@@ -256,7 +263,11 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
 
     @property
     def params(self):
-        raise AttributeError('params')
+        try:
+            return self._params
+        except AttributeError:
+            self._params = res = self.parse_params()
+            return res
         
     
     if t.TYPE_CHECKING:
@@ -273,8 +284,11 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
         `.dispatch()` is pretty much the same as Django's regular dispatch,
         but with extra hooks for startup, finalize, and exception handling.
         """
+
         self.action = action
         self.request = request
+        self.args = args
+        self.kwargs = kwargs
         
         handler = action.get_handler()
 
@@ -298,7 +312,7 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
         raise BadRequest(f'{errors or ""} code={status}')
 
     def parse_params(self, data=None, *, using: t.Union[type[Schema], None]=None):
-        pass
+        return self.request.GET
 
     def parse_body(self, body=..., /, **kwds):
         if body is ...:
@@ -328,6 +342,8 @@ class GenericView(View[_T_Model]):
     # Model: type[_T_Model] = _config_lookup('model')
 
     __config_class__ = ModelViewConfig
+    
+    config: ModelViewConfig
 
     @property
     def objects(self) -> m.QuerySet[_T_Model]:
@@ -341,7 +357,7 @@ class GenericView(View[_T_Model]):
         try:
             return self._objs
         except AttributeError:
-            self._objs = self._get_objects()
+            self._objs = self._get_objects().all()
             return self._objs
 
     @property
@@ -385,8 +401,9 @@ class GenericView(View[_T_Model]):
         default queryset.
         """
 
-        # for backend in list(self.filter_backends):
-        #     queryset = backend().filter_queryset(queryset, self)
+        req = self.request
+        for pp in self.config.filter_pipeline:
+            queryset = pp.filter_queryset(req, queryset, self)
         return queryset
 
     def get_queryset(self) -> m.QuerySet[_T_Model]:
@@ -426,6 +443,6 @@ class GenericView(View[_T_Model]):
         keyword arguments in the url conf.
         """
         conf = self.config
-        return self.objects.get(**{ conf.lookup_field: self.params[conf.lookup_param_name]})
+        return self.objects.get(**{ conf.lookup_field: self.kwargs[conf.lookup_param_name]})
 
 

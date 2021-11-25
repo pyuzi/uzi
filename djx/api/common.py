@@ -33,13 +33,14 @@ def http_method_action_resolver(config: 'ViewConfig', actions: Mapping[Hashable,
         #     __http_verbs__=act.http_methods, 
         #     allowed_http_methods=act.http_method_names
         # )
-        if HttpMethod(verb) not in act.http_methods:
+        if verb not in act.http_methods:
             raise TypeError(f'http method {verb!r} not allowed for action {act!r}')
 
-    if 'get' in actions and 'head' not in actions:
-        actions['head'] = actions['get']
+    # if 'get' in actions and 'head' not in actions:
+    #     actions['head'] = actions['get']
 
     def resolver(view: 'View', req: Request):
+        nonlocal actions
         try:
             return actions[req.method.lower()]
         except KeyError:

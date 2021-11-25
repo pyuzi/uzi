@@ -20,6 +20,8 @@ from . import signals
 from .common import (
     Depends,
     Injectable,
+    InjectedLookup,
+    InjectionToken,
     T_Injectable, T_Injected,
     KindOfProvider, InjectorVar,
 )
@@ -28,7 +30,7 @@ from .typing import get_origin
 from .scopes import ScopeAlias, Scope as BaseScope, MAIN_SCOPE
 from .injectors import Injector
 from .providers import (
-    Provider, AnnotationProvider, 
+    LookupProvider, Provider, AnnotationProvider, 
     UnionProvider, DependsProvider,
     T_UsingAny, T_UsingAny, 
     T_UsingAlias, T_UsingResolver, 
@@ -50,6 +52,8 @@ _T_Callable = t.TypeVar('_T_Callable', type, Callable, covariant=True)
 _T_Tags = t.Union[T_Injectable, Set[T_Injectable], dict[str, t.Union[T_Injectable, Set[T_Injectable]]]]
 _T_ScopeNames = t.Union[str, Set[str]]
 
+
+_T_InjectorKey = t.Union[type[T_Injected], Callable[..., T_Injected], InjectionToken[T_Injected]]
 
 @export()
 class IocContainer:
@@ -150,7 +154,8 @@ class IocContainer:
         self.register(t.Union, UnionProvider(), at='any')
         self.register(t.Annotated, AnnotationProvider(), at='any')
         self.register(Depends, DependsProvider(), at='any')
-        self.resolver(Injector, lambda at: InjectorVar(at, at), at='any', priority=-10)
+        self.register(InjectedLookup, LookupProvider(), at='any')
+        self.resolver({Injector, IocContainer}, lambda at: InjectorVar(at, at), at='any', priority=-10)
 
     def __setattr__(self, name, val):
         getattr(self, name)
@@ -171,7 +176,19 @@ class IocContainer:
         """
         return self.injector.at(*scopes, default=default)
 
-    def make(self, key, *args, **kwds):
+    @t.overload
+    def make(self, cls: type[T_Injected], *args, **kwds) -> T_Injected:
+        ...
+        
+    @t.overload
+    def make(self, key: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
+        ...
+        
+    @t.overload
+    def make(self, token: InjectionToken[T_Injected], *args, **kwds) -> T_Injected:
+        ...
+        
+    def make(self, key: _T_InjectorKey[T_Injected], *args, **kwds) -> T_Injected:
         return self.injector.make(key, *args, **kwds)
 
     def get(self, tag: T_Injectable, default: _T = None, /, *args, **kwds):
@@ -329,7 +346,19 @@ class IocContainer:
     def __contains__(self, obj):
         return self.injector.__contains__(obj)
     
-    def __getitem__(self, key):
+    @t.overload
+    def __getitem__(self, cls: type[T_Injected]) -> T_Injected:
+        ...
+        
+    @t.overload
+    def __getitem__(self, func: Callable[..., T_Injected]) -> T_Injected:
+        ...
+        
+    @t.overload
+    def __getitem__(self, token: InjectionToken[T_Injected]) -> T_Injected:
+        ...
+        
+    def __getitem__(self, key: _T_InjectorKey[T_Injected]) -> T_Injected:
         return self.injector.__getitem__(key)
 
     def is_provided(self, obj, scope=None):

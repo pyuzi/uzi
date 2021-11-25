@@ -1,10 +1,14 @@
-from functools import cache
+from functools import cache, reduce
 import re
+import operator as op
 import typing as t 
 from types import FunctionType, MethodType
-from enum import IntFlag
-from collections import defaultdict
-from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence, Callable
+from enum import IntFlag, Flag, auto
+from collections import ChainMap, defaultdict
+from collections.abc import (
+    Mapping, MutableMapping, MutableSequence, MutableSet, Sequence, Callable,
+    Set, 
+)
 from ._functools import export
 
 _R = t.TypeVar('_R') # Return value
@@ -14,6 +18,8 @@ _C = t.TypeVar('_C', Mapping, Sequence) # target collection
 _K = t.TypeVar('_K', str, int, 'KeyPath', t.Hashable) # Key
 _P = t.TypeVar('_P', str, int, 'KeyPath', t.Hashable, list[t.Union[str, int, t.Hashable]])
 
+_T_DictListSet = t.TypeVar('_T_DictListSet', Mapping, Sequence, Set)
+_T_MutableDictListSet = t.TypeVar('_T_MutableDictListSet', MutableMapping, MutableSequence, MutableSet)
 
 
 missing = object()
@@ -21,22 +27,30 @@ missing = object()
 _path_re: re.Pattern = re.compile(r'((?<!\.)\[[^\]]*\])')
 
 
-class PathFlag(IntFlag):
-    IS_ATTR = 1 << 1
-    IS_INDEX = 1 << 2
-    IS_KEY = 1 << 3
+class KindOfPath(Flag):
+    ATTRIBUTE       = auto()
+    INDEX           = auto()
+    KEY             = auto()
 
-    IS_SEQ = 1 << 4
-    IS_MAP = 1 << 5
+    ITEM           = INDEX | KEY
 
 
-IS_ATTR = PathFlag.IS_ATTR
-IS_INDEX = PathFlag.IS_INDEX
-IS_KEY = PathFlag.IS_KEY
-IS_ITEM = IS_INDEX | IS_KEY
 
-IS_SEQ = PathFlag.IS_SEQ
-IS_MAP = PathFlag.IS_MAP
+class KindOfObject(IntFlag):
+    PLAIN          = 0
+    MAPPING         = auto()
+    SEQUENCE        = auto()
+
+
+
+_ATTRIBUTE  = KindOfPath.ATTRIBUTE
+_INDEX      = KindOfPath.INDEX
+_KEY        = KindOfPath.KEY
+
+_ITEM = _INDEX | _KEY
+
+_SEQUENCE = KindOfObject.SEQUENCE
+_MAPPING = KindOfObject.MAPPING
 
 
 
@@ -115,6 +129,50 @@ def assign(obj: _O, *items, **kwds) -> _O:
 
 
 @export()
+def merge(target: _T_DictListSet, *sources: _T_DictListSet, list_cls=list, dict_cls=dict, set_cls=set, recursive=True, depth=1024) -> _T_DictListSet:
+    if depth > 0:
+        if isinstance(target, Set):
+            if not isinstance(target, MutableSet):
+                target = set_cls(target or ())
+            for src in sources:
+                if src is not None:
+                    target |= set_cls(src)
+        elif isinstance(target, Sequence):
+            if not isinstance(target, MutableSequence):
+                target = list_cls(target or ())
+            for src in sources:
+                if src is not None:
+                    target += list_cls(src)
+        elif isinstance(target, Mapping):
+            if not isinstance(target, MutableMapping):
+                target = dict_cls(target or ())
+
+            if not recursive or depth == 0:
+                for src in sources:
+                    target.update(src)
+            elif depth > 0:
+                srcs = [target, *(dict_cls(s) for s in sources if s is not None)]
+                seen = set()
+                keys = ((i, k) for i, d in enumerate(srcs) for k in d if not(k in seen or seen.add(k)))
+
+                for i, k in keys:
+                    target[k] = merge(
+                        srcs[i][k],
+                        *(v for d in srcs[i+1:] if (v := d.get(k, missing)) is not missing),
+                        dict_cls=dict_cls,
+                        list_cls=list_cls,
+                        set_cls=set_cls,
+                        depth=depth-1,
+                        recursive=True
+                    )
+        elif sources:
+            return sources[-1]
+
+    return target
+
+
+
+@export()
 def delitem(obj: _O, path: _P) -> _O:
     popitem(obj, path, None)
     return obj
@@ -185,18 +243,18 @@ def getitem(obj: _O, path: _P, default: _R = missing) -> _R:
         target =  obj
 
         for sflag, key, seg in DataPath(path):
-            tflag = isinstance(target, Mapping) and IS_MAP\
-                    or isinstance(target, Sequence) and IS_SEQ\
+            tflag = isinstance(target, Mapping) and _MAPPING\
+                    or isinstance(target, Sequence) and _SEQUENCE\
                         or 0
         
-            if tflag & IS_SEQ and sflag & IS_INDEX:
+            if tflag & _SEQUENCE and sflag & _INDEX:
                 target = _getitem(target, int(key))
-            elif tflag & IS_MAP:
-                if (nt := _getitem(target, key)) is missing and sflag & IS_ATTR:
+            elif tflag & _MAPPING:
+                if (nt := _getitem(target, key)) is missing and sflag & _ATTRIBUTE:
                     target = getattr(target, key, missing)
                 else:
                     target = nt 
-            elif sflag & IS_ATTR:
+            elif sflag & _ATTRIBUTE:
                 target = getattr(target, key, missing)
             else:
                 raise TypeError(f'invalid key={key!r} in {type(target)} from item path {path=!r}')
@@ -205,11 +263,11 @@ def getitem(obj: _O, path: _P, default: _R = missing) -> _R:
                 break
     
     if target is missing and (target := default) is missing:
-        if tflag & IS_MAP:
+        if tflag & _MAPPING:
             raise KeyPathError(key, path, obj)
-        elif sflag & IS_ATTR:
+        elif sflag & _ATTRIBUTE:
             raise AttributePathError(key, path, obj)
-        elif sflag & IS_INDEX:
+        elif sflag & _INDEX:
             raise IndexPathError(key, path, obj)
         else:
             raise KeyPathError(key, path, obj)
@@ -228,18 +286,18 @@ def popitem(obj: _O, path: _P, default: _R = missing) -> _R:
         target = parent = obj
         for sflag, key, seg in DataPath(path):
             parent = target
-            tflag = isinstance(target, Mapping) and IS_MAP\
-                    or isinstance(target, Sequence) and IS_SEQ\
+            tflag = isinstance(target, Mapping) and _MAPPING\
+                    or isinstance(target, Sequence) and _SEQUENCE\
                         or 0
         
-            if tflag & IS_SEQ:
+            if tflag & _SEQUENCE:
                 target = _getitem(target, int(key))
-            elif tflag & IS_MAP:
-                if (nt := _getitem(target, key)) is missing and sflag & IS_ATTR:
+            elif tflag & _MAPPING:
+                if (nt := _getitem(target, key)) is missing and sflag & _ATTRIBUTE:
                     target = getattr(target, key, missing)
                 else:
                     target = nt 
-            elif sflag & IS_ATTR:
+            elif sflag & _ATTRIBUTE:
                 target = getattr(target, key, missing)
             else:
                 raise TypeError(f'invalid key={key!r} in {type(target)} from item path {path=!r}')
@@ -249,15 +307,15 @@ def popitem(obj: _O, path: _P, default: _R = missing) -> _R:
     
     if target is missing: 
         if (target := default) is missing:
-            if tflag & IS_MAP:
+            if tflag & _MAPPING:
                 raise KeyPathError(key, path, obj, parent)
-            elif sflag & IS_ATTR:
+            elif sflag & _ATTRIBUTE:
                 raise AttributePathError(key, path, obj, parent)
-            elif sflag & IS_INDEX:
+            elif sflag & _INDEX:
                 raise IndexPathError(key, path, obj, parent)
             else:
                 raise KeyPathError(key, path, obj, parent)
-    elif tflag & IS_SEQ or tflag & IS_MAP:
+    elif tflag & _SEQUENCE or tflag & _MAPPING:
         del parent[key]
     else:
         delattr(parent, key)
@@ -281,11 +339,11 @@ def setdefault(obj: _O, path: _P, value: t.Any, default_factory=...) -> _R:
     
     for sflag, key, seg in segments[:-1]:
         parent = target
-        tflag = isinstance(target, Mapping) and IS_MAP\
-                or isinstance(target, Sequence) and IS_SEQ\
+        tflag = isinstance(target, Mapping) and _MAPPING\
+                or isinstance(target, Sequence) and _SEQUENCE\
                     or 0
     
-        if tflag & IS_SEQ:
+        if tflag & _SEQUENCE:
             if (target := _getitem(parent, int(key))) is missing:
                 if default_factory is not None:
                     target = default_factory()
@@ -293,14 +351,14 @@ def setdefault(obj: _O, path: _P, value: t.Any, default_factory=...) -> _R:
             # elif key == '':
             #     if default_factory is not None:
             #         parent[len(parent):] = target = type(parent)(default_factory())
-        elif tflag & IS_MAP:
-            if (target := _getitem(parent, key)) is missing and sflag & IS_ATTR:
+        elif tflag & _MAPPING:
+            if (target := _getitem(parent, key)) is missing and sflag & _ATTRIBUTE:
                 target = getattr(parent, key, missing)
              
             if target is missing:
                 if default_factory is not None:
                     parent[key] = target = default_factory()
-        elif sflag & IS_ATTR:
+        elif sflag & _ATTRIBUTE:
             if (target := getattr(parent, key, missing)) is missing:
                 if default_factory is not None:
                     setattr(parent, key, (target := default_factory()))
@@ -313,32 +371,32 @@ def setdefault(obj: _O, path: _P, value: t.Any, default_factory=...) -> _R:
     rv = missing
     if target is not missing:
         sflag, key, s = segments[-1]
-        tflag = isinstance(target, Mapping) and IS_MAP\
-                or isinstance(target, Sequence) and IS_SEQ\
+        tflag = isinstance(target, Mapping) and _MAPPING\
+                or isinstance(target, Sequence) and _SEQUENCE\
                     or 0
-        if tflag & IS_SEQ:
+        if tflag & _SEQUENCE:
             if key != '' and (rv := _getitem(target, int(key))) is missing:
                 rv = value
                 target.insert(int(key), value)
             elif not key:
                 target.append(rv := value)
-        elif tflag & IS_MAP:
-            if (rv := _getitem(target, key)) is missing and sflag & IS_ATTR:
+        elif tflag & _MAPPING:
+            if (rv := _getitem(target, key)) is missing and sflag & _ATTRIBUTE:
                 rv = getattr(target, key, missing)
             if rv is missing:
                 rv = target[key] = value
-        elif sflag & IS_ATTR:
+        elif sflag & _ATTRIBUTE:
             if (rv := getattr(target, key, missing)) is missing:
                 setattr(target, key, (rv := value))
         else:
             raise TypeError(f'invalid key={key!r} in {type(target)} from item path {path=!r}')
 
     if target is missing or rv is missing:
-        if tflag & IS_MAP:
+        if tflag & _MAPPING:
             raise KeyPathError(key, path, obj)
-        elif sflag & IS_ATTR:
+        elif sflag & _ATTRIBUTE:
             raise AttributePathError(key, path, obj)
-        elif sflag & IS_INDEX:
+        elif sflag & _INDEX:
             raise IndexPathError(key, path, obj)
         else:
             raise KeyPathError(key, path, obj)
@@ -363,10 +421,10 @@ def setitem(obj: _O, path: _P, value: t.Any, default_factory=...) -> _O:
     
     for sflag, key, seg in segments[:-1]:
         parent = target
-        tflag = isinstance(target, Mapping) and IS_MAP\
-                or isinstance(target, Sequence) and IS_SEQ\
-    
-        if tflag & IS_SEQ:
+        tflag = isinstance(target, Mapping) and _MAPPING\
+                or isinstance(target, Sequence) and _SEQUENCE
+
+        if tflag & _SEQUENCE:
             if key != '' and (target := _getitem(parent, int(key))) is missing:
                 if default_factory is not None:
                     target = default_factory()
@@ -374,14 +432,14 @@ def setitem(obj: _O, path: _P, value: t.Any, default_factory=...) -> _O:
             elif key == '' and default_factory is not None:
                 target = default_factory()
                 parent.append(target)
-        elif tflag & IS_MAP:
-            if (target := _getitem(parent, key)) is missing and sflag & IS_ATTR:
+        elif tflag & _MAPPING:
+            if (target := _getitem(parent, key)) is missing and sflag & _ATTRIBUTE:
                 target = getattr(parent, key, missing)
              
             if target is missing:
                 if default_factory is not None:
                     parent[key] = target = default_factory()
-        elif sflag & IS_ATTR:
+        elif sflag & _ATTRIBUTE:
             if (target := getattr(parent, key, missing)) is missing:
                 if default_factory is not None:
                     setattr(parent, key, (target := default_factory()))
@@ -392,28 +450,28 @@ def setitem(obj: _O, path: _P, value: t.Any, default_factory=...) -> _O:
             break
     
     if target is missing:
-        if tflag & IS_MAP:
+        if tflag & _MAPPING:
             raise KeyPathError(key, path, obj)
-        elif sflag & IS_ATTR:
+        elif sflag & _ATTRIBUTE:
             raise AttributePathError(key, path, obj)
-        elif sflag & IS_INDEX:
+        elif sflag & _INDEX:
             raise IndexPathError(key, path, obj)
         else:
             raise KeyPathError(key, path, obj)
         
     else:
         sflag, key, s = segments[-1]
-        tflag = isinstance(target, Mapping) and IS_MAP\
-                or isinstance(target, Sequence) and IS_SEQ\
+        tflag = isinstance(target, Mapping) and _MAPPING\
+                or isinstance(target, Sequence) and _SEQUENCE\
                     or 0
-        if tflag & IS_SEQ:
+        if tflag & _SEQUENCE:
             if key == '':
                 target.insert(int(key), value)
             else:
                 target.append(value)
-        elif tflag & IS_MAP:
+        elif tflag & _MAPPING:
             target[key] = value
-        elif sflag & IS_ATTR:
+        elif sflag & _ATTRIBUTE:
             setattr(target, key, value)
         else:
             raise TypeError(f'invalid key={key!r} in {type(target)} from item path {path=!r}')
@@ -430,14 +488,31 @@ def _getitem(obj: _C, key: _K, default=missing):
         return default
 
 
+class PathSegment(t.NamedTuple):
+    kind: KindOfPath
+    value: _K
+    source: t.Any
+
+
+
 
 @export()
 class DataPath(t.Generic[_R]):
 
-    __slots__ = 'value', 'segments', '_hash_',  '__weakref__',
+    __slots__ = 'value', '_flags',  'segments', '_hash_',  '__weakref__',
+
+    if t.TYPE_CHECKING:
+        class Kind(KindOfPath):
+            ...
+            
+    
+    Kind: t.Final[type[KindOfPath]] = KindOfPath
+    
+    _segment_class = PathSegment
+
 
     value: _P
-    segments: tuple[tuple[PathFlag, _K]]
+    segments: t.Final[tuple[PathSegment]] # type: ignore
     
     __cache: t.Final[defaultdict[type['DataPath'], dict[_K, 'DataPath[_R]']]] = defaultdict(dict)
     __listkey = type('hashlist')
@@ -469,9 +544,14 @@ class DataPath(t.Generic[_R]):
             
             if rv is new:
                 rv.value = path
-                rv.segments = tuple(cls._iter_path(path))
+                scls = cls._segment_class
+                rv.segments = tuple(scls(*s) for s in cls._iter_path(path))
 
         return rv        
+    
+    # @property
+    # def kinds(self):
+    #     return reduce(op.or_, (f for s in self.segments))
 
     def __iter__(self):
         return iter(self.segments)
@@ -517,7 +597,7 @@ class DataPath(t.Generic[_R]):
         return setitem(obj, self, value, default_factory)
 
     @classmethod
-    def _iter_path(cls, path) -> t.Iterator[t.Tuple[PathFlag, _K]]:
+    def _iter_path(cls, path) -> t.Iterator[t.Tuple[KindOfPath, _K]]:
         if issubclass(path.__class__, str):
             path_ = filter(None, _path_re.split(path))
         elif not isinstance(path, list):
@@ -531,23 +611,19 @@ class DataPath(t.Generic[_R]):
                 yield from seg
             
             if not isinstance(seg, str):
-                yield IS_ITEM if _is_index(seg) else IS_KEY, seg, seg
+                yield _ITEM if _is_index(seg) else _KEY, seg, seg
                 continue
             elif seg and seg[0] == '[' and seg[-1] == ']':
-                yield IS_ITEM if _is_index(key := seg[1:-1]) else IS_KEY, key, seg
+                yield _ITEM if _is_index(key := seg[1:-1]) else _KEY, key, seg
             else:
                 for key in seg.lstrip('.').split('.'):
                     if not key:
                         raise ValueError(f'Invalid item path {path=!r} at {seg!r}')
                     
-                    fl = IS_ITEM if _is_index(key) else IS_KEY | IS_ATTR
+                    fl = _ITEM if _is_index(key) else _KEY | _ATTRIBUTE
                     yield fl, key, key if first else f'.{key}' 
 
             first = False
-
-
-
-
 
 
 

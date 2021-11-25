@@ -14,11 +14,12 @@ from djx.common.typing import get_args, typed_signature
 
 
 from djx.common.utils import export
+from djx.common.utils.void import Void
 from .util import unique_id
 
 
 from .common import (
-    KindOfProvider, ResolverInfo, InjectorVar, ResolverFunc,
+    InjectedLookup, KindOfProvider, ResolverInfo, InjectorVar, ResolverFunc,
     Injectable, T_Injected, T_Injectable
 )
 
@@ -642,22 +643,79 @@ class DependsProvider(AliasProvider):
 
     def provide(self, scope: 'Scope', token: 'Depends',  *_args, **_kwds) -> ResolverInfo:
 
-        real = token.on
-        arguments = self.arguments or None
+        dep = token.on
+        at = None if token.at is ... or token.at else token.at
+        arguments = token.arguments or None
 
-        if at := None if token.at is ... else token.at:
-            at = scope.ioc.scopekey(at)
+        if at in scope.aliases:
+            at = None
 
-            def resolve(inj: 'Injector'):
-                nonlocal real, at
-                return inj[at].vars[real]
+        # if at and arguments:
         
-        else:
-            def resolve(inj: 'Injector'):
-                nonlocal real
-                return inj.vars[real]
 
-        return ResolverInfo(resolve, {real})
+        if at is None is arguments:
+            def resolve(at: 'Injector'):
+                nonlocal dep
+                return at.vars[dep]
+        elif arguments is None:
+            at = scope.ioc.scopekey(at)
+            def resolve(inj: 'Injector'):
+                nonlocal dep, at
+                return inj[at].vars[dep]
+        elif at is None:
+            args, kwargs = arguments.args, arguments.kwargs
+            def resolve(inj: 'Injector'):
+                nonlocal dep
+                if inner := inj.vars[dep]:
+                    def make(*a, **kw):
+                        nonlocal inner, args, kwargs
+                        return inner.make(*args, *a, **dict(kwargs, **kw))
+
+                    return InjectorVar(inj, make=make)
+        else:
+            at = scope.ioc.scopekey(at)
+            args, kwargs = arguments.args, arguments.kwargs
+            def resolve(inj: 'Injector'):
+                nonlocal at, dep
+                inj = inj[at]
+                if inner := inj.vars[dep]:
+                    def make(*a, **kw):
+                        nonlocal inner, args, kwargs
+                        return inner.make(*args, *a, **dict(kwargs, **kw))
+
+                    return InjectorVar(inj, make=make)
+
+        return ResolverInfo(resolve, {dep})
+
+
+
+
+
+
+@export()
+class LookupProvider(AliasProvider):
+
+    __slots__ = ()
+
+    def can_provide(self, scope: 'Scope', token: 'InjectedLookup') -> bool:
+        return scope.is_provided(token.depends)
+
+    def provide(self, scope: 'Scope', token: 'InjectedLookup',  *_args, **_kwds) -> ResolverInfo:
+
+        dep = token.depends
+        path = token.path
+
+        def resolve(at: 'Injector'):
+            nonlocal dep, path
+            if var := at.vars[dep]:
+                if var.value is Void:
+                    return InjectorVar(at, make=lambda: path.get(var.get()))
+
+                # px = proxy(lambda: path.get(var.get()))
+                return InjectorVar(at, make=lambda: path.get(var.value))
+            return 
+
+        return ResolverInfo(resolve, {dep})
 
 
 

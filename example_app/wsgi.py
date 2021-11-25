@@ -14,6 +14,4 @@ from djx.core.wsgi import get_wsgi_application
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "example_app.settings")
 
 
-print('YEYE ')
-
 application = app = get_wsgi_application()

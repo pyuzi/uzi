@@ -316,7 +316,7 @@ class metafield(t.Generic[_TF]):
 
 if t.TYPE_CHECKING:
     
-    class metafield(property[_TF], metafield[_TF], t.Generic[_TF]):
+    class metafield(metafield[_TF], property[_TF], t.Generic[_TF]):
         
         def __get__(self, obj, cls) -> _TF:
             ...
@@ -333,6 +333,12 @@ class MetadataType(ABCMeta):
 
         # vardump(f'{cls.__module__}:{cls.__qualname__}', {f: getattr(cls, f) for f in cls.__fields__})
         return cls
+
+    def get_class(self, target: type, attr, *, name=None):
+        if name is None:
+            name = text.uppercamel(f'{target.__name__}_{self.__name__}')
+            
+        return get_metadata_class(target, attr, name=name, base=self)
 
     def register_metafields(self):
         self.__fields__= fieldset = orderedset()
@@ -401,25 +407,23 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
 
     __name__: str
     __allowextra__: t.ClassVar[bool] = False
+    __add_to_target__: t.ClassVar[bool] = True
 
     target: t.Type[T]
 
     def __init__(self, target = None, name=None, raw=None, base=None, *, allowextra=None):
-        self.target = None
+        # self.target = None
 
         self.__fieldset__ = set()
 
-        # vardump(name, raw, base)
         self.__raw__ = _to_dict(raw, default=dict())
         self.__base__ = _to_dict(base, skip=None)
         
         if allowextra is not None:
             self.__allowextra__ = allowextra
 
-        # target and self.contribute_to_class(target, name)
-        target is None or self.__set_name__(target, name)
-        # if target is not None:
-            # self.target = 
+        self.target = target
+        (None is target) or (None is name is base) or self.__load__(name)
         
     @property
     def __objclass__(self) -> t.Type[T]:
@@ -431,10 +435,11 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
 
     def __set_name__(self, owner, name):
         if self.target is None:
-            if isinstance(owner, type):
-                setattr(owner, name, self) 
             self.target = owner
-            name and self.__load__(name)
+            # if self.__add_to_target__: # and isinstance(owner, type):
+            #     setattr(owner, name, self) 
+            # name and self.__load__(name)
+            self.__load__(name)
         else:
             assert self.target is owner, (
                     f'{type(self)} already added to {self.target}. adding: {owner}.'
@@ -443,6 +448,9 @@ class BaseMetadata(t.Generic[T], metaclass=MetadataType):
     def __load__(self, name):
         if not hasattr(self, '__raw__'):
             raise RuntimeError(f'{type(self)} already loaded for {self.target}.')
+
+        if name and self.__add_to_target__:
+            setattr(self.target, name, self) 
 
         if self.__base__ is None and name:
             self.__base__ = self._base_from_target(self.target, name)

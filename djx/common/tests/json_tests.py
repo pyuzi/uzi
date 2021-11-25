@@ -13,7 +13,7 @@ parametrize = pytest.mark.parametrize
 
 
 
-base = Path(__file__).parent / 'data'
+base = Path(__file__).parent / 'json_test_data'
 paths = [base/f for f in ('twitter.json', 'github.json')]
 
 

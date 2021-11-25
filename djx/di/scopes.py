@@ -289,7 +289,7 @@ class Scope(Orderable, metaclass=ScopeType):
           
     @cached_property
     def aliases(self):
-        return orderedset(self.ioc.get_scope_aliases(self))
+        return orderedset(self.ioc.get_scope_aliases(self, include_embeded=True))
           
     @cached_property
     def _linked_deps(self) -> dict[SafeReferenceType[T_Injectable], SafeRefSet[T_Injectable]]:

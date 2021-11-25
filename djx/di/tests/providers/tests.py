@@ -8,7 +8,7 @@ from memory_profiler import profile
 import pytest
 
 
-from djx.di import ioc
+from djx.di import ioc, InjectedLookup
 
 
 from .mocks import *
@@ -106,7 +106,7 @@ class SymbolTests:
                             injbaz = lambda: inj[Baz]
                             inj404 = lambda: inj['404']
 
-                            _n = int(5e4)
+                            _n = int(2.5e4)
 
                             vardump([injfoo(), injfoo(), injfoo()])
                             vardump([injbafoo(), injbafoo(), injbafoo()])
@@ -128,6 +128,10 @@ class SymbolTests:
                             print(f'\n WRAPPED ---> {wrapbar()!r}\n REAL   ---> {injbar()!r}')
                             print(f'\n WRAPPED ---> {wrapfunc()!r}\n REAL   ---> {injfunc()!r}')
                             
+                            it = InjectedLookup(Bar, 'pk')
+
+                            print(f'{it} --> {inj[it]}')
+
                             # print(f'\n => {injector[Foo]=}\n => {injector[Bar]=}\n => {injector[Bar]=}\n => {injector[Baz]=}\n => {injector[Scope["main"]]=}\n => {injector[INJECTOR_TOKEN]=}\n\n {pro()=}\n')
 
                             # print('\n', *(f' - {k} --> {v!r}\n' for k,v in injector.content.items()))

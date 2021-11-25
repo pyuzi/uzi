@@ -8,18 +8,18 @@ from collections.abc import Mapping, Iterable, Hashable
 from djx.common.collections import Arguments, frozendict
 from djx.common.proxy import unproxy
 
-from djx.common.utils import export, Void, calling_frame
+from djx.common.utils import export, Void, calling_frame, text, DataPath
 
 from djx.common.enum import IntEnum, auto
 
 
 from collections.abc import Callable
 
-from types import FunctionType, GenericAlias, MethodType
+from types import FunctionType, GenericAlias, MethodType, new_class
 
 
 from .exc import InjectorKeyError
-from .typing import get_all_type_hints, get_origin, InjectableForm
+from .typing import get_all_type_hints, get_args, get_origin, InjectableForm, get_type_parameters
 
 
 logger = getLogger(__name__)
@@ -44,14 +44,29 @@ export('T_Injected', 'T_Injectable', 'T_Default')
 
 
 @export()
-class InjectionToken:
+class InjectionToken(t.Generic[T_Injected]):
 
     __slots__ = '__name__', '__weakref__'
 
     __name__: str
+    __type__: type[T_Injected]
+
+    __new_type = False 
+
+    @classmethod
+    @cache
+    def __class_getitem__(cls, params):
+        aka: GenericAlias = super().__class_getitem__(params)
+        ns = dict(__type__=aka.__args__[0])
+        name = f'{text.uppercamel(aka.__origin__.__name__)}{cls.__name__}'
+        cls.__new_type = True
+        res = new_class(name, (aka,), None, lambda dct: dct.update(ns))
+        cls.__new_type = False
+        return res
 
     def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass InjectionToken")
+        if cls.__new_type is not True:
+            raise TypeError(f"Cannot subclass {cls.__name__}")
 
     def __new__(cls, name: str):
         if name.__class__ is not str:
@@ -72,6 +87,78 @@ class InjectionToken:
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}({self.__name__!r})'
+
+
+
+
+
+
+@export()
+class InjectedLookup(t.Generic[T_Injected]):
+
+    __slots__ = '__args__', '__weakref__'
+
+    __name__: str
+    __type__: type[T_Injected]
+
+    __new_type = False 
+
+    @classmethod
+    @cache
+    def __class_getitem__(cls, params):
+        aka: GenericAlias = super().__class_getitem__(params)
+        ns = dict(__type__=aka.__args__[0])
+        name = f'{text.uppercamel(aka.__origin__.__name__)}{cls.__name__}'
+        cls.__new_type = True
+        res = new_class(name, (aka,), None, lambda dct: dct.update(ns))
+        cls.__new_type = False
+        return res
+
+    def __init_subclass__(cls, *args, **kwargs):
+        if cls.__new_type is not True:
+            raise TypeError(f"Cannot subclass {cls.__name__}")
+
+    @classmethod
+    @cache
+    def __class_getitem__(cls, params):
+        aka: GenericAlias = super().__class_getitem__(params)
+        ns = dict(__type__=aka.__args__[0])
+        name = f'{text.uppercamel(aka.__origin__.__name__)}InjectionToken'
+        return new_class(name, (aka,), None, lambda dct: dct.update(ns))
+
+    def __init_subclass__(cls, *args, **kwargs):
+        raise TypeError(f"Cannot subclass {cls.__name__}")
+
+    def __init__(self, depends: 'Injectable', lookup):
+        self.__args__ = depends,  DataPath(lookup)
+
+    @property
+    def __origin__(self):
+        return InjectedLookup
+
+    @property
+    def depends(self):
+        return self.__args__[0]
+
+    @property
+    def path(self):
+        return self.__args__[1]
+
+    def __hash__(self):
+        return hash(self.__args__)
+
+    def __eq__(self, x):
+        if isinstance(x, InjectedLookup):
+            return self.__args__ == x.__args__
+        return NotImplemented
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}({self.depends}, path={self.path!r})'
+
+
+
+
+
 
 
 @export()
@@ -171,6 +258,7 @@ Injectable.register(GenericAlias)
 Injectable.register(type(t.Generic[T_Injected]))
 Injectable.register(type(t.Union))
 Injectable.register(InjectionToken)
+Injectable.register(InjectedLookup)
 
 
 
@@ -357,6 +445,12 @@ class Depends:
             ann = on.replace(at=at, arguments=on.arguments.extend(arguments))
         else:
             ann = object.__new__(cls)
+            if on is ...:
+                if tp is ...:
+                    raise TypeError(
+                        f'{cls.__name__}(type, /, *, on: Injectable = ..., at: str =...) '
+                        f'should be used with at least the `type` or the dependency argument `on`.'
+                    )
             ann.on = on
             ann.at = at 
             ann.arguments = arguments

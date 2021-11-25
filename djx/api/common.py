@@ -2,12 +2,52 @@ import typing as t
 import operator as op
 
 from functools import cache, reduce
+from collections.abc import Callable, Hashable, Mapping
 
 from djx.common.utils import export
 from djx.common.enum import StrEnum, IntFlag, auto
 
 
-from . import abc
+from . import abc, Request
+from .types import HttpMethod
+
+if t.TYPE_CHECKING:
+    from .config import ViewConfig, ActionConfig
+    from .views import View
+
+
+def http_method_action_resolver(config: 'ViewConfig', actions: Mapping[Hashable, 'ActionConfig']) -> Callable[['View', Request], 'ActionConfig']:
+    if not actions:
+        raise TypeError(f'No available actions for {config.target.__name__}')
+    
+    # vardump(
+    #     __view__=config.target,
+    #     __http_methods__=config.http_methods, 
+    #     allowed_http_methods=config.http_method_names
+    # )
+
+
+    for verb, act in actions.items():
+        # vardump(
+        #     __action__=act.name,
+        #     __http_verbs__=act.http_methods, 
+        #     allowed_http_methods=act.http_method_names
+        # )
+        if HttpMethod(verb) not in act.http_methods:
+            raise TypeError(f'http method {verb!r} not allowed for action {act!r}')
+
+    if 'get' in actions and 'head' not in actions:
+        actions['head'] = actions['get']
+
+    def resolver(view: 'View', req: Request):
+        try:
+            return actions[req.method.lower()]
+        except KeyError:
+            view.abort(405)
+    
+    return resolver
+        
+
 
 
 
@@ -31,11 +71,9 @@ class ParamSource(StrEnum, fields='dep,_list,_map'):
     input: 'ParamSource'      = auto(), abc.Inputs, 
 
 
-vardump(ParamSource.__members__)
-
 
 @export()
-class ParamFlag(IntFlag, fields='src'):
+class ParamFlag(StrEnum, fields='src'):
     
     injectable: 'ParamFlag'      = auto()
     sequence: 'ParamFlag'        = auto()
@@ -46,4 +84,5 @@ class ParamFlag(IntFlag, fields='src'):
     
     static: 'ParamFlag'          = auto()
     dymnamic: 'ParamFlag'        = auto()
+
 

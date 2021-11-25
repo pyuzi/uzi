@@ -13,7 +13,6 @@ from collections.abc import (
 )
 
 from djx.common.saferef import saferef
-from djx.common.utils.data import result
 
 
 
@@ -1547,32 +1546,32 @@ class KwargDict(frozendict[str, _T_Kwargs]):
 
     __slots__ = ()
 
-    def __init__(self, arg=(), /, **kwargs) -> None:
-        if arg and (typ := arg.__class__) is not self.__class__:
-            if issubclass(typ, Mapping):
-                arg = (i for i in arg.items() if  self._check_key(i[0]))
-            else: 
-                arg = (i for i in arg if  self._check_key(i[0]))
-        super().__init__(arg, **kwargs)
+    # def __init__(self, arg=(), /, **kwargs) -> None:
+    #     if arg and (typ := arg.__class__) is not self.__class__:
+    #         if issubclass(typ, Mapping):
+    #             arg = (i for i in arg.items() if  self._check_key(i[0]))
+    #         else: 
+    #             arg = (i for i in arg if  self._check_key(i[0]))
+    #     super().__init__(arg, **kwargs)
 
-    @classmethod
-    def _check_key(cls, k, *, msg=None, exc=None):
-        if issubclass(k.__class__, str) and k.isidentifier():
-            return k
+    # @classmethod
+    # def _check_key(cls, k, *, msg=None, exc=None):
+    #     if issubclass(k.__class__, str) and k.isidentifier():
+    #         return k
 
-        if msg is None:
-            msg = f'{cls.__name__!r} key must a valid str and identifier not ' \
-                f'{k.__class__.__name__}({k!r})'
+    #     if msg is None:
+    #         msg = f'{cls.__name__!r} key must a valid str and identifier not ' \
+    #             f'{k.__class__.__name__}({k!r})'
 
-        raise (exc or TypeError)(msg)            
+    #     raise (exc or TypeError)(msg)            
 
-    def merge(self, arg=(), /, **kwargs):
-        if arg and (typ := arg.__class__) is not self.__class__:
-            if issubclass(typ, Mapping):
-                arg = (i for i in arg.items() if  self._check_key(i[0]))
-            else: 
-                arg = (i for i in arg if  self._check_key(i[0]))
-        return super().merge(arg, **kwargs)
+    # def merge(self, arg=(), /, **kwargs):
+    #     if arg and (typ := arg.__class__) is not self.__class__:
+    #         if issubclass(typ, Mapping):
+    #             arg = (i for i in arg.items() if  self._check_key(i[0]))
+    #         else: 
+    #             arg = (i for i in arg if  self._check_key(i[0]))
+    #     return super().merge(arg, **kwargs)
         
 
 @export()

@@ -4,93 +4,136 @@ Basic building blocks for generic class based views.
 We don't bind behaviour to http method handlers yet,
 which allows mixin classes to be composed in interesting ways.
 """
+import typing as t
 from rest_framework import status
 
-from .abc import Response
+from django.http import HttpRequest as Request, HttpResponse as Response
 
-api_settings = None
+from djx.schemas import Schema
+from djx.common.utils import export, assign
 
-class CreateModelMixin:
+from .views import GenericView, _T_Model, action
+from .types import HttpMethod 
+
+
+
+
+@export()
+class CreateModelMixin(GenericView[_T_Model]):
     """
     Create a model instance.
     """
-    def create(self, filters: _T_Filters, body: _T_PostBody) -> _T_Post:
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    __slots__ = ()
+    class Config:
+        abstract = True
 
-    def perform_create(self, serializer):
-        serializer.save()
+    @action(http_methods=HttpMethod.POST)
+    def create(self):
+        obj = self.perform_create(self.parse_body())
+        payload = self.get_payload(obj)
+        return Response(payload.json(), content_type='application/json')
 
-    def get_success_headers(self, data):
-        try:
-            return {'Location': str(data[api_settings.URL_FIELD_NAME])}
-        except (TypeError, KeyError):
-            return {}
+    def perform_create(self, data: Schema):
+        return self.get_queryset().create(**data.dict())
 
 
-class ListModelMixin:
+
+@export()
+class ListModelMixin(GenericView[_T_Model]):
     """
     List a queryset.
     """
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
 
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+    __slots__ = ()
+    class Config:
+        abstract = True
 
 
-class RetrieveModelMixin:
+    @action(http_methods=HttpMethod.GET)
+    def list(self):
+
+        objs = self.objects.all()
+        payload = self.get_payload(objs, many=True)
+        return Response(payload.json(), content_type = 'application/json')
+
+
+
+@export()
+class RetrieveModelMixin(GenericView[_T_Model]):
     """
     Retrieve a model instance.
     """
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+    
+    __slots__ = ()
+    class Config:
+        abstract = True
 
 
-class UpdateModelMixin:
+    @action(http_methods=HttpMethod.GET)
+    def retrieve(self):
+        # if self.config.l
+        obj = self.object
+        payload = self.get_payload(obj)
+        return Response(payload)
+
+
+
+@export()
+class UpdateModelMixin(GenericView[_T_Model]):
     """
     Update a model instance.
     """
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+    
+    __slots__ = ()
+    class Config:
+        abstract = True
 
-        if getattr(instance, '_prefetched_objects_cache', None):
-            # If 'prefetch_related' has been applied to a queryset, we need to
-            # forcibly invalidate the prefetch cache on the instance.
-            instance._prefetched_objects_cache = {}
+    
+    @action(http_methods=HttpMethod.PUT | HttpMethod.PATCH)
+    def update(self, partial=None):
+        if partial is None:
+            partial = self.request.method == 'PATCH'
+            
+        obj = self.perform_update(self.object, self.parse_body(partial=partial))
+        payload = self.get_payload(obj)
+        return Response(payload.json(), content_type='application/json')
 
-        return Response(serializer.data)
+    @action(http_methods=HttpMethod.PUT | HttpMethod.PATCH)
+    def partial_update(self, partial=None):
+        return self.update(partial=True)
 
-    def perform_update(self, serializer):
-        serializer.save()
-
-    def partial_update(self, request, *args, **kwargs):
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
+    def perform_update(self, obj: _T_Model, data: Schema):
+        return assign(obj, data.dict())
 
 
-class DestroyModelMixin:
+@export()
+class DestroyModelMixin(GenericView[_T_Model]):
     """
     Destroy a model instance.
     """
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    __slots__ = ()
+    class Config:
+        abstract = True
+    
+    @action(http_methods=HttpMethod.DELETE | HttpMethod.POST)
+    def destroy(self):
+        self.perform_destroy(self.object)
+        return Response(status=204)
 
-    def perform_destroy(self, instance):
-        instance.delete()
+    def perform_destroy(self, obj: _T_Model):
+        return obj.delete()
+
+
+
+@export()
+class CrudModelMixin(CreateModelMixin[_T_Model], 
+                    ListModelMixin[_T_Model],
+                    RetrieveModelMixin[_T_Model], 
+                    UpdateModelMixin[_T_Model],
+                    DestroyModelMixin[_T_Model]):
+    __slots__ = ()
+
+    class Config:
+        abstract = True
+    

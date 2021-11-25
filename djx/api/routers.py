@@ -123,7 +123,7 @@ class SimpleRouter(BaseRouter):
         ),
     ]
 
-    def __init__(self, trailing_slash=True):
+    def __init__(self, *, trailing_slash=True):
         self.trailing_slash = '/' if trailing_slash else ''
         super().__init__()
 
@@ -132,7 +132,8 @@ class SimpleRouter(BaseRouter):
         If `basename` is not specified, attempt to automatically determine
         it from the viewset.
         """
-        queryset = getattr(viewset, 'queryset', None)
+        
+        queryset = getattr(viewset.__config__, 'queryset', None)
 
         assert queryset is not None, '`basename` argument not specified, and could ' \
             'not automatically determine the name from the viewset, as ' \
@@ -149,7 +150,7 @@ class SimpleRouter(BaseRouter):
         # converting to list as iterables are good for one pass, known host needs to be checked again and again for
         # different functions.
         known_actions = list(flatten([route.mapping.values() for route in self.routes if isinstance(route, Route)]))
-        extra_actions = viewset.get_extra_actions()
+        extra_actions = [] # viewset.get_extra_actions()
 
         # checking action names against the known actions list
         not_allowed = [
@@ -304,20 +305,20 @@ class DefaultRouter(SimpleRouter):
     The default router extends the SimpleRouter, but also adds in a default
     API root view, and adds format suffix patterns to the URLs.
     """
-    include_root_view = True
-    include_format_suffixes = True
+    include_root_view = False
+    include_format_suffixes = False
     root_view_name = 'api-root'
     default_schema_renderers = None
     APIRootView = APIRootView
     # APISchemaView = SchemaView
     # SchemaGenerator = SchemaGenerator
 
-    def __init__(self, *args, **kwargs):
-        if 'root_renderers' in kwargs:
-            self.root_renderers = kwargs.pop('root_renderers')
-        else:
-            self.root_renderers = list(api_settings.DEFAULT_RENDERER_CLASSES)
-        super().__init__(*args, **kwargs)
+    # def __init__(self, *args, **kwargs):
+        # if 'root_renderers' in kwargs:
+        #     self.root_renderers = kwargs.pop('root_renderers')
+        # else:
+        #     self.root_renderers = list(api_settings.DEFAULT_RENDERER_CLASSES)
+        # super().__init__(*args, **kwargs)
 
     def get_api_root_view(self, api_urls=None):
         """
@@ -337,10 +338,12 @@ class DefaultRouter(SimpleRouter):
         """
         urls = super().get_urls()
 
-        if self.include_root_view:
-            view = self.get_api_root_view(api_urls=urls)
-            root_url = re_path(r'^$', view, name=self.root_view_name)
-            urls.append(root_url)
+        # if self.include_root_view:
+        #     view = self.get_api_root_view(api_urls=urls)
+        #     root_url = re_path(r'^$', view, name=self.root_view_name)
+        #     urls.append(root_url)
+
+        vardump(urls)
 
         if self.include_format_suffixes:
             urls = format_suffix_patterns(urls)

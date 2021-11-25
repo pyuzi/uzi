@@ -33,6 +33,48 @@ if t.TYPE_CHECKING:
 # del __json__
 
 
+try:
+    from enum import _decompose, _high_bit
+except ImportError:
+
+
+    def _high_bit(value):
+        """
+        returns index of highest bit, or -1 if value is zero or negative
+        """
+        return value.bit_length() - 1
+
+        
+    def _decompose(flag, value):
+        """
+        Extract all members from the value.
+        """
+        # _decompose is only called if the value is not named
+        not_covered = value
+        negative = value < 0
+        members = []
+        for member in flag:
+            member_value = member.value
+            if member_value and member_value & value == member_value:
+                members.append(member)
+                not_covered &= ~member_value
+        if not negative:
+            tmp = not_covered
+            while tmp:
+                flag_value = 2 ** _high_bit(tmp)
+                if flag_value in flag._value2member_map_:
+                    members.append(flag._value2member_map_[flag_value])
+                    not_covered &= ~flag_value
+                tmp &= ~flag_value
+        if not members and value in flag._value2member_map_:
+            members.append(flag._value2member_map_[value])
+        members.sort(key=lambda m: m._value_, reverse=True)
+        if len(members) > 1 and members[0].value == value:
+            # we have the breakdown, don't need the value member itself
+            members.pop(0)
+        return members, not_covered
+
+
 
 def _get_member_names(attrs, factory=list, default=None):
     f = factory and callable(factory) \
@@ -220,8 +262,12 @@ class Flag(BaseFlag, metaclass=EnumMeta):
 
     name: str
     label: str
-    value: t.Any
+    value: int
 
+    def __repr__(self) -> str:
+        b = f"{{:0>{_bit_width(self.__class__)}}}".format(f'{abs(self._value_):b}')
+        return f'<b{b!r}: {super().__repr__()}>'
+    
 
 @export()
 class IntEnum(BaseIntEnum, metaclass=EnumMeta):
@@ -229,7 +275,7 @@ class IntEnum(BaseIntEnum, metaclass=EnumMeta):
 
     name: str
     label: str
-    value: t.Any
+    value: int
 
 
 class BitInt(int):
@@ -237,13 +283,15 @@ class BitInt(int):
 
     def __repr__(self) -> str:
         return f"b'{abs(self):b}' ({self:d})"
+
+
 @export()
 class IntFlag(BaseIntFlag, metaclass=EnumMeta):
     __slots__ = ()
 
     name: str
     label: str
-    value: t.Any
+    value: int
 
     def __repr__(self) -> str:
         b = f"{{:0>{_bit_width(self.__class__)}}}".format(f'{abs(self._value_):b}')
@@ -262,7 +310,7 @@ class StrEnum(str, Enum):
 
     name: str
     label: str
-    value: t.Any
+    value: str
 
     def _generate_next_value_(name, start, count, last_values):
         return name

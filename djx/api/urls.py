@@ -1,16 +1,66 @@
 import typing as t 
 from django.urls import path, include
 from djx.api.params import Body, Query, Param, Input
-from djx.api.params.fields import Path
+from djx.common.utils import assign
 from djx.di import get_ioc_container
 from ninja import NinjaAPI
 import ninja as nja
 from django.http import JsonResponse, HttpRequest
-from djx.common import json
+from djx.common import json, moment
+
+from djx.schemas import OrmSchema, EmailStr, Schema, constr
 
 
 from .func_views import ViewFunction
+from .views import GenericView, action
 
+
+from djx.iam import UserModel, UserRole, UserStatus
+
+from . import Request, HttpResponse, mixins
+from .types import HttpMethod
+
+from .routers import DefaultRouter
+
+router = DefaultRouter()
+
+
+
+
+class UserIn(Schema):
+    name: str
+    role: UserRole = UserRole.SUBSCRIBER
+    email: EmailStr
+    password: constr(min_length=5)
+
+    # phone: str
+
+
+
+class UserOut(OrmSchema):
+    pk: int
+    name: str
+    status: UserStatus
+    role: UserRole
+    email: EmailStr
+    username: str
+    created_at: moment.Moment
+
+
+
+class UsersView(mixins.CrudModelMixin):
+
+    # __slots__ = ()
+
+    class Config:
+        queryset = UserModel.objects.order_by('created_at')
+        request_schema = UserIn
+        response_schema = UserOut
+
+
+
+
+router.register('users', UsersView)
 
 
 
@@ -19,74 +69,6 @@ ioc = get_ioc_container()
 njapi = NinjaAPI()
 
 
-@ioc.injectable(cache=True)
-class Foo:
-    __slots__ = 'foo'
-
-    foo: t.Any
-
-
-
-
-_T = t.TypeVar('_T')
-_T_Foo = t.TypeVar('_T_Foo', bound=Foo)
-
-
-
-# @ViewFunction
-# def func(
-#         p1: t.Literal['xyz', 'abc']=Path(),
-#         p2: int=Path(),
-#         a: str = Query(), 
-#         b: str = Query(), 
-#         age: int = Body(),
-#         foo: bool = Body(), 
-#         bar: str = Body(), 
-#         baz: str = Body(), 
-#         ):
-#     return JsonResponse(dict(a=a, b=b, p1=p1, p2=p2, age=age, foo=foo, bar=bar, baz=baz))
-
-
-
-@ViewFunction
-def func(
-        p1: t.Annotated[t.Literal['xyz', 'abc'], Path()],
-        p2: t.Annotated[int, Path()],
-        a: str, # t.Annotated[str, Query()], 
-        b: str, # t.Annotated[str, Query()],
-        age: t.Annotated[int, Body()],
-        foo: Foo, 
-        bar: t.Annotated[str, Body()], 
-        baz: t.Annotated[str, Body()]):
-    return JsonResponse(dict(a=a, b=b, p1=p1, p2=p2, age=age, foo=f'{foo.__class__.__module__}.{foo.__class__.__name__}', bar=bar, baz=baz))
-
-
-def valid_view(req, *a, **kw):
-    if req.method == 'POST':
-        data = json.loads(req.body)
-    else:
-        data = dict()
-
-    data.update(kw, a=req.GET['a'], b=req.GET['b'])
-    
-    return func.run(**data)
-
-
-
-def plain_view(req, *a, **kw):
-    if req.method == 'POST':
-        data = json.loads(req.body)
-    else:
-        data = dict()
-    
-    data.update(kw, a=req.GET['a'], b=req.GET['b'])
-    return func.func(**data)
-
-    # return func.func(
-    #     typs['a'](req.GET['a']), 
-    #     typs['b'](req.GET['b']), 
-    #     **{ k : typs[k](v) for k,v in data.items() 
-    # })
 
 
 @njapi.post('/test/{p1}/{p2}')
@@ -109,9 +91,8 @@ def ninja_view(request: HttpRequest,
 
 
 urlpatterns = [
-    path("jani/test/<p1>/<p2>", func.view), 
-    path('ninja/', njapi.urls),
-
-    path("valid/test/<p1>/<p2>", valid_view), 
-    path("plain/test/<p1>/<p2>", plain_view), 
+    # path("jani/test/<p1>/<p2>", func.view), 
+    # path('users/', UsersView.as_view({'get': 'list', 'put': 'create'})),
+    # path('ninja/', njapi.urls),
+    path('', include(router.urls)),
 ]

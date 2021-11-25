@@ -525,3 +525,12 @@ def typed_signature(callable: Callable[..., Any], *, follow_wrapped=True, global
             return_annotation=eval_type(sig.return_annotation, globalns, localns)
         )
 
+
+
+def get_type_parameters(tp) -> Union[tuple[TypeVar, ...], None]:
+    res = getattr(tp, '__parameters__', None)
+    if res is None:
+        if isinstance(res, type):
+            return ()
+            
+

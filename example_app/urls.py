@@ -22,7 +22,7 @@ from djx.api.urls import njapi
 
 urlpatterns = [
     # path("admin/", admin.site.urls),
-    path('api/', include('djx.api.urls')),
+    path('api/', include('djx.api.tests.urls')),
     # path("func/", v.func),
     # path("1/", v.Dj.as_view()),
     # path("2/", v.Djx.as_view()),

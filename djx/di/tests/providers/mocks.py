@@ -136,7 +136,7 @@ class Bar:
         self.sym = sym
         self.baz = baz
         self.kw2 = kw2
-        self.pk = unique_id(Bar)
+        self.pk = f'Bar:{unique_id(Bar)}'
  
     def __repr__(self):
         nl = "\n"

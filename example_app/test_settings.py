@@ -12,13 +12,13 @@ from .settings import *
 #     "example_app",
 # ]
 
-MIDDLEWARE = [
-    # "django.middleware.security.SecurityMiddleware",
-    # "django.contrib.sessions.middleware.SessionMiddleware",
-    # "django.middleware.common.CommonMiddleware",
-    # "django.middleware.csrf.CsrfViewMiddleware",
-    # "django.contrib.auth.middleware.AuthenticationMiddleware",
-]
+# MIDDLEWARE = [
+#     # "django.middleware.security.SecurityMiddleware",
+#     # "django.contrib.sessions.middleware.SessionMiddleware",
+#     # "django.middleware.common.CommonMiddleware",
+#     # "django.middleware.csrf.CsrfViewMiddleware",
+#     # "django.contrib.auth.middleware.AuthenticationMiddleware",
+# ]
 
 LOGGING_LEVEL = 'INFO'
 
@@ -72,6 +72,6 @@ LOGGING = {
 
 
 try:
-    from .local_test_settings import *
+    from .local_settings import *
 except ModuleNotFoundError:
     pass

@@ -34,6 +34,9 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     "djx.core",
 
+    'rest_framework',
+
+    
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -44,15 +47,15 @@ INSTALLED_APPS = [
     'polymorphic',
     'mptt',
 
-    # "djx.iam",
+    "djx.iam",
     # "djx.spaces",
     # "djx.ledgers",
 
     "djx.schemas",
-    # "djx.keydb",
+    "djx.keydb",
     # "djx.contacts",
 
-    # "djx.cms",
+    "djx.cms",
     # "djx.xtags",
     # "example_app",
 ]
@@ -170,7 +173,12 @@ REST_FRAMEWORK = {
 }
 
 
+WSGI_APPLICATION = 'example_app.wsgi.application'
+
+
 try:
     from .local_settings import *
 except ModuleNotFoundError:
     pass
+
+

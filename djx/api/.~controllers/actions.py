@@ -21,9 +21,6 @@ from djx.schemas.decorator import _ExperimentValidatedFunction
 
 if t.TYPE_CHECKING:
     from djx.schemas.decorator import ConfigType
-    from ..core import Controller
-else:
-    Controller = proxy(ImportRef(f'{__package__}.core', 'Controller'), cache=True)
 
 
 
@@ -61,22 +58,6 @@ class Action(t.Generic[_T]):
     def __set_name__(self, owner, name):
         self.__name__ = name
 
-    def __get__(self, obj, typ=None) -> None:
-        if obj is None:
-            return self
-
-        if typ is None:
-            typ = obj.__class__
-
-        vardump(typ, obj)
-        alias = BoundAction[self, typ]
-
-        try:
-            return obj.__dict__[alias]
-        except KeyError:
-            obj.__dict__[alias] = MethodType(ioc.make(alias, typ, self), obj)
-            return obj.__dict__[alias]
-    
     def __call__(_self, self, /, *args: t.Any, **kwds: t.Any) -> t.Any:
         return _self.__get__(self)(*args, **kwds)
 
@@ -84,73 +65,3 @@ class Action(t.Generic[_T]):
 
         def view(req, *args, **kwds):
             pass
-
-
-
-
-@export()
-# @ioc.wrap(cache=True)
-class BoundAction:
-
-    __slots__ = 'action', 'ctrlcls', '__call__'
-
-    __class_getitem__ = classmethod(GenericAlias)
-    
-    # __bound = dict
-
-    # def __class_getitem__(cls, params):
-    #     if not isinstance(params, tuple):
-    #         params,
-        
-    #     # klass = cls.__bound[params]
-    #     cache = cls.__bound
-    #     if params[] not in cls.__
-
-    #     # ioc.wrap()
-
-
-    def __init__(_self, cls: type[Controller], action: Action):
-        _self.action = action
-        _self.ctrlcls = cls 
-
-        def __call__(self, /, *a, **kw):
-            pass
-                    
-
-        _self.__call__ = __call__
-
-    def __getattr__(self, name) -> None:
-        if name not in {'action', 'ctrlcls'}:
-            return getattr(self.action, name)
-        raise AttributeError(name) 
-    
-
-    def run(_self, self, *args, **kwargs):
-        pass
-
-    def as_view(self, **kwds):
-        pass
-
-
-
-
-class Foo:
-
-    def act(self):
-        """This was added"""
-        pass
-    act.v = 'good'
-    act = Action(act)
-
-
-    @classmethod
-    def fun(cls, arg) -> None:
-        pass
-    
-    
-
-# foo = Foo()
-
-# vardump(Foo.act, Foo.fun)
-# vardump(foo.act.__doc__, foo.fun)
-

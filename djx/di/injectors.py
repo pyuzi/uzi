@@ -225,23 +225,32 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.vars[key]
         if res is None:
-            return self.__missing__(key)
+            return self.make(self.__missing__(key), *args, **kwds)
         elif (args or kwds):
+            # logger.warning(
+            #     f'calling {self.__class__.__name__}.make() with args or kwds. {key} got {args=}, {kwds=}'
+            # )
             return res.make(*args, **kwds)
         elif res.value is Void:
             return res.get()
         return res.value
     
-    def __missing__(self, key, args=(), kwds=frozendict()):
+    # def call(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
+    #     res = self.vars[key]
+    #     if res is None:
+    #         return self.call(self.__missing__(key), *args, **kwds)
+    #     else:
+    #         return res.make(*args, **kwds)
+
+    def __missing__(self, key):
         if isinstance(key, ImportRef):
             concrete = key(None)
             if concrete is not None:
-                rv = self.make(concrete, *args, **kwds)
                 self.ioc.alias(key, concrete, at=self.name, priority=-10)
-                return rv
+                return concrete
         elif isinstance(key, (type, FunctionType)):
             self.ioc.injectable(key, key, at=self.name, priority=-10)
-            return self.make(key, *args, **kwds)
+            return key
 
         raise InjectorKeyError(f'{key} in {self!r}')
     

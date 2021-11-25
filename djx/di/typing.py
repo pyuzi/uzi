@@ -11,6 +11,11 @@ from djx.common.utils import export
 
 
 @export()
+def get_type_parameters(tp) -> t.Union[tuple[t.TypeVar, ...], None]:
+    return tt.get_type_parameters(tp)
+
+
+@export()
 def get_args(tp):
     return tt.get_args(tp)
 

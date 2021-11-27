@@ -217,7 +217,7 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
     def __getitem__(self, key: T_Injectable) -> T_Injected:
         res = self.vars[key]
         if res is None:
-            return self.__missing__(key)
+            return self[self.__missing__(key)]
         elif res.value is Void:
             return res.get()
         return res.value
@@ -249,9 +249,9 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
                 self.ioc.alias(key, concrete, at=self.name, priority=-10)
                 return concrete
         elif isinstance(key, (type, FunctionType)):
-            self.ioc.injectable(key, key, at=self.name, priority=-10)
+            self.ioc.injectable(key, use=key, at=self.name, priority=-10)
             return key
-
+        
         raise InjectorKeyError(f'{key} in {self!r}')
     
     def set(self, k: T_Injectable, val: T_Injected):

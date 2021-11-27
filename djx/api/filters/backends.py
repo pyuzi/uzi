@@ -17,6 +17,7 @@ from . import filters, filterset
 #     )
 # # 
 
+# @ioc.injectable()
 @ioc.injectable(at='main', cache=True)
 class DjangoFilterBackend:
 

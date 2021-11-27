@@ -21,7 +21,7 @@ urlpatterns = [
     # path('users/', UsersView.as_view({'get': 'list', 'put': 'create'})),
     # path('ninja/', njapi.urls),
 
-    path('djx/', include(djx.router.urls)),
     path('drf/', include(drf.router.urls)),
+    path('djx/', include(djx.router.urls)),
     # path('api/drf/', include(router.urls)),
 ]

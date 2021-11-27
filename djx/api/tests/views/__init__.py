@@ -1,6 +1,8 @@
 
+sample_data_list = b'[{"pk":1,"name":"Qwertie Tech","status":"inactive","role":5,"email":"tech@qwertie.djr","username":"tech@qwertie.djr"},{"pk":2,"name":"Super user","status":"inactive","role":5,"email":"super@localhost.drf","username":"super@localhost.drf"},{"pk":7,"name":"Mtu Yule","status":"inactive","role":0,"email":"mtu@yule.com","username":"mtu@yule.com"},{"pk":8,"name":"John Doe","status":"inactive","role":0,"email":"john@doe.com","username":"john@doe.com"}]'
 
-sample_data_list = [
+
+_sample_data_list = [
   {
     "pk": 1,
     "name": "Qwertie Tech",

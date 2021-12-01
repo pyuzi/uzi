@@ -8,7 +8,6 @@ import logging
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Mapping, Set, Sequence, Iterable
 
-from django.db import models as m
 from djx.api.abc import Headers
 from djx.common.collections import fallback_default_dict, fallbackdict, frozendict, orderedset
 from djx.common.typing import get_type_parameters
@@ -21,17 +20,13 @@ from djx.schemas import QueryLookupSchema, OrmSchema, Schema, create_schema
 # from djx.schemas import QueryLookupSchema, OrmSchema, Schema, create_schema
 
 
-
-
 if t.TYPE_CHECKING:
-    from djx.core.models.base import Model
+    from djx.core.models.base import Model, QuerySet
     from . import View, GenericView
 
-else:
-    Model = m.Model
 
 
-from ..types import ActionMethod, HttpMethod, MethodMapper, T_HttpMethodName, T_HttpMethodStr, ViewMethod
+from ..types import ViewActionFunction, HttpMethod, ActionRouteDescriptor, T_HttpMethodName, T_HttpMethodStr, ViewFunction
 from .. import Request
 from ..common import http_method_action_resolver
 
@@ -39,9 +34,9 @@ from ..common import http_method_action_resolver
 logger = logging.getLogger(__name__)
 
 
-_T_Entity = t.TypeVar('_T_Entity', covariant=True)
+_T_Model = t.TypeVar('_T_Model', covariant=True)
 
-_T_Model = t.TypeVar('_T_Model', bound=Model, covariant=True)
+_T_DbModel = t.TypeVar('_T_DbModel', bound='Model', covariant=True)
 
 
 
@@ -52,17 +47,54 @@ _T_ActionResolver = Callable[['ViewConfig', Mapping[t.Any, str]], _T_ActionResol
 _T_ActionMap = Mapping[t.Any, 'ActionConfig']
 
 
+def _is_db_model(cls: type[_T_Model]):
+    from django.db.models.base import ModelBase
+    return isinstance(cls, ModelBase)
+
 
 @export()
-class BaseConfig(BaseMetadata, t.Generic[_T_Entity]):
+class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
 
     __add_to_target__: t.Final[bool] = False
     
-
-    target: type['View[_T_Entity]']
-
-    entity: type[_T_Entity]
     
+    # name = None
+    target: type['View[_T_Model]']
+
+    
+    @metafield[bool](default=...)
+    def detail(self, value, base=...):
+        if value is ...:
+            if base is ...:
+                return None
+            return base
+        return value
+
+    @metafield[str]('basename')
+    def basename(self, value, base=None):
+        if value:
+            return value
+        elif isinstance(self, ActionConfig):
+            return base
+        else:
+            return self.get_default_basename()
+
+    @metafield[str](inherit=False)
+    def title(self, value):
+        if value and self.suffix:
+            raise TypeError(
+                f"{self.__class__.__name__}() received both `title` and `suffix`, which are "
+                f"mutually exclusive."
+            )
+        elif not (value or self.suffix):
+            value = self.get_default_title() 
+        
+        return value
+        
+    @metafield[str](inherit=False)
+    def suffix(self, value):
+        return value
+
     @metafield[str]()
     def description(self, value, base=None):
         return value or base
@@ -89,6 +121,14 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Entity]):
                 return HttpMethod.ALL
             return HttpMethod(base)
         return HttpMethod(value)
+
+    # @metafield[dict[T_HttpMethodStr,str]]()
+    # def mapping(self, value, base=None):
+    #     if value is None:
+    #         if base is None:
+    #             return HttpMethod.ALL
+    #         return HttpMethod(base)
+    #     return HttpMethod(value)
 
     @cached_property
     def http_method_names(self):
@@ -140,12 +180,16 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Entity]):
         return self.response_schema
 
     def get_default_basename(self):
-        return self.target.__name__
+        return 
 
-    # def __repr__(self):
-    #     nl = "\n  "
-    #     return f'{self.__class__.__name__}({self.target.__name__}, '\
-    #         f'{{{nl}{f",{nl}".join(f"{k}: {v!r}" for k,v in self.__dict__.items() if k in self.__fields__)}{nl}}})'
+    def get_default_title(self):
+        return text.humanize(self.target.__name__).capitalize() 
+
+    def __repr__(self):
+        nl = "\n  "
+        attrs = () #  (f"{k}: {v!r}" for k,v in self.__dict__.items() if k in self.__fields__)
+        return f'{self.__class__.__name__}({self.__name__}@{self.target.__name__}, '\
+            f'{{{nl}{f",{nl}".join(attrs)}{nl}}})'
         
 
 
@@ -164,241 +208,141 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Entity]):
 
 
 @export()
-class ViewConfig(BaseConfig[_T_Entity]):
+class ViewConfig(BaseConfig[_T_Model]):
 
     is_abstract = metafield[bool]('abstract', default=False, inherit=False)
-
-    # @metafield[dict[T_HttpMethodNameUpper, str]](default=...)
-    # def detail_actions(self, value, base=...):
-    #     if value is ...:
-    #         if base is ...:
-    #             return 
-    #         return { }
-    #     return value
-
-    # @metafield[dict[T_HttpMethodNameUpper, str]](default=...)
-    # def list_action(self, value, base=...):
-    #     if value is ...:
-    #         if base is ...:
-    #             return 
-    #         return base
-    #     return value
-
-    # @cached_property
-    # def root_actions(self) -> list[Callable]:
-    #     mapping = self.action_mapping
-    #     if mapping is 
-    #     return [
-            
-    #     ]
-
-    # @cached_property
-    # def actions_config(self) -> dict[str, dict[str, t.Any]]:
-    #     from . import ViewType
-    #     res = defaultdict(dict)
-        
-    #     bases = chain((
-    #         b.__local_actions__ 
-    #         for b in reversed(self.target.mro())
-    #             if isinstance(b, ViewType)
-    #     ))
-
-    #     for dct in bases:
-    #         for k, v in dct.items():
-    #             res[k].update(v)
-
-    #     return dict(res)
-
-    # @cached_property
-    # def concrete_actions(self) -> list[str]:
-    #     return [a for a in self.actions_config if callable(getattr(self.target, a, None))]
-        
-    @metafield[_T_ActionResolver]('action_resolver', default=...)
-    def default_action_resolver(self, value, base=...):
-        if value is ...:
-            if base is ...:
-                return http_method_action_resolver
-            return base
-        return value
     
-    @metafield[Set[_T_ActionResolver]](default=...)
-    def allowed_action_resolvers(self, value, base=...):
-        if value is ...:
-            if base is ...:
-                return {t.Any}
-            return base
-        elif value is not None:
-            return set(value)
-    
+    @property
+    def root(self):
+        return self
+
     @metafield[str]()
     def action_param(self, value, base=None):
         return value or base
 
     @cached_property
-    def action_config_class(self) -> type['OperationConfig']:
-        return self._eval_action_config_class()
+    def action_config_class(self) -> type['ActionConfig']:
+        return self._get_action_config_class()
 
-    # @cached_property
-    # def actions(self) -> fallbackdict[str, 'ActionConfig']:
-    #     return self._create_actions_dict()
-
-    # def _create_actions_dict(self):
-    #     fb = self._get_action_dict_fallback()
-    #     return fallback_default_dict(fb)
-
-    # def _get_action_dict_fallback(self):
-    #     def fallback(key):
-    #         nonlocal self
-    #         try:
-    #             return self.create_action(key, self.actions_config[key])
-    #         except KeyError:
-    #             return None
-
-    #     return fallback
+    @metafield[orderedset[t.Any]]()
+    def renderers(self, value, base=None):
+        return orderedset(value if value is not None else base if base is not None else ())
+    
+    @cached_property
+    def renderer_instances(self):
+        return self._make_renderer_instances()
 
     def create_action(self, name: str, conf: dict=frozendict()):
         return self.action_config_class(self.target, name, conf, self)
 
-    def has_action(self, name: str):
-        return getattr(self.target, name, None) is not None
+    def has_action(self, name: str, method=None):
+        return not not ActionRouteDescriptor.get_existing_descriptor(getattr(self.target, name, None))
 
-    def _eval_action_config_class(self):
-        cls: type[OperationConfig] = self._get_base_action_config_class()
+    def _get_action_config_class(self):
+        cls: type[ActionConfig] = self._get_base_action_config_class()
         return type(cls.__name__, (cls, self.__class__,), {})
 
-    def _get_base_action_config_class(self) -> type['OperationConfig']:
-        return OperationConfig.get_class(self.target, '__action_config_class__')
+    def _get_base_action_config_class(self) -> type['ActionConfig']:
+        return ActionConfig.get_class(self.target, '__action_config_class__')
 
-    # def which_action_resolver(self, 
-    #                         using: t.Union[_T_ActionResolver, None]=None,
-    #                         actions: t.Union[_T_ActionMap, None]=None) -> t.Union[_T_ActionResolver, None]:
-    #     if using is None:
-    #         return self.default_action_resolver
-    #     return using
-
-    # def get_resolvable_actions(self, actions: t.Union[Mapping[t.Any, str], None]=None, using: t.Union[_T_ActionResolver, None]=None) -> _T_ActionResolveFunc:
-    #     if actions:
-    #         res = dict()
-    #         all = self.actions
-    #         for k, n in actions.items():
-    #             a = all[n]
-    #             if not a.is_available:
-    #                 raise LookupError(f'action {n!r} is not available in {self.target}')
-    #             res[k] = a
-    #         return res
-
-    # def get_action_resolver(self, 
-    #     actions: t.Union[Mapping[t.Any, str], None]=None, 
-    #     using: t.Union[_T_ActionResolver, None]=None
-    # ) -> tuple[t.Optional[_T_ActionMap], _T_ActionResolveFunc]:
-
-    #     using = self.which_action_resolver(using, actions)
-    #     actions = self.get_resolvable_actions(actions, using)
-    #     return actions, self.ioc.make(using, self, actions)
-
-    def get_action_func(self, name) -> ActionMethod:
+    def get_action_func(self, name: str, *, default=...) -> ViewActionFunction:
         func = getattr(self.target, name, None)
-        if not isinstance(func, ViewMethod):
-            raise TypeError(
-                f'{name!r} is not a valid action. expected callable '
-                f'but got {func.__class__} in {self.target.__name__}'
-            )
+        descr = ActionRouteDescriptor.get_existing_descriptor(func)
+        if not descr:
+            if default is ...:
+                raise TypeError(
+                    f'{name!r} is not a valid action. expected callable '
+                    f'but got {func.__class__} in {self.target.__name__}'
+                )
+            return default
+
         return func
 
-    def get_action_config(self, action: ActionMethod, default=frozendict()):
-        return getattr(action, 'config', default)
+    def get_action_config(self, action: ViewActionFunction, method: str, config=frozendict()):
+        route = action.route.mapping[method]
+        if route.name != action.__name__:
+            raise TypeError(
+                f'cannot bind `{action.__name__}` to `{method}`. '
+                f'The method is bound to `{route.name}`'
+            )
+        return ChainMap(config, route.__dict__, action.route.__dict__)        
+
+    def get_method_map(self, action=None):
+        if action is None:
+            pass
 
     def get_action_mapping(self, 
                         actions: Mapping[T_HttpMethodName, str], 
-                        config: Mapping=frozendict()) -> Mapping[T_HttpMethodStr, tuple[str, 'OperationConfig']]:
+                        config: Mapping=frozendict()) -> Mapping[T_HttpMethodStr, tuple[str, 'ActionConfig']]:
 
-        # mapping = dict(actions)      
-        # res = {}  
-        mapping: MethodMapper = config.get('mapping')
-
-        if mapping and mapping.action:
-            bases = self.get_action_config(mapping.action),
-        else:
-            bases = ()
-
+        vardump(config=config, actions=actions)
+        
         return {
-            HttpMethod(m).name: (a, self.create_action(a, ChainMap(config, self.get_action_config(self.get_action_func(a)), *bases))) 
+            HttpMethod(m).name: (a, self.create_action(a, self.get_action_config(self.get_action_func(a), m, config))) 
             for m, a in actions.items()
         }
 
+    def _make_renderer_instances(self):
+        return [h for b in self.renderers if (h := ioc.make(b))]
 
 
 
-
-class ActionConfig(ViewConfig):
-
-    # is_root = 
+class ActionConfig(BaseConfig):
 
     @property
-    def attr(self):
+    def name(self):
         return self.__name__
-    
+
+    @metafield[str](inherit=False)
+    def method(self, value):
+        return value or self.name
+
     @cached_property
-    def parent(self) -> 'OperationConfig':
-        return None
+    def parent(self) -> t.Union['ActionConfig', 'ViewConfig']:
+        raise AttributeError(f'attribute `parent` is not yet available.')
+
+    @property
+    def root(self) -> ViewConfig:
+        return self.parent.root
 
     def __loaded__(self):
         super().__loaded__()
-        self.parent = self.__base__
+        if isinstance(self.__base__, BaseConfig):
+            self.parent = self.__base__
 
-
-
-
-class OperationConfig(BaseConfig):
-
-    @property
-    def attr(self):
-        return self.__name__
-
-    @cached_property
-    def parent(self) -> 'OperationConfig':
-        return None
-
-    @metafield[str](inherit=False)
-    def name(self, value):
-        if value and self.suffix:
-            raise TypeError(
-                f"{self.__class__.__name__}() received both `name` and `suffix`, which are "
-                f"mutually exclusive."
-            )
-        elif not self.suffix:
-            value = text.humanize(self.__name__).capitalize()
-        
-        return value
-    
-    @metafield[str](inherit=False)
-    def suffix(self, value):
-        return value
-
-    def __loaded__(self):
-        super().__loaded__()
-        self.parent = self.__base__
-
+    def get_default_title(self):
+        return text.humanize(self.name).capitalize() 
 
 
 
 
 @export()
-class GenericViewConfig(ViewConfig[_T_Model]):
+class GenericViewConfig(ViewConfig[_T_DbModel]):
     """ModelViewConfig Object"""
 
-    target: type['GenericView[_T_Model]']
+    target: type['GenericView[_T_DbModel]']
 
-    @property
-    def entity(self) -> type[_T_Model]:
-        return self.model
+    @metafield[t.Optional[type[_T_DbModel]]](default=...)
+    def model(self, value, base=...) -> type[_T_DbModel]:
+        if value is ...:
+            if isinstance(self, ActionConfig):
+                return base
+            return None
+        return value
+
+    @model.getter
+    def model(self) -> t.Optional[type[_T_DbModel]]:
+        if md := self.__dict__['model']:
+            return md
+        elif qs := self.queryset:
+            return qs.model
 
     @metafield[orderedset[t.Any]]()
     def filter_pipes(self, value, base=None):
         return orderedset(value if value is not None else base if base is not None else ())
     
     @cached_property
-    def filter_pipeline(self) -> Callable[['View[_T_Model]']]:
+    def filter_pipeline(self) -> Callable[['View[_T_DbModel]']]:
         return self._make_filter_pipeline()
 
     @metafield[type[t.Any]]()
@@ -413,23 +357,26 @@ class GenericViewConfig(ViewConfig[_T_Model]):
     def lookup_field(self, value, base=None):
         return value or base or 'pk'
     
-    @metafield[str]()
-    def lookup_param(self, value, base=None):
-        return value or base
+    # @metafield[str]()
+    # def lookup_param(self, value, base=None):
+    #     return value or base
     
-    @property
-    def lookup_param_name(self):
-        return self.lookup_param or self.lookup_field
+    # @property
+    # def lookup_param_name(self):
+    #     return self.lookup_param or self.lookup_field
     
-    @property
-    def model(self) -> type[_T_Model]:
-        if qs := self.queryset:
-            return qs.model
-    
-    @metafield[m.QuerySet[_T_Model]]()
+    lookup_url_kwarg = metafield[str]()
+    lookup_value_regex = metafield[str](default=r'[^/.]+')
+
+    @metafield['QuerySet[_T_DbModel]']()
     def queryset(self, value, base=None):
         return value or base
 
     def _make_filter_pipeline(self):
         return [h for b in self.filter_pipes if (h := ioc.make(b))]
 
+    def get_default_basename(self):
+        if mod := self.model:
+            if _is_db_model(mod):
+                return mod._meta.object_name.lower()
+        return super().get_default_basename()

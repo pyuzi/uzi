@@ -1,34 +1,19 @@
 import typing as t 
 import itertools
-from collections import OrderedDict, namedtuple
+from collections import ChainMap, OrderedDict, namedtuple
 
 from django.urls import NoReverseMatch, re_path
-from djx.api.views.core import ActionMethod
 
 from djx.common.collections import frozendict
 from djx.common.exc import ImproperlyConfigured
 
 from .urlpatterns import format_suffix_patterns
 from .abc import Response
-from .views import View
-from .types import HttpMethod, MethodMapper, ActionMethod, T_HttpMethodStr
+from .views import View, GenericView
+from .types import ActionRouteDescriptor, T_HttpMethodStr, Route, DynamicRoute
 
 api_settings = None
 
-
-class Route(t.NamedTuple):
-    url: str
-    mapping: dict[T_HttpMethodStr, str]
-    name: str
-    detail: bool
-    initkwargs: dict[str, t.Any] = frozendict()
-
-    
-class DynamicRoute(t.NamedTuple):
-    url: str
-    name: str
-    detail: bool
-    initkwargs: dict[str, t.Any] = frozendict()
 
     
 
@@ -50,16 +35,16 @@ class BaseRouter:
     def __init__(self):
         self.registry = []
 
-    def register(self, prefix, viewset, basename=None):
+    def register(self, prefix, view, basename=None):
         if basename is None:
-            basename = self.get_default_basename(viewset)
-        self.registry.append((prefix, viewset, basename))
+            basename = self.get_default_basename(view)
+        self.registry.append((prefix, view, basename))
 
         # invalidate the urls cache
         if hasattr(self, '_urls'):
             del self._urls
 
-    def get_default_basename(self, viewset):
+    def get_default_basename(self, view):
         """
         If `basename` is not specified, attempt to automatically determine
         it from the viewset.
@@ -81,7 +66,7 @@ class BaseRouter:
 
 class SimpleRouter(BaseRouter):
 
-    routes = [
+    routes: list[t.Union[Route, DynamicRoute]] = [
         # List route.
         Route(
             url=r'^{prefix}{trailing_slash}$',
@@ -93,39 +78,12 @@ class SimpleRouter(BaseRouter):
             detail=False,
             initkwargs={'suffix': 'List'}
         ),
-        # List route.
-        # Route(
-        #     url=r'^{prefix}{trailing_slash}$',
-        #     mapping={
-        #         'get': 'list',
-        #         # 'post': 'post'
-        #     },
-        #     name='{basename}-list',
-        #     detail=False,
-        #     initkwargs={'suffix': 'List'}
-        # ),
-        # Dynamically generated list routes. Generated using
-        # @action(detail=False) decorator on methods of the viewset.
         DynamicRoute(
             url=r'^{prefix}/{url_path}{trailing_slash}$',
             name='{basename}-{url_name}',
             detail=False,
             initkwargs={}
         ),
-        # Detail route.
-        # Route(
-        #     url=r'^{prefix}/{lookup}{trailing_slash}$',
-        #     mapping={
-        #         'get': ('get', 'retrieve'),
-        #         'put': ('put', 'update'),
-        #         'patch': ('patch', 'partial_update'),
-        #         'delete': ('delete', 'destroy')
-        #     },
-        #     name='{basename}-detail',
-        #     detail=True,
-        #     initkwargs={'suffix': 'Instance'}
-        # ),
-        # Detail route.
         Route(
             url=r'^{prefix}/{lookup}{trailing_slash}$',
             mapping={
@@ -138,8 +96,6 @@ class SimpleRouter(BaseRouter):
             detail=True,
             initkwargs={'suffix': 'Instance'}
         ),
-        # Dynamically generated detail routes. Generated using
-        # @action(detail=True) decorator on methods of the viewset.
         DynamicRoute(
             url=r'^{prefix}/{lookup}/{url_path}{trailing_slash}$',
             name='{basename}-{url_name}',
@@ -152,19 +108,12 @@ class SimpleRouter(BaseRouter):
         self.trailing_slash = '/' if trailing_slash else ''
         super().__init__()
 
-    def get_default_basename(self, viewset):
+    def get_default_basename(self, view: type[View]):
         """
         If `basename` is not specified, attempt to automatically determine
         it from the viewset.
         """
-        
-        queryset = getattr(viewset.__config__, 'queryset', None)
-        
-        assert queryset is not None, '`basename` argument not specified, and could ' \
-            'not automatically determine the name from the viewset, as ' \
-            'it does not have a `.queryset` attribute.'
-
-        return queryset.model._meta.object_name.lower()
+        return view.__config__.basename
 
     def get_routes(self, view: type[View]):
         """
@@ -174,49 +123,86 @@ class SimpleRouter(BaseRouter):
         """
         # converting to list as iterables are good for one pass, known host needs to be checked again and again for
         # different functions.
+
+        actions = view.get_all_action_descriptors()
+
         known_actions = set(_flatten([route.mapping.values() for route in self.routes if isinstance(route, Route)]))
-        extra_actions = view.get_extra_actions(known=known_actions)
+        
+        detail_actions = { n: r for n, a in actions.items() if (r := a.detail_route())}
+        outline_actions = { n: r for n, a in actions.items() if (r := a.outline_route())}
+        implicit_actions = { n: r for n, a in actions.items() if (r := a.implicit_route())}
+
+        all_actions = ChainMap(outline_actions, detail_actions, implicit_actions)
+
+        root_actions = { n for n, r in all_actions.items() if n in known_actions and not r.url or r.name }
+
+        not_allowed = (actions.keys() & known_actions) - root_actions
+
+        # extra_actions = view.get_extra_actions(known=known_actions)
 
         # checking action names against the known actions list
-        not_allowed = [
-            action.__name__ for action in extra_actions
-            if action.__name__ in known_actions
-        ]
+        # not_allowed = [
+        #     action for action in all_actions
+        #     if action in known_actions
+        # ]
 
         if not_allowed:
-            msg = ('Cannot use the @action decorator on the following '
-                   'methods, as they are existing routes: %s')
+            msg = ('Cannot set `url_path` and `` on the following @actions'
+                   ' as they are existing routes: %s')
             raise ImproperlyConfigured(msg % ', '.join(not_allowed))
 
-        # partition detail and list actions
-        detail_actions = [action for action in extra_actions if action.detail]
-        list_actions = [action for action in extra_actions if not action.detail]
+        # # partition detail and list actions
+        # detail_actions = [action for action in extra_actions if action.detail]
+        # list_actions = [action for action in extra_actions if not action.detail]
 
         routes = []
         for route in self.routes:
             if isinstance(route, DynamicRoute) and route.detail:
-                routes += [self._get_dynamic_route(route, action) for action in detail_actions]
+                routes += [
+                    self._get_dynamic_route(route, actions[n], *r[:-2])
+                    for n, r in detail_actions.items() if n not in root_actions
+                ]
+                # routes += [self._get_dynamic_route(route, action) for action in detail_actions]
             elif isinstance(route, DynamicRoute) and not route.detail:
-                routes += [self._get_dynamic_route(route, action) for action in list_actions]
+                # routes += [self._get_dynamic_route(route, action) for action in list_actions]
+                routes += [
+                    self._get_dynamic_route(route, actions[n], *r[:-2])
+                    for n, r in outline_actions.items() if n not in root_actions
+                ]
+            # elif route.detail:
+            #     routes += [
+            #         self._get_root_route(route, actions[n])
+            #         for n in detail_actions if n in root_actions
+            #     ]
             else:
+                # routes += [
+                #     self._get_root_route(route, actions[n])
+                #     for n in detail_actions if n in root_actions
+                # ]
                 routes.append(self._get_root_route(route))
 
         return routes
 
-    def _get_dynamic_route(self, route, action: ActionMethod):
+    def _get_dynamic_route(self, 
+                        route: DynamicRoute, 
+                        action: ActionRouteDescriptor, 
+                        url_path: t.Optional[str], 
+                        mapping: dict[T_HttpMethodStr, str],
+                        url_name: t.Optional[str]
+                        ):
+
         initkwargs = route.initkwargs.copy()
-        initkwargs['mapping'] = action.mapping
+        # initkwargs['action'] = action.__name__
 
-        url_path = _escape_curly_brackets(action.url_path or action.slug)
-
-        assert action.detail is not None, (
-            f"@action({action.__name__!r}) missing required argument: 'detail'"
-        )
-
+        url_path = _escape_curly_brackets(url_path or action.slug)
+        vardump(action, route.detail, action.mapping)
+        # assert action.detail is not None, (
+        #     f"@action({action.__name__!r}) missing required argument: 'detail'"
+        # )
         res = Route(
             url=route.url.replace('{url_path}', url_path),
-            mapping=action.mapping or MethodMapper(action, HttpMethod.GET),
-            name=route.name.replace('{url_name}', action.url_name or action.slug),
+            mapping=mapping,
+            name=route.name.replace('{url_name}', url_name or action.slug),
             detail=route.detail,
             initkwargs=initkwargs,
         )
@@ -228,7 +214,7 @@ class SimpleRouter(BaseRouter):
 
         )
     
-    def get_method_map(self, viewset: type[View], method_map):
+    def get_method_map(self, view: type[View], method_map):
         """
         Given a viewset, and a mapping of http methods to actions,
         return a new mapping which only includes any mappings that
@@ -236,13 +222,17 @@ class SimpleRouter(BaseRouter):
         """
         bound_methods = {}
 
+        view.__config__.get_method_map()
+
+        # vardump(view.__name__, method_map)
+
         for method, action in method_map.items():
-            if getattr(viewset, action, None) is not None:
+            if view.__config__.has_action(action):
                 bound_methods[method] = action
         
         return bound_methods
 
-    def get_lookup_regex(self, viewset, lookup_prefix=''):
+    def get_lookup_regex(self, view: type[GenericView], lookup_prefix=''):
         """
         Given a viewset, return the portion of URL regex that is used
         to match against a single instance.
@@ -256,9 +246,12 @@ class SimpleRouter(BaseRouter):
         base_regex = '(?P<{lookup_prefix}{lookup_url_kwarg}>{lookup_value})'
         # Use `pk` as default field, unset set.  Default regex should not
         # consume `.json` style suffixes and should break at '/' boundaries.
-        lookup_field = getattr(viewset, 'lookup_field', 'pk')
-        lookup_url_kwarg = getattr(viewset, 'lookup_url_kwarg', None) or lookup_field
-        lookup_value = getattr(viewset, 'lookup_value_regex', '[^/.]+')
+        config = view.__config__
+
+        lookup_field = config.get('lookup_field') or 'pk' 
+        lookup_url_kwarg = config.get('lookup_url_kwarg') or lookup_field
+        lookup_value = config.get('lookup_value_regex') or '[^/.]+'
+
         return base_regex.format(
             lookup_prefix=lookup_prefix,
             lookup_url_kwarg=lookup_url_kwarg,

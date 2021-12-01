@@ -51,7 +51,7 @@ def get_metadata_class(cls: t.Type[T], attr: str,
 
 def _iter_base_metadata_class(attr, mro, base=None):
     seen = set((None,))
-
+    
     for c in mro:
         oc = getattr(c, attr, None)
         if oc not in seen:

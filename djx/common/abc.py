@@ -136,3 +136,57 @@ class ImmutableMapping(Immutable, immutable=Mapping, mutable=MutableMapping):
 
     __slots__ = ()
 
+
+
+
+
+
+@export()
+class Representation:
+    """
+    Mixin to provide __str__, __repr__, and __pretty__ methods. See #884 for more details.
+
+    __pretty__ is used by [devtools](https://python-devtools.helpmanual.io/) to provide human readable representations
+    of objects.
+    """
+
+    __slots__: tuple[str, ...] = ()
+
+    def __repr_args__(self):
+        """
+        Returns the attributes to show in __str__, __repr__, and __pretty__ this is generally overridden.
+
+        Can either return:
+        * name - value pairs, e.g.: `[('foo_name', 'foo'), ('bar_name', ['b', 'a', 'r'])]`
+        * or, just values, e.g.: `[(None, 'foo'), (None, ['b', 'a', 'r'])]`
+        """
+        attrs = ((s, getattr(self, s)) for s in self.__slots__)
+        return [(a, v) for a, v in attrs if v is not None]
+
+    def __repr_name__(self) -> str:
+        """
+        Name of the instance's class, used in __repr__.
+        """
+        return self.__class__.__name__
+
+    def __repr_str__(self, join_str: str) -> str:
+        return join_str.join(repr(v) if a is None else f'{a}={v!r}' for a, v in self.__repr_args__())
+
+    def __pretty__(self, fmt, **kwargs) -> t.Generator[t.Any, None, None]:
+        yield self.__repr_name__() + '('
+        yield 1
+        for name, value in self.__repr_args__():
+            if name is not None:
+                yield name + '='
+            yield fmt(value)
+            yield ','
+            yield 0
+        yield -1
+        yield ')'
+
+    def __str__(self) -> str:
+        return self.__repr_str__(' ')
+
+    def __repr__(self) -> str:
+        return f'{self.__repr_name__()}({self.__repr_str__(", ")})'
+

@@ -31,8 +31,8 @@ from djx.schemas.tools import _get_parsing_type
 
 
 from ..  import exc, Request
-from .config import ViewConfig, OperationConfig
-from ..types import HttpMethod, MethodMapper, T_HttpMethods, ActionMethod, ViewMethod
+from .config import ViewConfig, ActionConfig
+from ..types import HttpMethod, ActionRouteDescriptor, T_HttpMethods, ViewActionFunction, ViewFunction, is_action_func
 
 
 logger = logging.getLogger(__name__)
@@ -55,8 +55,8 @@ _config_lookup = partial(lookup_property, source='config', read_only=True)
 
 
 
-_T_ActionResolveFunc = Callable[['View', Request], OperationConfig]
-_T_ActionResolver = Callable[[ViewConfig, Mapping[_T_Co, OperationConfig]], _T_ActionResolveFunc]
+_T_ActionResolveFunc = Callable[['View', Request], ActionConfig]
+_T_ActionResolver = Callable[[ViewConfig, Mapping[_T_Co, ActionConfig]], _T_ActionResolveFunc]
 
 
 
@@ -106,12 +106,9 @@ _T_ActionResolver = Callable[[ViewConfig, Mapping[_T_Co, OperationConfig]], _T_A
 
 
 
-def _is_routed_action(attr: ActionMethod):
-    return attr.mapping or not(None is attr.url_path is attr.url_name is attr.detail)
+def _is_routed_action(attr: ViewActionFunction):
+    return ViewActionFunction.get_exis
 
-
-def _is_action_func(attr: ActionMethod):
-    return isinstance(getattr(attr, 'mapping', None), MethodMapper)
 
 
 def _check_attr_name(func, name):
@@ -130,19 +127,27 @@ ROOT_ACTIONS = dict({
 }, list=HttpMethod.GET)
 
 
+@t.overload
+def action(methods: t.Union[T_HttpMethods, None]=None, 
+        url_path: t.Union[str, t.Pattern, None] = None, 
+        url_name: t.Union[str, None] = None,  
+        *,
+        detail:bool=...,
+        outline:bool=...,
+        **config) -> Callable[[ViewActionFunction[_T_View]], ViewActionFunction[_T_View]]:
+    ...
 
 @export()
 def action(methods: t.Union[T_HttpMethods, None]=None, 
         url_path: t.Union[str, t.Pattern, None]=None, 
-        url_name=None, *, 
-        detail: t.Union[bool, None]=None,
+        url_name=None, 
         **config):
 
     # name and suffix are mutually exclusive
     # if 'name' in config and 'suffix' in config:
     #     raise TypeError("`name` and `suffix` are mutually exclusive arguments.")
 
-    def decorator(func: ViewMethod[_T_View]):
+    def decorator(func: ViewActionFunction[_T_View]):
 
         # if func.__name__ in ROOT_ACTIONS:
         #     assert not (methods or url_path or url_name), (
@@ -151,21 +156,18 @@ def action(methods: t.Union[T_HttpMethods, None]=None,
         #             f"{', '.join(f'{a!r}' for a in ROOT_ACTIONS)}"
         #         ) 
         #     func.mapping = MethodMapper(func, ())
-            
-        func.mapping = MethodMapper(func, methods or ())
-        
-        func.slug = text.slug(text.snake(func.__name__, sep=' '))
-        func.url_path = url_path
-        func.url_name = url_name
 
-        func.detail = detail
-        func.config = config
+        ActionRouteDescriptor(func, methods, url_path=url_path, url_name=url_name, **config)
+
+        # func.url_path = url_path
+        # func.url_name = url_name
+
+        # func.config = config
 
         # Set descriptive arguments for viewsets
         # if 'name' not in config and 'suffix' not in config:
         #     func.config['name'] = text.humanize(func.__name__).capitalize()
         
-        func.config.setdefault('description', func.__doc__ or None)
         return func
     return decorator
 
@@ -199,26 +201,33 @@ class ViewType(type):
     def __config__(self) -> ViewConfig:
         res = self.__config_instance__
         if res is None:
-            res = self.__config_instance__ = self.config = self._create_config_instance_('config', '__config_class__')
+            res = self.__config_instance__ = self.config = self._create_config_instance_('__config__', '__config_class__')
         return res
 
     def _create_config_instance_(self, attr, cls_attr):
         cls = ViewConfig.get_class(self, cls_attr)
+        assert not issubclass(cls, ActionConfig), (
+            f"""View config should not be action config. {attr=}, {cls_attr=}
+            {cls.mro()}
+        """
+        )
         return cls(self, attr, self.Config)
 
-    def get_extra_actions(self: type[_T_View], *, known: Collection[str]=ROOT_ACTIONS) -> list[ActionMethod[_T_View]]:
+    def get_extra_actions(self: type[_T_View], *, known: Collection[str]=ROOT_ACTIONS) -> list[ViewActionFunction[_T_View]]:
         """
         Get the methods that are marked as an extra ViewSet `@action`.
         """
-        return [a for a in self.get_all_actions() if _is_routed_action(a) or a.__name__ not in known]
+        return [a for a in self.get_all_action_descriptors() if _is_routed_action(a) or a.__name__ not in known]
 
-    def get_all_actions(self: type[_T_View]) -> list[ActionMethod[_T_View]]:
+    def get_all_action_descriptors(self: type[_T_View]) -> dict[str, ActionRouteDescriptor[_T_View]]:
         """
         Get the methods that are marked as an extra ViewSet `@action`.
         """
-        return [_check_attr_name(method, name)
+        return { 
+            r.action: r
                 for name, method
-                in getmembers(self, _is_action_func)]
+                in getmembers(self, is_action_func) if (r := ActionRouteDescriptor.get_existing_descriptor(method))
+            }
 
 
 
@@ -239,7 +248,7 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
     # ioc: t.Final[IocContainer]
     request: t.Final[Request]
     if t.TYPE_CHECKING:
-        config: t.Final[t.Union[OperationConfig, ViewConfig]] = ...
+        config: t.Final[t.Union[ActionConfig, ViewConfig]] = ...
 
 
     class Config:
@@ -319,7 +328,7 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
 
         # ioc.type(token, use=cls, at=REQUEST_SCOPE, kwargs=config)
 
-        vardump(actions, config, mapping)
+        # vardump(actions, config, mapping)
 
         def view(req: Request, *args, **kwargs):
             nonlocal cls, ioc, mapping

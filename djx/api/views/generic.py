@@ -37,7 +37,9 @@ class GenericView(View[_T_Model]):
 
     __config_class__ = GenericViewConfig
     
-    config: GenericViewConfig
+    config: GenericViewConfig  # type: ignore
+
+    __config__: GenericViewConfig # type: ignore
 
     @property
     def objects(self) -> m.QuerySet[_T_Model]:
@@ -145,7 +147,7 @@ class GenericView(View[_T_Model]):
         keyword arguments in the url conf.
         """
         conf = self.config
-        return self.objects.get(**{ conf.lookup_field: self.kwargs[conf.lookup_param_name]})
+        return self.objects.get(**{ conf.lookup_field: self.kwargs[conf.lookup_url_kwarg or conf.lookup_field]})
 
 
 

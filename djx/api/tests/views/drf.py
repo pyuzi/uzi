@@ -45,18 +45,18 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         vardump(__user_role__=role)
         return self.retrieve(request, *args, **kwargs)
 
-    def list(self, request, *args, **kwargs):
-        # queryset = self.filter_queryset(self.get_queryset())
+    # def list(self, request, *args, **kwargs):
+    #     # queryset = self.filter_queryset(self.get_queryset())
 
-        # page = self.paginate_queryset(queryset)
-        # if page is not None:
-        #     serializer = self.get_serializer(data=page, many=True)
-        #     return self.get_paginated_response(serializer.data)
+    #     # page = self.paginate_queryset(queryset)
+    #     # if page is not None:
+    #     #     serializer = self.get_serializer(data=page, many=True)
+    #     #     return self.get_paginated_response(serializer.data)
 
-        # serializer = self.get_serializer(data=list(queryset.all()), many=True)
-        serializer = self.get_serializer(data=sample_data_list, many=True)
-        serializer.is_valid()
-        return HttpResponse(sample_data_list, content_type='application/json')
+    #     # serializer = self.get_serializer(data=list(queryset.all()), many=True)
+    #     serializer = self.get_serializer(data=sample_data_list, many=True)
+    #     serializer.is_valid()
+    #     return HttpResponse(sample_data_list, content_type='application/json')
 
 
     destroy = None

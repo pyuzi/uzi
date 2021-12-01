@@ -965,6 +965,21 @@ class MappingProxy(FallbackMappingMixin, t.Generic[_T_Key, _T_Val], metaclass=AB
 
     __data__: Mapping[_T_Key, _T_Val]
     _default_fb = key_error_fallback
+    @t.overload
+    def __new__(cls: type['MutableMapping[_T_Key, _T_Val]'], 
+                mapping: Mapping[_T_Key, _T_Val], *, 
+                fallback: _FallbackType[_T_Key, _T_Val]=key_error_fallback, 
+                mutable: t.Literal[True]
+            ) -> 'MutableMapping[_T_Key, _T_Val]':
+        ...
+
+    @t.overload
+    def __new__(cls: type['MappingProxy[_T_Key, _T_Val]'], 
+                mapping: Mapping[_T_Key, _T_Val], *, 
+                fallback: _FallbackType[_T_Key, _T_Val]=key_error_fallback, 
+                mutable: t.Optional[t.Literal[False]]
+            ) -> 'MappingProxy[_T_Key, _T_Val]':
+        ...
 
     def __new__(cls, mapping: Mapping[_T_Key, _T_Val], *, fallback: _FallbackType[_T_Key, _T_Val]=key_error_fallback, mutable: bool=False):
         if cls is MappingProxy:

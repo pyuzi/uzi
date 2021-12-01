@@ -34,6 +34,7 @@ def humanize(value):
 		return str(value)
 	text = re.sub('(.)([A-Z][a-z]+)', r'\1 \2', str(value))
 	text = re.sub('([a-z0-9.])([A-Z])', r'\1 \2', text)
+	text = re.sub('(\.)([^\s.])', r'\1 \2', text)
 	return re.sub(r'_+', ' ', text)
 
 

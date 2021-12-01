@@ -37,36 +37,6 @@ class UserOut(OrmSchema):
     username: str
     # created_at: moment.Moment
 
-
-class UsersViewMix(mixins.CrudModelMixin):
-
-    __slots__ = ('suffix', 'basename', 'detail')
-
-    class Config:
-        queryset = UserModel.objects.all().order_by('created_at')
-        request_schema = UserIn
-        response_schema = UserOut
-        filter_pipes = [DjangoFilterBackend]
-        filterset_fields = ['id', 'name', 'status', 'role', 'email']
-
-
-    # @action(http_methods=HttpMethod.GET, multi_response=True)
-    # def list(self):
-    #     return mixins.Response(sample_data_list, content_type = 'application/json')
-
-
-#     @property
-    # def objects(self):
-    #     """
-    #     The list of filtered items for this view.
-        
-    #     This must be an iterable, and may be a queryset.
-    #     Override `self._get_objects()`.
-
-    #     """
-    #     return sample_data_list
-
-
 class UsersView(generic.RestModelView):
 
     __slots__ = ('suffix', 'basename', 'detail')
@@ -78,14 +48,60 @@ class UsersView(generic.RestModelView):
         filter_pipes = [DjangoFilterBackend]
         filterset_fields = ['id', 'name', 'status', 'role', 'email']
 
-    @action(detail=False)
+    @action('GET', outline=True, detail=True, title='A group dem')
     def groups(self, *args, **kwds):
+        print(f'{self.config.name=!r}, {self.config.title=!r}, {self.config.detail=!r}')
+        if self.config.detail:
+            return self.get(*args, **kwds)
+        else:
+            return self.list(*args, **kwds)
+
+    @groups.route.post(outline=True, title='Post to group de')
+    def create_group(self, *args, **kwds):
+        print(f'{self.config.name=!r}, {self.config.title=!r}, {self.config.detail=!r}')
+        if self.config.detail:
+            return self.get(*args, **kwds)
+        else:
+            return self.list(*args, **kwds)
+
+    @action('PUT', detail=True)
+    def contacts(self, *args, **kwds):
         self.object
 
     # put = delete = None
 
-    
 
-router.register('users', UsersView, 'user')
+
+# class UsersViewMix(mixins.CrudModelMixin):
+
+    # __slots__ = ('suffix', 'basename', 'detail')
+
+    # class Config:
+    #     queryset = UserModel.objects.all().order_by('created_at')
+    #     request_schema = UserIn
+    #     response_schema = UserOut
+    #     filter_pipes = [DjangoFilterBackend]
+    #     filterset_fields = ['id', 'name', 'status', 'role', 'email']
+
+
+    # @action(http_methods=HttpMethod.GET, multi_response=True)
+    # def list(self):
+    #     return mixins.Response(sample_data_list, content_type = 'application/json')
+
+
+    # @property
+    # def objects(self):
+    #     """
+    #     The list of filtered items for this view.
+        
+    #     This must be an iterable, and may be a queryset.
+    #     Override `self._get_objects()`.
+
+    #     """
+    #     return sample_data_list
+
+
+
+router.register('users', UsersView)
 # router.register('users', UsersViewMix, 'user')
 # router.register('users-rest', UsersView, 'user')

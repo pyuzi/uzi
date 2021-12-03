@@ -12,9 +12,9 @@ from django.http import HttpRequest as Request, HttpResponse as Response
 from djx.schemas import Schema
 from djx.common.utils import export, assign
 
-from .core import action
 from .generic import GenericView, _T_Model
 from ..types import HttpMethod 
+from .actions import action
 
 
 

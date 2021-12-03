@@ -15,8 +15,9 @@ from djx.core.models import base as m
 
 from .core import View, action
 from .config import GenericViewConfig
-from ..types import HttpMethod 
+from ..types import ContentShape, HttpStatus 
 
+from .actions import action
 
 _T_Model = t.TypeVar('_T_Model', m.Model, t.Any, covariant=True)
 
@@ -162,12 +163,10 @@ class CreateModelView(GenericView[_T_Model]):
     class Config:
         abstract = True
 
-    @action()
+    @action(outline=True, status=HttpStatus.CREATED_201, shape=ContentShape.blank)
     def post(self, *args, **kwds):
-        self.object = obj = self.perform_create(self.parse_body())
-        payload = self.get_payload(obj)
-        return Response(payload.json(), content_type='application/json')
-
+        self.object = self.perform_create(self.parse_body())
+    
     def perform_create(self, data: Schema):
         return self.get_queryset().create(**data.dict())
 
@@ -183,11 +182,9 @@ class ListModelView(GenericView[_T_Model]):
     class Config:
         abstract = True
 
-    @action()
-    def list(self, *args, **kwds):
-        vardump('IT`s the REST view here.')
-        payload = self.get_payload(list(self.objects), many=True)
-        return Response(payload.json(), content_type = 'application/json')
+    @action(outline=True)
+    def get(self, *args, **kwds):
+        return list(self.objects)
 
 
 
@@ -201,12 +198,28 @@ class RetrieveModelView(GenericView[_T_Model]):
     class Config:
         abstract = True
 
-
-    @action()
+    @action(detail=True)
     def get(self, *args, **kwds):
-        obj = self.object
-        payload = self.get_payload(obj)
-        return Response(payload.json(), content_type='application/json')
+        return self.object
+
+
+
+@export()
+class ReadModelView(GenericView[_T_Model]):
+    """
+    Retrieve a model instance.
+    """
+    
+    __slots__ = ()
+    class Config:
+        abstract = True
+
+    @action(detail=True, outline=True)
+    def get(self, *args, **kwds):
+        if self.config.detail:
+            return self.object
+        else:
+            return list(self.objects)
 
 
 
@@ -220,21 +233,16 @@ class UpdateModelView(GenericView[_T_Model]):
     class Config:
         abstract = True
 
-    @action()
+    @action(detail=True)
     def put(self,  *args, **kwds):
         self.perform_update(self.object, self.parse_body())
-        payload = self.get_payload(self.object)
-        return Response(payload.json(), content_type='application/json')
-    
-    @action()
+        
+    @action(detail=True)
     def patch(self, *args, **kwds):
         self.perform_update(self.object, self.parse_body(partial=True))
-        payload = self.get_payload(self.object)
-        return Response(payload.json(), content_type='application/json')
-
+    
     def perform_update(self, obj: _T_Model, data: Schema):
         obj = assign(obj, data.dict(exclude_unset=True))
-        obj.save()
         return obj
 
 
@@ -248,7 +256,7 @@ class DestroyModelView(GenericView[_T_Model]):
     class Config:
         abstract = True
     
-    @action(http_methods=HttpMethod.DELETE)
+    @action(status=HttpStatus.NO_CONTENT_204, detail=True)
     def delete(self, *args, **kwds):
         self.perform_destroy(self.object)
         return Response(status=204)
@@ -259,13 +267,20 @@ class DestroyModelView(GenericView[_T_Model]):
 
 
 @export()
-class RestModelView(CreateModelView[_T_Model], 
-                    ListModelView[_T_Model],
-                    RetrieveModelView[_T_Model], 
+class WriteModelView(CreateModelView[_T_Model], 
                     UpdateModelView[_T_Model],
                     DestroyModelView[_T_Model]):
+    
     __slots__ = ()
 
+    class Config:
+        abstract = True
+    
+
+
+@export()
+class ReadWriteModelView(ReadModelView[_T_Model], WriteModelView[_T_Model]):
+    __slots__ = ()
     class Config:
         abstract = True
     

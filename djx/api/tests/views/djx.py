@@ -37,7 +37,7 @@ class UserOut(OrmSchema):
     username: str
     # created_at: moment.Moment
 
-class UsersView(generic.RestModelView):
+class UsersView(generic.ReadWriteModelView):
 
     __slots__ = ('suffix', 'basename', 'detail')
 

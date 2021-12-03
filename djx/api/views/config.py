@@ -9,15 +9,17 @@ from collections import ChainMap, defaultdict
 from collections.abc import Callable, Mapping, Set, Sequence, Iterable
 
 from djx.api.abc import Headers
-from djx.common.collections import fallback_default_dict, fallbackdict, frozendict, orderedset
+from djx.api.negotiation import ContentNegotiator
+from djx.api.renderers import Renderer
+from djx.common.collections import fallback_chain_dict, frozendict, orderedset
 from djx.common.typing import get_type_parameters
 
 from djx.di import ioc, get_ioc_container
 from djx.common.utils import export, cached_property, text
 from djx.common.metadata import metafield, BaseMetadata, get_metadata_class
+from djx.di.common import Injectable
 from djx.di.container import IocContainer
 from djx.schemas import QueryLookupSchema, OrmSchema, Schema, create_schema
-# from djx.schemas import QueryLookupSchema, OrmSchema, Schema, create_schema
 
 
 if t.TYPE_CHECKING:
@@ -26,10 +28,11 @@ if t.TYPE_CHECKING:
 
 
 
-from ..types import ViewActionFunction, HttpMethod, ActionRouteDescriptor, T_HttpMethodName, T_HttpMethodStr, ViewFunction
+from ..types import ContentShape, HttpMethod, T_HttpMethodName, T_HttpMethodStr, HttpStatus
 from .. import Request
 from ..common import http_method_action_resolver
-
+from ..response import Response
+from .actions import ViewActionFunction, ActionRouteDescriptor
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +48,20 @@ _T_ActionResolveFunc = Callable[['View', Request], 'ActionConfig']
 _T_ActionResolver = Callable[['ViewConfig', Mapping[t.Any, str]], _T_ActionResolveFunc]
 
 _T_ActionMap = Mapping[t.Any, 'ActionConfig']
+T_RespSchemaDict = dict[t.Literal['detail', 'outline', 'many'], type[Schema]]
 
 
 def _is_db_model(cls: type[_T_Model]):
     from django.db.models.base import ModelBase
     return isinstance(cls, ModelBase)
+
+
+# class ResponseSchemaDict(t.TypedDict, total=False):
+#     detail: type[Schema]
+#     outline: type[Schema]
+#     many: type[Schema]
+
+
 
 
 @export()
@@ -60,6 +72,8 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
     
     # name = None
     target: type['View[_T_Model]']
+
+    allowed_methods: HttpMethod = HttpMethod.NONE 
 
     
     @metafield[bool](default=...)
@@ -99,55 +113,61 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
     def description(self, value, base=None):
         return value or base
 
-    @metafield[Headers]()
-    def headers(self, value, base=None):
+    @metafield[HttpStatus]()
+    def status(self, value, base=None):
+        if value or base:
+            return HttpStatus(value or base)
+        return None
 
-        # val = dict({
-        #     'Allow': ', '.join(self.allowed_methods),
-        # }
-        
-        # )
-        # # if len(self.renderer_classes) > 1:
-        # #     headers['Vary'] = 'Accept'
-        # # return headers
-        # if value is None:
-        #     val.update()
-        return frozendict((base or ()) if value is None else value or ())
+    @metafield[Headers]('headers')
+    def assinged_headers(self, value, base=None):
+        return fallback_chain_dict(base, value or ())
+
+    @metafield[type[Response]]()
+    def response_class(self, value, base=None):
+        return value or base or Response
 
     @metafield[HttpMethod]()
-    def http_methods(self, value, base=None):
+    def allowed_methods(self, value, base=None):
         if value is None:
             if base is None:
                 return HttpMethod.ALL
             return HttpMethod(base)
         return HttpMethod(value)
 
-    # @metafield[dict[T_HttpMethodStr,str]]()
-    # def mapping(self, value, base=None):
-    #     if value is None:
-    #         if base is None:
-    #             return HttpMethod.ALL
-    #         return HttpMethod(base)
-    #     return HttpMethod(value)
-
-    @cached_property
-    def http_method_names(self):
-        return frozenset(m for m in HttpMethod if m in self.http_methods)
+    # @cached_property
+    # def http_method_names(self):
+    #     return frozenset(m for m in HttpMethod if m in self.methods)
 
     @metafield[type[Schema]]()
     def request_schema(self, value, base=None):
         return value or base
         
     @metafield[type[Schema]]()
-    def response_schema(self, value, base=None):
+    def _x_response_schema(self, value, base=None):
         return value or base
         
-    @metafield[bool]()
-    def multi_response(self, value, base=None):
-        return base if value is None else value
+    @metafield[T_RespSchemaDict]()
+    def response_schema(self, value, base=None) -> T_RespSchemaDict:
+        if value is None:
+            return fallback_chain_dict(base)
+        elif isinstance(value, Mapping):
+            return fallback_chain_dict(base, value)
+        elif self._shape is ContentShape.multi:
+            return fallback_chain_dict(base, many=value)
+        else:
+            return fallback_chain_dict(base, detail=value, outline=value, many=None)
+        
+    @metafield[ContentShape]('shape')
+    def _shape(self, value, base=None):
+        return ContentShape(value or base or 'auto')
+            
+    @cached_property
+    def shape(self):
+        return self.resolve_shape()
         
     @metafield[type[Schema]](default=...)
-    def multi_response_schema(self, value, base=...):
+    def _x_list_response_schema(self, value, base=...):
         if value is ...:
             if base is ...:
                 return None
@@ -158,32 +178,78 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
     def param_schema(self, value, base=None):
         return value or base
     
+    @metafield[orderedset[t.Any]]()
+    def renderers(self, value, base=None):
+        return orderedset(value if value is not None else base if base is not None else ())
+    
+    @metafield[Injectable[ContentNegotiator]]
+    def content_negotiator(self, value, base=None):
+        return value or base or ContentNegotiator
+
+    @cached_property
+    def the_content_negotiator(self):
+        return self.resolve_content_negotiator()
+
+    @cached_property
+    def headers(self):
+        return self.resolve_headers()
+
+    @cached_property
+    def the_renderers(self):
+        return self.resolve_renderers()
+
     @cached_property
     def the_response_schema(self):
-        if self.multi_response:
-            if sch := self.multi_response_schema:
+        dct = self.response_schema
+        if self.shape is ContentShape.multi:
+            if sch := dct['many']:
                 return sch
-            else:
-                typ = list[self.response_schema]
+            elif sch := dct['detail'] if self.detail else dct['outline'] or dct['detail']:
                 return create_schema(
-                    f'{self.target.__name__}MultiResponseSchema',
+                    f'{sch.__name__}Collection',
                     __module__=self.target.__module__,
-                    __root__=(typ, ...)
+                    __root__=(list[sch], ...)
                 )
-        return self.response_schema
+        elif self.detail:
+            return dct['detail']
+        else:
+            return dct['outline'] or dct['detail']
 
     @cached_property
     def ioc(self):
         return get_ioc_container()
 
     def get_response_schema(self):
-        return self.response_schema
+        return self._x_response_schema
 
     def get_default_basename(self):
         return 
 
     def get_default_title(self):
         return text.humanize(self.target.__name__).capitalize() 
+
+    def resolve_renderers(self):
+        return [h for b in self.renderers if (h := self.ioc[b])] \
+            or [r for r in (self.ioc[Renderer],) if r]
+
+    def resolve_headers(self):
+        return {
+            'Allow': ', '.join(m.name for m in self.allowed_methods), 
+            **self.assinged_headers
+        }
+
+    def resolve_content_negotiator(self):
+        if neg := self.content_negotiator:
+            return self.ioc[neg]
+
+    def resolve_shape(self):
+        shp = self._shape
+        if shp is ContentShape.auto:
+            if self.detail:
+                return ContentShape.mono 
+            else:
+                return ContentShape.multi
+        return shp 
 
     def __repr__(self):
         nl = "\n  "
@@ -223,14 +289,6 @@ class ViewConfig(BaseConfig[_T_Model]):
     @cached_property
     def action_config_class(self) -> type['ActionConfig']:
         return self._get_action_config_class()
-
-    @metafield[orderedset[t.Any]]()
-    def renderers(self, value, base=None):
-        return orderedset(value if value is not None else base if base is not None else ())
-    
-    @cached_property
-    def renderer_instances(self):
-        return self._make_renderer_instances()
 
     def create_action(self, name: str, conf: dict=frozendict()):
         return self.action_config_class(self.target, name, conf, self)
@@ -275,15 +333,38 @@ class ViewConfig(BaseConfig[_T_Model]):
                         actions: Mapping[T_HttpMethodName, str], 
                         config: Mapping=frozendict()) -> Mapping[T_HttpMethodStr, tuple[str, 'ActionConfig']]:
 
-        vardump(config=config, actions=actions)
+
+        actions = { HttpMethod(m): n for m, n in actions.items() }
+
+        if not HttpMethod.OPTIONS in actions and self.has_action('options'):
+            actions[HttpMethod.OPTIONS] = 'options'
         
-        return {
-            HttpMethod(m).name: (a, self.create_action(a, self.get_action_config(self.get_action_func(a), m, config))) 
+        # if HttpMethod.GET in actions and HttpMethod.HEAD not in actions:
+        #     actions[HttpMethod.HEAD] = actions[HttpMethod.GET]
+
+        config['allowed_methods'] = HttpMethod([*actions.keys(), *(HttpMethod.HEAD if HttpMethod.GET in actions else ())]) 
+
+        vardump(config=config, actions=actions)
+
+
+        # if HttpMethod.GET in actions:
+        #     config['methods'] |= 
+
+        # if HttpMethod.GET in actions and HttpMethod.HEAD not in actions:
+        #     config['methods'] |= 
+        #     actions[HttpMethod.HEAD] = actions[HttpMethod.GET]
+        #     res[HttpMethod.HEAD.name] = res[HttpMethod.GET.name]
+        
+
+        res = {
+            m.name: (a, self.create_action(a, self.get_action_config(self.get_action_func(a), m.name, config))) 
             for m, a in actions.items()
         }
 
-    def _make_renderer_instances(self):
-        return [h for b in self.renderers if (h := ioc.make(b))]
+        if HttpMethod.GET in actions and HttpMethod.HEAD not in actions:
+            res[HttpMethod.HEAD.name] = res[HttpMethod.GET.name]
+        return res
+
 
 
 

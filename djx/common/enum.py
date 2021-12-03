@@ -155,7 +155,7 @@ class EnumMeta(BaseEnumMeta):
         for i in range(len(mnames)):
             mname = mnames[i]	
             value = attrs.get(mname)
-            if isinstance(value, tuple):
+            if fields and isinstance(value, tuple):
                 value, *fargs = value
                 attrs.update({mname:value})
             else:

@@ -1,16 +1,16 @@
 import typing as t 
-import itertools
+from itertools import chain, groupby
 from collections import ChainMap, OrderedDict, namedtuple
 
 from django.urls import NoReverseMatch, re_path
 
-from djx.common.collections import frozendict
+from djx.common.collections import fallbackdict, frozendict, nonedict, orderedset
 from djx.common.exc import ImproperlyConfigured
 
 from .urlpatterns import format_suffix_patterns
 from .abc import Response
-from .views import View, GenericView
-from .types import ActionRouteDescriptor, T_HttpMethodStr, Route, DynamicRoute
+from .views import View, GenericView, ActionRouteDescriptor
+from .types import T_HttpMethodStr, Route, DynamicRoute, HttpMethod
 
 api_settings = None
 
@@ -23,12 +23,6 @@ def _escape_curly_brackets(url_path):
     """
     return url_path.replace('{', '{{').replace('}', '}}')
 
-
-def _flatten(list_of_lists):
-    """
-    Takes an iterable of iterables, returns a single iterable containing all items
-    """
-    return itertools.chain(*list_of_lists)
 
 
 class BaseRouter:
@@ -70,11 +64,12 @@ class SimpleRouter(BaseRouter):
         # List route.
         Route(
             url=r'^{prefix}{trailing_slash}$',
-            mapping={
-                'GET': 'list',
-                'POST': 'post'
-            },
             name='{basename}-list',
+            # mapping={ m.name: m.name.lower() for m in HttpMethod },
+            mapping={
+                'GET': 'get',
+                'POST': 'post',
+            },
             detail=False,
             initkwargs={'suffix': 'List'}
         ),
@@ -86,15 +81,17 @@ class SimpleRouter(BaseRouter):
         ),
         Route(
             url=r'^{prefix}/{lookup}{trailing_slash}$',
+            name='{basename}-detail',
             mapping={
                 'GET': 'get',
                 'PUT': 'put',
                 'PATCH': 'patch',
                 'DELETE': 'delete'
             },
-            name='{basename}-detail',
+            # name='{basename}-detail',
+            # mapping = { m.name: m.name.lower() for m in ~HttpMethod.POST },
             detail=True,
-            initkwargs={'suffix': 'Instance'}
+            initkwargs={'suffix': 'Instance'},
         ),
         DynamicRoute(
             url=r'^{prefix}/{lookup}/{url_path}{trailing_slash}$',
@@ -104,7 +101,7 @@ class SimpleRouter(BaseRouter):
         ),
     ]
 
-    def __init__(self, *, trailing_slash=True):
+    def __init__(self,  *, trailing_slash=True):
         self.trailing_slash = '/' if trailing_slash else ''
         super().__init__()
 
@@ -126,90 +123,132 @@ class SimpleRouter(BaseRouter):
 
         actions = view.get_all_action_descriptors()
 
-        known_actions = set(_flatten([route.mapping.values() for route in self.routes if isinstance(route, Route)]))
+        items = sorted(((n, m) for route in self.routes if isinstance(route, Route) for m, n in route.mapping.items()))
+
+        known_actions = {
+            n: {x[1] for x in g}
+            for n, g in groupby(items, lambda i: i[0])
+        }
+
+        implied = { m.name.lower(): {m.name} for m in HttpMethod }
         
-        detail_actions = { n: r for n, a in actions.items() if (r := a.detail_route())}
-        outline_actions = { n: r for n, a in actions.items() if (r := a.outline_route())}
-        implicit_actions = { n: r for n, a in actions.items() if (r := a.implicit_route())}
+        details = { n: r for n, a in actions.items() if (r := a.detail_route())}
+        outlines = { n: r for n, a in actions.items() if (r := a.outline_route())}
+        ambiguous = { n: r for n, a in actions.items() if (r := a.implicit_route())}
 
-        all_actions = ChainMap(outline_actions, detail_actions, implicit_actions)
+        all_actions = ChainMap(ambiguous, details, outlines)
 
-        root_actions = { n for n, r in all_actions.items() if n in known_actions and not r.url or r.name }
+        root_outline_actions = { 
+            k : r 
+            for k, a in actions.items()
+                if k in known_actions and not (a.url_path or a.url_name) 
+                    and not a.mapping.keys() - known_actions[k]
+                    and (r := outlines.pop(k, None) or ambiguous.get(k, None))
+        }
 
-        not_allowed = (actions.keys() & known_actions) - root_actions
+        root_detail_actions = { 
+            k : r 
+            for k, a in actions.items()
+                if k in known_actions and not (a.url_path or a.url_name) 
+                    and not a.mapping.keys() - known_actions[k]
+                    and (r := details.pop(k, None) or ambiguous.get(k, None))
+        }
 
-        # extra_actions = view.get_extra_actions(known=known_actions)
+    
+        for k, ms in implied.items():
+            a = actions.get(k)
+            if a and not (a.url_path or a.url_name or a.mapping.keys() - ms):
+                for d in all_actions.maps:
+                    d.pop(k, None)
 
-        # checking action names against the known actions list
-        # not_allowed = [
-        #     action for action in all_actions
-        #     if action in known_actions
-        # ]
 
-        if not_allowed:
-            msg = ('Cannot set `url_path` and `` on the following @actions'
-                   ' as they are existing routes: %s')
-            raise ImproperlyConfigured(msg % ', '.join(not_allowed))
-
+        if not_allowed := orderedset(ambiguous) - known_actions:
+            not_allowed = list(not_allowed)
+            if len(not_allowed) > 1:
+                actstr = f'actions `{"`, `".join(not_allowed[:-1])}` and `{not_allowed[-1]}`'
+            else:
+                actstr = f'action `{not_allowed[0]}`'
+            raise ImproperlyConfigured(
+                    f'Provide argument(s) `detail` or/and `outline` to aviod '
+                    f'ambiguity on {actstr} in {view.__name__!r}.'
+                )
+        elif not_allowed := orderedset(all_actions) & (known_actions | implied):
+            not_allowed = list(not_allowed)
+            if len(not_allowed) > 1:
+                actstr = f'actions `{"`, `".join(not_allowed[:-1])}` and `{not_allowed[-1]}`'
+            else:
+                actstr = f'action `{not_allowed[0]}`'
+            raise ImproperlyConfigured(
+                    f'Reserved {actstr.title()} in {view.__name__!r} '
+                    f'cannot contain custom `url_path`, `url_name` or `mapping`.'
+                )
+    
         # # partition detail and list actions
         # detail_actions = [action for action in extra_actions if action.detail]
         # list_actions = [action for action in extra_actions if not action.detail]
 
-        routes = []
-        for route in self.routes:
-            if isinstance(route, DynamicRoute) and route.detail:
-                routes += [
-                    self._get_dynamic_route(route, actions[n], *r[:-2])
-                    for n, r in detail_actions.items() if n not in root_actions
-                ]
-                # routes += [self._get_dynamic_route(route, action) for action in detail_actions]
-            elif isinstance(route, DynamicRoute) and not route.detail:
-                # routes += [self._get_dynamic_route(route, action) for action in list_actions]
-                routes += [
-                    self._get_dynamic_route(route, actions[n], *r[:-2])
-                    for n, r in outline_actions.items() if n not in root_actions
-                ]
-            # elif route.detail:
-            #     routes += [
-            #         self._get_root_route(route, actions[n])
-            #         for n in detail_actions if n in root_actions
-            #     ]
-            else:
-                # routes += [
-                #     self._get_root_route(route, actions[n])
-                #     for n in detail_actions if n in root_actions
-                # ]
-                routes.append(self._get_root_route(route))
+
+        rmap = {
+            (Route, False): root_outline_actions,
+            (Route, True): root_detail_actions,
+            (DynamicRoute, False): outlines,
+            (DynamicRoute, True): details,
+        }
+
+        routes = [
+            r for c in self.routes 
+                for r in self._iter_make_routes(c, rmap[c.key], actions)
+        ]
 
         return routes
 
-    def _get_dynamic_route(self, 
-                        route: DynamicRoute, 
+    def _iter_make_routes(self, 
+                        conf: t.Union[Route, DynamicRoute], 
+                        routes: dict[str, Route],
+                        actions: dict[str, ActionRouteDescriptor], ):
+
+        if isinstance(conf, DynamicRoute):
+            for k, r in routes.items():
+                yield self._make_dynamic_route(conf, actions[k], r.url, r.name, r.mapping)
+        elif conf.mapping:
+            yield conf._replace(
+                mapping = {
+                    m: k for m, k in conf.mapping.items()
+                    if k in routes and routes[k].mapping.get(m)
+                }
+            )
+            
+
+    def _make_dynamic_route(self, 
+                        conf: t.Union[Route, DynamicRoute], 
                         action: ActionRouteDescriptor, 
                         url_path: t.Optional[str], 
-                        mapping: dict[T_HttpMethodStr, str],
-                        url_name: t.Optional[str]
-                        ):
+                        url_name: t.Optional[str],
+                        mapping: dict[T_HttpMethodStr, str], *, is_root=False):
 
-        initkwargs = route.initkwargs.copy()
-        # initkwargs['action'] = action.__name__
+        
+        url_path = _escape_curly_brackets(url_path or action.slug).strip()
+        url_name = f'{url_name or action.slug}'.strip()
 
-        url_path = _escape_curly_brackets(url_path or action.slug)
-        vardump(action, route.detail, action.mapping)
-        # assert action.detail is not None, (
-        #     f"@action({action.__name__!r}) missing required argument: 'detail'"
-        # )
+        # vardump(action, conf.detail, action.mapping)
+
+        if action.is_outline() and action.is_detail():
+            if conf.detail:
+                url_name = f'detail-{url_name}'.strip('-')
+            # else:
+            #     url_name = f'list-{url_name}'.strip('-')
+
         res = Route(
-            url=route.url.replace('{url_path}', url_path),
+            url=conf.url.replace('{url_path}', url_path),
+            name=conf.name.replace('{url_name}', url_name),
             mapping=mapping,
-            name=route.name.replace('{url_name}', url_name or action.slug),
-            detail=route.detail,
-            initkwargs=initkwargs,
+            detail=conf.detail,
+            initkwargs=conf.initkwargs,
         )
 
         return res
 
-    def _get_root_route(self, route: Route):
+    def _get_root_route(self, route: Route, present: dict[str, Route]):
         return route._replace(
 
         )

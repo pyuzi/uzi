@@ -1,15 +1,12 @@
-from abc import abstractmethod
-from collections import ChainMap
-from functools import cache, reduce
-from types import FunctionType
+from functools import cache, reduce, wraps
 import typing as t 
+import http
 
-from collections.abc import Mapping, Iterable, Callable
-from djx.common.abc import Representation
-from djx.common.collections import MappingProxy, fallback_chain_dict, fallbackdict, frozendict
-from djx.common.enum import Enum, StrEnum, auto, IntFlag, Flag
+from collections.abc import Iterable
+from djx.common.collections import frozendict
+from djx.common.enum import IntEnum, StrEnum, auto, Flag
 
-from djx.common.utils import export, cached_class_property, text
+from djx.common.utils import export, cached_class_property
 
 
 if t.TYPE_CHECKING:
@@ -27,22 +24,57 @@ T_HttpMethods = t.Union[T_HttpMethodName, 'HttpMethod', Iterable[t.Union[T_HttpM
 _T_View = t.TypeVar('_T_View', bound='View', covariant=True)
 
 
-
 class Route(t.NamedTuple):
     url: str
-    mapping: dict[T_HttpMethodStr, str]
     name: str
+    mapping: dict[T_HttpMethodStr, str]
     detail: bool
     initkwargs: dict[str, t.Any] = frozendict()
 
-    
+    @property
+    def key(self):
+        return Route, not not self.detail 
 
-class DynamicRoute(t.NamedTuple):
+class __DynamicRoute(t.NamedTuple):
     url: str
     name: str
     detail: bool
     initkwargs: dict[str, t.Any] = frozendict()
 
+
+class DynamicRoute(__DynamicRoute):
+    __slots__ = ()
+
+    mapping: t.Final = None 
+
+    @property
+    def key(self):
+        return DynamicRoute, not not self.detail 
+
+
+
+
+
+
+
+def _autostatus(vars: dict):
+    for st in http.HTTPStatus:
+        val = st._value_, st.phrase, st.description
+        vars[f'{st.name}'] = val
+        vars[f'{st.name}_{st._value_}'] = val
+
+
+
+ 
+
+@export()
+class ContentShape(StrEnum, fields='is_many'):
+    auto: 'ContentShape'    = 'auto', None
+    blank: 'ContentShape'   = 'blank', None
+    mono: 'ContentShape'    = 'mono', False
+    multi: 'ContentShape'   = 'multi', True
+
+    is_many: bool
 
 @export()
 class HttpMethod(Flag):
@@ -74,6 +106,14 @@ class HttpMethod(Flag):
         return ~cls.TRACE | cls.TRACE
     
     @cached_class_property
+    def EXTRA(cls):
+        return cls.OPTIONS | cls.TRACE
+    
+    @cached_class_property
+    def STANDALONE(cls):
+        return ~cls.EXTRA
+    
+    @cached_class_property
     def NONE(cls) -> 'HttpMethod':
         return cls(0)
     
@@ -99,9 +139,12 @@ class HttpMethod(Flag):
     def methods(self) -> tuple['HttpMethod', ...]:
         return *(m for m in self.__class__ if m in self),
 
-    def __contains__(self, x) -> bool:
+    def __contains__(self, x: t.Union['HttpMethod', str]) -> bool:
         if x.__class__ is str:
-            return x in self.__class__._member_map_
+            if x in self.__class__._member_map_:
+                x = self.__class__._member_map_[x]
+            elif x.isidentifier():
+                return False
         return super().__contains__(x)
     
     def __iter__(self):
@@ -110,349 +153,232 @@ class HttpMethod(Flag):
 
 
 
-# vardump([*HttpMethod], HttpMethod['get'] == 'GET', ~HttpMethod('GET'), ~HttpMethod.GET & HttpMethod.POST)
+@export()
+@wraps(http.HTTPStatus, ('__doc__',), ('__annotations__',))
+class HttpStatus(IntEnum):
 
-# vardump(GET=HttpMethod.GET, GET_INV=~HttpMethod.GET, ANY=~HttpMethod.GET & HttpMethod.DELETE, GET_EQ=HttpMethod['get'] == 'GET')
+    def __new__(cls, value, phrase, description=''):
+        obj = int.__new__(cls, value)
+        obj._value_ = value
 
-# print('-'*80)
-# print('',
-#     f'{HttpMethod({"get", "POST", "PUT"})=!r}', 
-#     f'{HttpMethod.GET in HttpMethod.HEAD=!r}', 
-#     f'{HttpMethod.HEAD in HttpMethod.GET=!r}', 
-#     sep='\n  ', end='\n\n'
-# )
+        obj.phrase = phrase
+        obj.description = description
+        return obj        
+    # __annotations__ = dict(http.HTTPStatus.__annotations__, )
 
-# print('-'*80)
-
-
-class ViewFlag(Flag):
-    detail: 'ViewFlag'      = auto()
-    outline: 'ViewFlag'     = auto()
-    multi: 'ViewFlag'       = auto()
-
-
-
-def is_action_func(attr: 'ViewActionFunction'):
-    # if isinstance(attr, ViewFunction):
-    return not not ActionRouteDescriptor.get_existing_descriptor(attr)
-
-
-
-class ViewFunction(Callable, t.Generic[_T_View]):
-
-    __slots__ = ()
-
-    __name__: str
-
-    @abstractmethod
-    def __call__(self: _T_View, *args, **kwds):
-        ...
-
-    @classmethod
-    def __subclasshook__(cls, sub) -> None:
-        if cls is ViewFunction:
-            return issubclass(cls, FunctionType)
-        return NotImplemented
+    phrase: str
+    description: str
     
+    _autostatus(vars())
 
+    if t.TYPE_CHECKING:
 
+    # informational code
+        CONTINUE:  'HttpStatus'  = 100 #
+        CONTINUE_100:  'HttpStatus'  = CONTINUE #
 
-class ViewActionFunction(ViewFunction[_T_View]):
+        SWITCHING_PROTOCOLS:  'HttpStatus'  = 101 #
+        SWITCHING_PROTOCOLS_101:  'HttpStatus'  = SWITCHING_PROTOCOLS #
 
-    __slots__ = ()
+        PROCESSING:  'HttpStatus'  = 102 #
+        PROCESSING_102:  'HttpStatus'  = PROCESSING #
 
-    route: 'ActionRouteDescriptor'
+        EARLY_HINTS:  'HttpStatus'  = 103 #
+        EARLY_HINTS_103:  'HttpStatus'  = EARLY_HINTS #
 
-    # slug: str
-    
-    # config: dict[str, t.Any]
-    # mapping: 'ActionRouteDescriptor'
-    
-    # url_path: t.Optional[str]
-    # url_name: t.Optional[str]
-    # detail: t.Optional[bool]
+    # success codes
+        OK:  'HttpStatus'  = 200 #
+        OK_200:  'HttpStatus'  = OK #
 
+        CREATED:  'HttpStatus'  = 201 #
+        CREATED_201:  'HttpStatus'  = CREATED #
 
+        ACCEPTED:  'HttpStatus'  = 202 #
+        ACCEPTED_202:  'HttpStatus'  = ACCEPTED #
 
+        NON_AUTHORITATIVE_INFORMATION:  'HttpStatus'  = 203 #
+        NON_AUTHORITATIVE_INFORMATION_203:  'HttpStatus'  = NON_AUTHORITATIVE_INFORMATION #
 
-class MappedMethodTuple(t.NamedTuple):
-    name: str
-    config: dict[str, t.Any] = frozendict()
+        NO_CONTENT:  'HttpStatus'  = 204 #
+        NO_CONTENT_204:  'HttpStatus'  = NO_CONTENT #
 
+        RESET_CONTENT:  'HttpStatus'  = 205 #
+        RESET_CONTENT_205:  'HttpStatus'  = RESET_CONTENT #
 
+        PARTIAL_CONTENT:  'HttpStatus'  = 206 #
+        PARTIAL_CONTENT_206:  'HttpStatus'  = PARTIAL_CONTENT #
 
-class RouteDescriptor(Representation):
+        MULTI_STATUS:  'HttpStatus'  = 207 #
+        MULTI_STATUS_207:  'HttpStatus'  = MULTI_STATUS #
 
-    __slots__ = 'detail', 'outline', '_frozen', '__dict__',
+        ALREADY_REPORTED:  'HttpStatus'  = 208 #
+        ALREADY_REPORTED_208:  'HttpStatus'  = ALREADY_REPORTED #
 
-    name: str
-    action: str
-    detail: t.Optional[bool]
-    outline: t.Optional[bool]
+        IM_USED:  'HttpStatus'  = 226 #
+        IM_USED_226:  'HttpStatus'  = IM_USED #
 
-    __dict__: t.Final[frozendict[str, t.Any]]
+    # redirection codes
+        MULTIPLE_CHOICES:  'HttpStatus'  = 300 #
+        MULTIPLE_CHOICES_300:  'HttpStatus'  = MULTIPLE_CHOICES #
 
-    @t.overload
-    def __init__(self, 
-                action: str, 
-                name: t.Optional[str]=None, 
-                /, *,
-                detail:bool=...,
-                outline:bool=...,
-                http_methods: HttpMethod=HttpMethod.ALL,
-                **config):
-        ...
+        MOVED_PERMANENTLY:  'HttpStatus'  = 301 #
+        MOVED_PERMANENTLY_301:  'HttpStatus'  = MOVED_PERMANENTLY #
 
-    def __init__(self, 
-                action: str, 
-                name: t.Optional[str]=None, 
-                /,
-                detail:t.Optional[bool]=None,
-                outline:t.Optional[bool]=None,  
-                *,
-                http_methods=HttpMethod.ALL,
-                **config):
-        self.detail = detail
-        self.outline = outline
-        self.__dict__ = frozendict(
-                config, 
-                action=action, 
-                name=name or action,
-                http_methods=HttpMethod(http_methods), 
-            )
-        self._frozen = True
+        FOUND:  'HttpStatus'  = 302 #
+        FOUND_302:  'HttpStatus'  = FOUND #
 
-    def extend(self, 
-                detail:t.Optional[bool]=None,
-                outline:t.Optional[bool]=None, 
-                **config):
-        new = self.__class__.__new__(self.__class__)
-        new.detail = self.detail if detail is None else detail
-        new.outline = self.outline if outline is None else outline
-        new.__dict__ = self.__dict__.merge(config)
-        new._frozen = True
-        return new
-        
-    def is_detail(self, default=None) -> bool:
-        if self.detail is None:
-            if self.outline:
-                return False
-            return default
-        return self.detail
-        
-    def is_outline(self, default=None) -> bool:
-        if self.outline is None:
-            if self.detail:
-                return False
-            return default
-        return self.outline
-    
-    def __repr_args__(self):
-        fskip = lambda s: s.startswith('_') or s in {'name', 'action'}
-        attrs = ((s, getattr(self, s)) for s in self.__dict__ if not fskip(s))
-        return [
-            ('action', self.action), 
-            ('name', self.name), 
-            *[(a, v) for a, v in attrs if v is not None][:7],
-            (None, ...),
-        ][:10]
+        SEE_OTHER:  'HttpStatus'  = 303 #
+        SEE_OTHER_303:  'HttpStatus'  = SEE_OTHER #
 
-    def __setattr__(self, name: str, value) -> None:
-        if hasattr(self,'_frozen'):
-            raise AttributeError(f'cannot set attribute {name!r} on {self.__class__.__name__}')
-        super().__setattr__(name, value)
+        NOT_MODIFIED:  'HttpStatus'  = 304 #
+        NOT_MODIFIED_304:  'HttpStatus'  = NOT_MODIFIED #
 
+        USE_PROXY:  'HttpStatus'  = 305 #
+        USE_PROXY_305:  'HttpStatus'  = USE_PROXY #
 
-class ActionRouteDescriptor(RouteDescriptor, t.Generic[_T_View]):
+        TEMPORARY_REDIRECT:  'HttpStatus'  = 307 #
+        TEMPORARY_REDIRECT_307:  'HttpStatus'  = TEMPORARY_REDIRECT #
 
-    __slots__ = '_method_descriptors_', 'url_path', 'url_name',
+        PERMANENT_REDIRECT:  'HttpStatus'  = 308 #
+        PERMANENT_REDIRECT_308:  'HttpStatus'  = PERMANENT_REDIRECT #
 
-    _descriptor_attr_: t.ClassVar[str] = 'route'
-    _method_descriptors_: t.Final[fallbackdict[T_HttpMethodName, RouteDescriptor]]
+    # client error codes
+        BAD_REQUEST:  'HttpStatus'  = 400 #
+        BAD_REQUEST_400:  'HttpStatus'  = BAD_REQUEST #
 
-    @t.overload
-    def __init__(self, 
-                action: ViewActionFunction[_T_View], 
-                methods: T_HttpMethods =(), 
-                /, *,
-                detail:bool=...,
-                outline:bool=...,
-                url_path: t.Union[str, t.Pattern, None] = None, 
-                url_name: t.Union[str, None] = None, 
-                http_methods: HttpMethod=HttpMethod.ALL,
-                **config):
-        ...
+        UNAUTHORIZED:  'HttpStatus'  = 401 #
+        UNAUTHORIZED_401:  'HttpStatus'  = UNAUTHORIZED #
 
-    def __init__(self, 
-                action: ViewActionFunction[_T_View], 
-                methods: T_HttpMethods =(), 
-                /, 
-                url_path: t.Union[str, t.Pattern, None] = None, 
-                url_name: t.Union[str, None] = None, 
-                **config):
-        action.__doc__ and config.setdefault('description', action.__doc__)
-        self._method_descriptors_ = None
-        self.url_path = url_path
-        self.url_name = url_name
+        PAYMENT_REQUIRED:  'HttpStatus'  = 402 #
+        PAYMENT_REQUIRED_402:  'HttpStatus'  = PAYMENT_REQUIRED #
 
-        super().__init__(action.__name__, action.__name__, **config)
+        FORBIDDEN:  'HttpStatus'  = 403 #
+        FORBIDDEN_403:  'HttpStatus'  = FORBIDDEN #
 
-        self.add(methods or self.get_default_http_method(), action)
+        NOT_FOUND:  'HttpStatus'  = 404 #
+        NOT_FOUND_404:  'HttpStatus'  = NOT_FOUND #
 
-    @property
-    def slug(self):
-        return text.slug(text.snake(self.action, sep=' '))
+        METHOD_NOT_ALLOWED:  'HttpStatus'  = 405 #
+        METHOD_NOT_ALLOWED_405:  'HttpStatus'  = METHOD_NOT_ALLOWED #
 
-    @property
-    def mapping(self) -> Mapping[T_HttpMethodName, RouteDescriptor]:
-        return MappingProxy(self._method_descriptors_)
-            
-    def add(self, 
-            methods: T_HttpMethods, 
-            func: ViewFunction[_T_View]=..., /, 
-            **config):
+        NOT_ACCEPTABLE:  'HttpStatus'  = 406 #
+        NOT_ACCEPTABLE_406:  'HttpStatus'  = NOT_ACCEPTABLE #
 
-        if func is ...:
-            def wrapper(fn: ViewFunction[_T_View]) -> ViewFunction[_T_View]:
-                nonlocal self, methods, config
-                return self.add(methods, fn, **config)
-            return wrapper
-        
-        name = func.__name__
+        PROXY_AUTHENTICATION_REQUIRED:  'HttpStatus'  = 407 #
+        PROXY_AUTHENTICATION_REQUIRED_407:  'HttpStatus'  = PROXY_AUTHENTICATION_REQUIRED #
 
-        if old := self.get_existing_descriptor(func):
-            raise TypeError(f'{name!r} already bound to {old!r}' )
-        
-        if name in {self.action, self.name}:
-            if self._method_descriptors_ is not None:
-                raise TypeError(
-                    f"{self.__class__.__name__} does not behave like regular property decorators. "
-                    "You cannot use the same method name for each mapping declaration."
-                )
-            object.__setattr__(self, '_method_descriptors_', fallbackdict(None))
+        REQUEST_TIMEOUT:  'HttpStatus'  = 408 #
+        REQUEST_TIMEOUT_408:  'HttpStatus'  = REQUEST_TIMEOUT #
 
-        setattr(func, self._descriptor_attr_, self)
+        CONFLICT:  'HttpStatus'  = 409 #
+        CONFLICT_409:  'HttpStatus'  = CONFLICT #
 
-        if methods:
-            mapping = self._method_descriptors_
-            is_detail = self.is_detail()
-            is_outline = self.is_outline()
+        GONE:  'HttpStatus'  = 410 #
+        GONE_410:  'HttpStatus'  = GONE #
 
-            for m in HttpMethod(methods):
-                method = m.name
+        LENGTH_REQUIRED:  'HttpStatus'  = 411 #
+        LENGTH_REQUIRED_411:  'HttpStatus'  = LENGTH_REQUIRED #
 
-                assert method not in mapping, (
-                    "Method '%s' has already been mapped to '.%s'." % (method, mapping[method]))
+        PRECONDITION_FAILED:  'HttpStatus'  = 412 #
+        PRECONDITION_FAILED_412:  'HttpStatus'  = PRECONDITION_FAILED #
 
-                if descriptor := mapping[method]:
-                    assert descriptor.name == name, (
-                        f'Expected function (`{name}`) to match base attribute name '
-                        f'(`{descriptor.name}`). If using a decorator, ensure the inner function is '
-                        f'decorated with `functools.wraps`, or that `{name}.__name__` '
-                        f'is otherwise set to `{descriptor.name}`.'
-                    )
-                    mapping[method] = descriptor.extend(action=self.action, **config)    
-                else:
-                    mapping[method] = descriptor = RouteDescriptor(self.action, name, **config)
-                
-                assert is_detail or not descriptor.is_detail(), (
-                    f'`detail` mode not enabled for {self.action!r}'
-                )
-                assert is_outline or not descriptor.is_outline(), (
-                    f'`outline` mode not enabled for {self.action!r}'
-                )
-                    
-        return func
+        REQUEST_ENTITY_TOO_LARGE:  'HttpStatus'  = 413 #
+        REQUEST_ENTITY_TOO_LARGE_413:  'HttpStatus'  = REQUEST_ENTITY_TOO_LARGE #
 
-    def extend(self, 
-                action: ViewActionFunction[_T_View], 
-                methods: T_HttpMethods =(), 
-                /, *,
-                detail:bool=...,
-                outline:bool=...,
-                http_methods: HttpMethod=HttpMethod.ALL,
-                **config):
-        raise NotImplementedError()
+        REQUEST_URI_TOO_LONG:  'HttpStatus'  = 414 #
+        REQUEST_URI_TOO_LONG_414:  'HttpStatus'  = REQUEST_URI_TOO_LONG #
 
-    def get(self, func:  ViewFunction[_T_View]= ..., **config) -> ViewFunction[_T_View]:
-        return self.add('get', func, **config)
+        UNSUPPORTED_MEDIA_TYPE:  'HttpStatus'  = 415 #
+        UNSUPPORTED_MEDIA_TYPE_415:  'HttpStatus'  = UNSUPPORTED_MEDIA_TYPE #
 
-    def post(self, func:  ViewFunction[_T_View]=..., **config) -> ViewFunction[_T_View]:
-        return self.add('post', func, **config)
+        REQUESTED_RANGE_NOT_SATISFIABLE:  'HttpStatus'  = 416 #
+        REQUESTED_RANGE_NOT_SATISFIABLE_416:  'HttpStatus'  = REQUESTED_RANGE_NOT_SATISFIABLE #
 
-    def put(self, func:  ViewFunction[_T_View]=..., **config) -> ViewFunction[_T_View]:
-        return self.add('put', func, **config)
+        EXPECTATION_FAILED:  'HttpStatus'  = 417 #
+        EXPECTATION_FAILED_417:  'HttpStatus'  = EXPECTATION_FAILED #
 
-    def patch(self, func: ViewFunction[_T_View] =..., **config) -> ViewFunction[_T_View]:
-        return self.add('patch', func, **config)
+        IM_A_TEAPOT:  'HttpStatus'  = 418 #
+        IM_A_TEAPOT_418:  'HttpStatus'  = IM_A_TEAPOT #
 
-    def delete(self, func: ViewFunction[_T_View] =..., **config) -> ViewFunction[_T_View]:
-        return self.add('delete', func, **config)
+        MISDIRECTED_REQUEST:  'HttpStatus'  = 421 #
+        MISDIRECTED_REQUEST_421:  'HttpStatus'  = MISDIRECTED_REQUEST #
 
-    def head(self, func: ViewFunction[_T_View] =..., **config) -> ViewFunction[_T_View]:
-        return self.add('head', func, **config)
+        UNPROCESSABLE_ENTITY:  'HttpStatus'  = 422 #
+        UNPROCESSABLE_ENTITY_422:  'HttpStatus'  = UNPROCESSABLE_ENTITY #
 
-    def options(self, func: ViewFunction[_T_View] =..., **config) -> ViewFunction[_T_View]:
-        return self.add('options', func, **config)
+        LOCKED:  'HttpStatus'  = 423 #
+        LOCKED_423:  'HttpStatus'  = LOCKED #
 
-    def trace(self, func: ViewFunction[_T_View] =..., **config) -> ViewFunction[_T_View]:
-        return self.add('trace', func, **config)
+        FAILED_DEPENDENCY:  'HttpStatus'  = 424 #
+        FAILED_DEPENDENCY_424:  'HttpStatus'  = FAILED_DEPENDENCY #
 
-    def get_config(self, method=None, *, fallback: bool=False, default=...) -> dict[T_HttpMethodStr, str]:
-        if method is None:
-            return self.config
-        elif mm := super().get(method):
-            return ChainMap(mm.config, self.config)
-        elif fallback:
-            return default
-        elif default is not ...:
-            if fallback:
-                return ChainMap(default, self.config)
-            return default
-        elif fallback:
-            return self.config
-        raise KeyError(f'Method {method} is not mapped to {self.name!r}')
-    
-    def get_mapping(self, default: t.Optional[T_HttpMethods]=None) -> dict[T_HttpMethodStr, str]:
-        return { m: self.name for m in self or (x.name for x in HttpMethod(default or ())) }
+        TOO_EARLY:  'HttpStatus'  = 425 #
+        TOO_EARLY_425:  'HttpStatus'  = TOO_EARLY #
 
-    def get_detail_mapping(self) -> t.Optional[dict[T_HttpMethodStr, str]]:
-        if self.is_detail():
-            mapping = self._method_descriptors_
-            return { m.name: d.name for m in HttpMethod if (d := mapping[m.name]) and d.is_detail(True) }
+        UPGRADE_REQUIRED:  'HttpStatus'  = 426 #
+        UPGRADE_REQUIRED_426:  'HttpStatus'  = UPGRADE_REQUIRED #
 
-    def get_outline_mapping(self) -> t.Optional[dict[T_HttpMethodStr, str]]:
-        if self.is_outline():
-            mapping = self._method_descriptors_
-            return { m.name: d.name for m in HttpMethod if (d := mapping[m.name]) and d.is_outline(True) }
+        PRECONDITION_REQUIRED:  'HttpStatus'  = 428 #
+        PRECONDITION_REQUIRED_428:  'HttpStatus'  = PRECONDITION_REQUIRED #
 
-    def get_implicit_mapping(self) -> t.Optional[dict[T_HttpMethodStr, str]]:
-        if None is self.is_outline(None) is self.is_detail(None):
-            mapping = self._method_descriptors_
-            return { 
-                m.name: d.name 
-                for m in HttpMethod 
-                if (d := mapping[m.name]) 
-                    and None is d.is_outline(None) is d.is_detail(None)
-            }
+        TOO_MANY_REQUESTS:  'HttpStatus'  = 429 #
+        TOO_MANY_REQUESTS_429:  'HttpStatus'  = TOO_MANY_REQUESTS #
 
-    def detail_route(self):
-        if self.is_detail():
-            return Route(self.url_path, self.get_detail_mapping(), self.url_name, True)
+        REQUEST_HEADER_FIELDS_TOO_LARGE:  'HttpStatus'  = 431 #
+        REQUEST_HEADER_FIELDS_TOO_LARGE_431:  'HttpStatus'  = REQUEST_HEADER_FIELDS_TOO_LARGE #
 
-    def outline_route(self):
-        if self.is_outline():
-            return Route(self.url_path, self.get_outline_mapping(), self.url_name, False)
+        UNAVAILABLE_FOR_LEGAL_REASONS:  'HttpStatus'  = 451 #
+        UNAVAILABLE_FOR_LEGAL_REASONS_451:  'HttpStatus'  = UNAVAILABLE_FOR_LEGAL_REASONS #
 
-    def implicit_route(self):
-        if None is self.is_outline(None) is self.is_detail(None):
-            return Route(self.url_path, self.get_implicit_mapping(), self.url_name, False)
+    # server errors 
+        INTERNAL_SERVER_ERROR:  'HttpStatus'  = 500 #
+        INTERNAL_SERVER_ERROR_500:  'HttpStatus'  = INTERNAL_SERVER_ERROR #
 
-    def get_default_http_method(self):
-        return HttpMethod(self.action) if self.action in HttpMethod.ALL else HttpMethod.GET
+        NOT_IMPLEMENTED:  'HttpStatus'  = 501 #
+        NOT_IMPLEMENTED_501:  'HttpStatus'  = NOT_IMPLEMENTED #
 
-    @classmethod
-    def get_existing_descriptor(cls, obj, *, attr=None):
-        if isinstance(val := getattr(obj, attr or cls._descriptor_attr_, None), RouteDescriptor):
-            return val
-    
+        BAD_GATEWAY:  'HttpStatus'  = 502 #
+        BAD_GATEWAY_502:  'HttpStatus'  = BAD_GATEWAY #
+
+        SERVICE_UNAVAILABLE:  'HttpStatus'  = 503 #
+        SERVICE_UNAVAILABLE_503:  'HttpStatus'  = SERVICE_UNAVAILABLE #
+
+        GATEWAY_TIMEOUT:  'HttpStatus'  = 504 #
+        GATEWAY_TIMEOUT_504:  'HttpStatus'  = GATEWAY_TIMEOUT #
+
+        HTTP_VERSION_NOT_SUPPORTED:  'HttpStatus'  = 505 #
+        HTTP_VERSION_NOT_SUPPORTED_505:  'HttpStatus'  = HTTP_VERSION_NOT_SUPPORTED #
+
+        VARIANT_ALSO_NEGOTIATES:  'HttpStatus'  = 506 #
+        VARIANT_ALSO_NEGOTIATES_506:  'HttpStatus'  = VARIANT_ALSO_NEGOTIATES #
+
+        INSUFFICIENT_STORAGE:  'HttpStatus'  = 507 #
+        INSUFFICIENT_STORAGE_507:  'HttpStatus'  = INSUFFICIENT_STORAGE #
+
+        LOOP_DETECTED:  'HttpStatus'  = 508 #
+        LOOP_DETECTED_508:  'HttpStatus'  = LOOP_DETECTED #
+
+        NOT_EXTENDED:  'HttpStatus'  = 510 #
+        NOT_EXTENDED_510:  'HttpStatus'  = NOT_EXTENDED #
+
+        NETWORK_AUTHENTICATION_REQUIRED:  'HttpStatus'  = 511 #
+        NETWORK_AUTHENTICATION_REQUIRED_511:  'HttpStatus'  = NETWORK_AUTHENTICATION_REQUIRED #
+
+    def is_informational(self):
+        return 100 <= self <= 199
+
+    def is_success(self):
+        return 200 <= self <= 299
+
+    def is_redirect(self):
+        return 300 <= self <= 399
+
+    def is_client_error(self):
+        return 400 <= self <= 499
+
+    def is_server_error(self):
+        return 500 <= self <= 599
+
+    def is_error(self):
+        return 400 <= self <= 599
+

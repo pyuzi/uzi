@@ -9,9 +9,10 @@ import logging
 from functools import partial, update_wrapper
 from collections.abc import Hashable, Iterable, Mapping, Callable, Sequence, Collection
 from django.core.exceptions import BadRequest
-from django.http.response import HttpResponseNotAllowed
+from django.http.response import HttpResponseBase, HttpResponseNotAllowed
 from django.views.decorators.csrf import csrf_exempt
 from djx.api.abc import Headers
+from djx.common.tests import data
 
 from djx.di.common import Depends, InjectionToken
 from djx.di.container import IocContainer
@@ -20,11 +21,11 @@ from djx.di.scopes import REQUEST_SCOPE
 from ..abc import BodyParser, Args, Body, Kwargs
 from djx.common.collections import frozendict
 
-from djx.di import ioc, get_ioc_container
 from djx.common.utils import export, lookup_property, text
 from djx.schemas import QueryLookupSchema, OrmSchema, Schema, parse_obj_as
 from djx.schemas.tools import _get_parsing_type
 
+from ..response import Response
 
 
 
@@ -32,8 +33,9 @@ from djx.schemas.tools import _get_parsing_type
 
 from ..  import exc, Request
 from .config import ViewConfig, ActionConfig
-from ..types import HttpMethod, ActionRouteDescriptor, T_HttpMethods, ViewActionFunction, ViewFunction, is_action_func
+from ..types import ContentShape, HttpStatus
 
+from .actions import ActionRouteDescriptor, is_action_func, action
 
 logger = logging.getLogger(__name__)
 
@@ -57,121 +59,6 @@ _config_lookup = partial(lookup_property, source='config', read_only=True)
 
 _T_ActionResolveFunc = Callable[['View', Request], ActionConfig]
 _T_ActionResolver = Callable[[ViewConfig, Mapping[_T_Co, ActionConfig]], _T_ActionResolveFunc]
-
-
-
-
-# @export()
-# class ActionDescriptor(t.Generic[_T_Co]):
-
-#     # __slots__ = 'func', 'conf',
-
-#     func: t.Union[t.Callable[..., _T_Co], None]
-#     conf: frozendict[str, t.Any]
-
-#     mapping: MethodMapper
-
-
-#     def __init__(self, 
-#                 methods: T_HttpMethods=..., 
-#                 url_path: t.Union[str, t.Pattern, None]=..., 
-#                 url_name: t.Union[str, None] = None, *,
-#                 detail: bool, 
-#                 **config):
-
-#         self.mapping = 
-#         self.func = func
-#         self.conf = frozendict(conf, **config)
-
-#     # def replace(self, conf: dict[str, t.Any] = frozendict(), /, **config):
-#     #     return self.__class__(self.func, self.conf.merge(conf, **config))
-        
-#     def __set_name__(self, owner, name):
-#         vardump(__set_name__=name, __owner__=owner)        
-#         if not isinstance(owner, ViewType):
-#             raise RuntimeError(f'{self.__class__.__name__} can only be added to ViewTypes not {owner}')
-
-#     def __call__(self, func: t.Callable[..., _T_Co]) -> t.Callable[..., _T_Co]:
-
-#         return self.__class__(func, self.conf)
-        
-
-
-# @export()
-# def action(func: t.Union[t.Callable[..., _T_Co], None]=None, 
-#         conf: dict[str, t.Any] = frozendict(), /, 
-#         **config: t.Any):
-
-#     return ActionDescriptor(func, conf, **config)
-
-
-
-def _is_routed_action(attr: ViewActionFunction):
-    return ViewActionFunction.get_exis
-
-
-
-def _check_attr_name(func, name):
-    assert func.__name__ == name, (
-        'Expected function (`{func.__name__}`) to match its attribute name '
-        '(`{name}`). If using a decorator, ensure the inner function is '
-        'decorated with `functools.wraps`, or that `{func.__name__}.__name__` '
-        'is otherwise set to `{name}`.').format(func=func, name=name)
-    return func
-
-
-
-
-ROOT_ACTIONS = dict({ 
-    m.name.lower(): m for m in HttpMethod 
-}, list=HttpMethod.GET)
-
-
-@t.overload
-def action(methods: t.Union[T_HttpMethods, None]=None, 
-        url_path: t.Union[str, t.Pattern, None] = None, 
-        url_name: t.Union[str, None] = None,  
-        *,
-        detail:bool=...,
-        outline:bool=...,
-        **config) -> Callable[[ViewActionFunction[_T_View]], ViewActionFunction[_T_View]]:
-    ...
-
-@export()
-def action(methods: t.Union[T_HttpMethods, None]=None, 
-        url_path: t.Union[str, t.Pattern, None]=None, 
-        url_name=None, 
-        **config):
-
-    # name and suffix are mutually exclusive
-    # if 'name' in config and 'suffix' in config:
-    #     raise TypeError("`name` and `suffix` are mutually exclusive arguments.")
-
-    def decorator(func: ViewActionFunction[_T_View]):
-
-        # if func.__name__ in ROOT_ACTIONS:
-        #     assert not (methods or url_path or url_name), (
-        #             f"Cannot set `methods`, `url_path` or `url_name` on the following "
-        #             f"methods, as they are reserved for root actions: "
-        #             f"{', '.join(f'{a!r}' for a in ROOT_ACTIONS)}"
-        #         ) 
-        #     func.mapping = MethodMapper(func, ())
-
-        ActionRouteDescriptor(func, methods, url_path=url_path, url_name=url_name, **config)
-
-        # func.url_path = url_path
-        # func.url_name = url_name
-
-        # func.config = config
-
-        # Set descriptive arguments for viewsets
-        # if 'name' not in config and 'suffix' not in config:
-        #     func.config['name'] = text.humanize(func.__name__).capitalize()
-        
-        return func
-    return decorator
-
-
 
 
 @export()
@@ -213,12 +100,6 @@ class ViewType(type):
         )
         return cls(self, attr, self.Config)
 
-    def get_extra_actions(self: type[_T_View], *, known: Collection[str]=ROOT_ACTIONS) -> list[ViewActionFunction[_T_View]]:
-        """
-        Get the methods that are marked as an extra ViewSet `@action`.
-        """
-        return [a for a in self.get_all_action_descriptors() if _is_routed_action(a) or a.__name__ not in known]
-
     def get_all_action_descriptors(self: type[_T_View]) -> dict[str, ActionRouteDescriptor[_T_View]]:
         """
         Get the methods that are marked as an extra ViewSet `@action`.
@@ -240,6 +121,9 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
     if t.TYPE_CHECKING:
         __config__: t.Final[ViewConfig] = ...
 
+        def run(self, *args, **kwargs) -> t.Union[_T_Entity, Iterable[_T_Entity], HttpResponseBase, None]:
+            ...
+            
     # config: ViewConfig
     # schemas: AttributeMapping[t.Any, type[_T_Schema]] = _config_lookup('schemas')
 
@@ -265,16 +149,16 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
     def ioc(self, val):
         self.__dict__['ioc'] = val
         
-    @property
-    def handler(self) -> Callable:
-        try:
-            return self.__dict__['handler']
-        except KeyError:
-            return self.__dict__.setdefault('handler', self.missing_handler())
+    # @property
+    # def run(self) -> Callable:
+    #     try:
+    #         return self.__dict__['run']
+    #     except KeyError:
+    #         return self.__dict__.setdefault('run', self.missing_handler())
     
-    @handler.setter
-    def handler(self, val):
-        self.__dict__['handler'] = val
+    # @run.setter
+    # def run(self, val):
+    #     self.__dict__['run'] = val
 
     @property
     def headers(self) -> Headers:
@@ -299,7 +183,17 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
             self._params = res = self.parse_params()
             return res
         
+    @property
+    def response(self) -> Response:
+        try:
+            return self.__dict__['response']
+        except KeyError:
+            return self.__dict__.setdefault('response', self.make_response())
     
+    @response.setter
+    def response(self, value):
+        self.__dict__['response'] = value
+
     if t.TYPE_CHECKING:
         def _set_private_attr_(self, name, val):
             ...
@@ -324,12 +218,6 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
                             "calling `.as_view()` on a ViewSet. For example "
                             "`.as_view({'get': 'list'})`")
 
-        # token = InjectionToken(f'{cls.__name__}.actions[{" | ".join(dict.fromkeys(a.name for a in actions.values()))}]')
-
-        # ioc.type(token, use=cls, at=REQUEST_SCOPE, kwargs=config)
-
-        # vardump(actions, config, mapping)
-
         def view(req: Request, *args, **kwargs):
             nonlocal cls, ioc, mapping
             try:
@@ -342,9 +230,8 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
                 self.ioc = inj
                 self.config = conf
                 if handler is not None:
-                    self.handler = getattr(self, handler)
-                if conf is not None:
-                    self.config = conf
+                    self.run = getattr(self, handler)
+                
                 return self.dispatch(req, *args, **kwargs)
 
         # take name and docstring from class
@@ -366,20 +253,41 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
         self.request = request
         self.args = args
         self.kwargs = kwargs
-        return self.handler(    ) #(*args, **kwargs)
+        try:
+            self.finalize(self.run(*args, **kwargs))
+        except Exception as e:
+            return self.handle_exception(e)
+        else:
+            return self.response
 
-    def options(self, *args, **kwargs):
+    def finalize(self, res: t.Optional[t.Any]=None):
         """
-        Handler method for HTTP 'OPTIONS' request.
+        Returns the final response object.
         """
-        pass
-        # if self.metadata_class is None:
-        #     return self.http_method_not_allowed(request, *args, **kwargs)
-        # data = self.metadata_class().determine_metadata(request, self)
-        # return Response(data, status=status.HTTP_200_OK)
+        if isinstance(res, HttpResponseBase):
+            self.response = res
+        elif res is not None:
+            self.response.data = self.dump(res)
+        elif getattr(res := self.response, 'is_empty', False) is True:
+            if res.status_code == HttpStatus.OK_200:
+                res.data = self.dump()
+            else:
+                res.data = None
 
-    def missing_handler(self) -> Callable:
-        return getattr(self, self.request.method.lower())
+        # Add new vary headers to the response instead of overwriting.
+        # vary_headers = self.headers.pop('Vary', None)
+        # if vary_headers is not None:
+        #     patch_vary_headers(response, cc_delim_re.split(vary_headers))
+        # self.response = res
+
+    def handle_exception(self, exc):
+        self.raise_uncaught_exception(exc)
+
+    def raise_uncaught_exception(self, exc):
+        raise exc
+
+    # def missing_handler(self) -> Callable:
+    #     return getattr(self, self.request.method.lower())
 
     @t.overload
     def get_payload(self, objects: Iterable[_T_Entity], *, many: t.Literal[True]) -> Sequence[_T_Payload]:
@@ -389,13 +297,29 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
     def get_payload(self, object: _T_Entity, *, many: t.Literal[False]=False) -> _T_Payload:
         ...
 
-    def get_payload(self, data: t.Union[Iterable[_T_Entity], _T_Entity], *, many: bool=False) -> _T_Payload:
+    def get_payload(self, data: t.Union[Iterable[_T_Entity], _T_Entity], *, many: t.Optional[bool]=None) -> _T_Payload:
         cls = self.config.the_response_schema
         if many:
             return _get_parsing_type(list[cls]).validate(data)
         else:
             return cls.validate(data)
-        
+
+    def dump(self, data: t.Union[Iterable[_T_Entity], _T_Entity]=None):
+        conf = self.config
+        if data is None:
+            shape = conf.shape
+            if shape is ContentShape.blank:
+                return None
+            elif shape is ContentShape.multi:
+                data = list(self.objects)
+            else:
+                data = self.object
+
+        if sch := conf.the_response_schema:
+            return sch.validate(data)
+
+        return data
+
     def abort(self, status=400, errors=None, **kwds):
         raise BadRequest(f'{errors or ""} code={status}')
 
@@ -415,3 +339,24 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
 
     def _get_default_headers(self):
         return dict(self.config.headers)
+    
+    def make_response(self, status=None):
+        conf = self.config
+        res = conf.response_class(status=status or conf.status, headers=conf.headers)
+        res.accepted_renderer, res.accepted_media_type = conf.the_content_negotiator.select_renderer(
+            self.request, 
+            conf.the_renderers, 
+        )
+        return res
+
+    @action(detail=True, outline=True)
+    def options(self, *args, **kwargs):
+        """
+        Handler method for HTTP 'OPTIONS' request.
+        """
+        conf = self.config
+        self.response.data = dict(
+            title=conf.title,
+            description=conf.description.strip()
+        )
+    

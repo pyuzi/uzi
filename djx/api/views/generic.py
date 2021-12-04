@@ -259,7 +259,6 @@ class DestroyModelView(GenericView[_T_Model]):
     @action(status=HttpStatus.NO_CONTENT_204, detail=True)
     def delete(self, *args, **kwds):
         self.perform_destroy(self.object)
-        return Response(status=204)
 
     def perform_destroy(self, obj: _T_Model):
         return obj.delete()

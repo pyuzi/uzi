@@ -5,7 +5,6 @@ We don't bind behaviour to http method handlers yet,
 which allows mixin classes to be composed in interesting ways.
 """
 import typing as t
-from rest_framework import status
 
 from django.http import HttpRequest as Request, HttpResponse as Response
 

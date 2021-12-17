@@ -23,7 +23,7 @@ from djx.api.abc import (
     Session, Arguments
 )
 
-from djx.core.http import HttpRequest as DjangoRequest
+from djx.api import Request as DjangoRequest
 from djx.core.util import django_settings
 
 

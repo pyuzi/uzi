@@ -383,7 +383,7 @@ class ActionRouteDescriptor(RouteDescriptor, t.Generic[_T_View]):
         if self.is_outline():
             return Route(self.url_path, self.url_name, self.get_outline_mapping(), False)
 
-    def implicit_route(self):
+    def ambiguous_route(self):
         if None is self.is_outline(None) is self.is_detail(None):
             return Route(self.url_path, self.url_name, self.get_implicit_mapping(), None)
 

@@ -247,14 +247,14 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
         view.cls = cls
         view.initkwargs = config
         view.actions = actions
-        return view
+        return csrf_exempt(view)
 
     def dispatch(self, request: Request, *args, **kwargs):
         self.request = request
         self.args = args
         self.kwargs = kwargs
         try:
-            self.finalize(self.run(*args, **kwargs))
+            self.finalize(self.run(request, *args, **kwargs))
         except Exception as e:
             return self.handle_exception(e)
         else:
@@ -321,7 +321,8 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
         return data
 
     def abort(self, status=400, errors=None, **kwds):
-        raise BadRequest(f'{errors or ""} code={status}')
+        self.response.status_code = status
+        # raise BadRequest(f'{errors or ""} code={status}')
 
     def parse_params(self, data=None, *, using: t.Union[type[Schema], None]=None):
         return self.request.GET
@@ -330,11 +331,12 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
         if body is ...:
             body = self.ioc[Body]
 
-        schema = self.config.request_schema
-        if isinstance(body, (str, bytes)):
-            res = schema.parse_raw(body, **kwds)
-        else:
-            res = schema.parse_obj(body, **kwds)
+        res = body
+        if schema := self.config.request_schema:
+            if isinstance(body, (str, bytes)):
+                res = schema.parse_raw(body, **kwds)
+            else:
+                res = schema.parse_obj(body, **kwds)
         return res
 
     def _get_default_headers(self):

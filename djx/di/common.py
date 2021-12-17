@@ -6,6 +6,7 @@ import typing as t
 
 from collections.abc import Mapping, Iterable, Hashable
 from djx.common.collections import Arguments, frozendict
+from djx.common.imports import ImportRef
 from djx.common.proxy import unproxy
 
 from djx.common.utils import export, Void, calling_frame, text, DataPath
@@ -259,6 +260,7 @@ Injectable.register(type(t.Generic[T_Injected]))
 Injectable.register(type(t.Union))
 Injectable.register(InjectionToken)
 Injectable.register(InjectedLookup)
+Injectable.register(ImportRef)
 
 
 
@@ -445,12 +447,12 @@ class Depends:
             ann = on.replace(at=at, arguments=on.arguments.extend(arguments))
         else:
             ann = object.__new__(cls)
-            if on is ...:
-                if tp is ...:
-                    raise TypeError(
-                        f'{cls.__name__}(type, /, *, on: Injectable = ..., at: str =...) '
-                        f'should be used with at least the `type` or the dependency argument `on`.'
-                    )
+            # if on is ...:
+            #     if tp is ...:
+            #         raise TypeError(
+            #             f'{cls.__name__}(type, /, *, on: Injectable = ..., at: str =...) '
+            #             f'should be used with at least the `type` or the dependency argument `on`.'
+            #         )
             ann.on = on
             ann.at = at 
             ann.arguments = arguments

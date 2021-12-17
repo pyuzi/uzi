@@ -12,7 +12,8 @@ from .abc import Response
 from .views import View, GenericView, ActionRouteDescriptor
 from .types import T_HttpMethodStr, Route, DynamicRoute, HttpMethod
 
-api_settings = None
+from djx.core import settings
+from django.conf import settings
 
 
     
@@ -101,7 +102,11 @@ class SimpleRouter(BaseRouter):
         ),
     ]
 
-    def __init__(self,  *, trailing_slash=True):
+    def __init__(self,  *, trailing_slash=None):
+        if trailing_slash is None:
+            trailing_slash = settings.APPEND_SLASH
+
+        vardump(trailing_slash, settings.APPEND_SLASH)
         self.trailing_slash = '/' if trailing_slash else ''
         super().__init__()
 
@@ -122,6 +127,7 @@ class SimpleRouter(BaseRouter):
         # different functions.
 
         actions = view.get_all_action_descriptors()
+        conf = view.__config__
 
         items = sorted(((n, m) for route in self.routes if isinstance(route, Route) for m, n in route.mapping.items()))
 
@@ -134,7 +140,20 @@ class SimpleRouter(BaseRouter):
         
         details = { n: r for n, a in actions.items() if (r := a.detail_route())}
         outlines = { n: r for n, a in actions.items() if (r := a.outline_route())}
-        ambiguous = { n: r for n, a in actions.items() if (r := a.implicit_route())}
+        ambiguous = { n: r for n, a in actions.items() if (r := a.ambiguous_route())}
+
+        # if conf.detail is False:
+        #     details.clear()
+        
+        # if None in (conf.detail, conf.outline) and not (None is conf.detail is conf.outline):
+        #     if conf.is_detail():
+        #         details |= ambiguous
+        #     elif conf.is_outline():
+
+        # elif conf.is_detail():
+        #     ambiguous = {}
+
+
 
         all_actions = ChainMap(ambiguous, details, outlines)
 

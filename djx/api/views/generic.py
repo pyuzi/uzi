@@ -5,7 +5,6 @@ We don't bind behaviour to http method handlers yet,
 which allows mixin classes to be composed in interesting ways.
 """
 import typing as t
-from rest_framework import status
 from collections.abc import Hashable, Iterable
 from django.http import HttpRequest as Request, HttpResponse as Response
 
@@ -167,8 +166,11 @@ class CreateModelView(GenericView[_T_Model]):
     def post(self, *args, **kwds):
         self.object = self.perform_create(self.parse_body())
     
-    def perform_create(self, data: Schema):
-        return self.get_queryset().create(**data.dict())
+    def perform_create(self, data: Schema, *, save: bool=True) -> _T_Model:
+        if save:
+            return self.get_queryset().create(**data.dict())
+        else:
+            return self.config.model(**data.dict())
 
 
 
@@ -241,8 +243,9 @@ class UpdateModelView(GenericView[_T_Model]):
     def patch(self, *args, **kwds):
         self.perform_update(self.object, self.parse_body(partial=True))
     
-    def perform_update(self, obj: _T_Model, data: Schema):
+    def perform_update(self, obj: _T_Model, data: Schema, *, save: bool=True) -> _T_Model:
         obj = assign(obj, data.dict(exclude_unset=True))
+        save and obj.save()
         return obj
 
 

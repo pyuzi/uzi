@@ -83,6 +83,14 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
                 return None
             return base
         return value
+    
+    @metafield[bool](default=...)
+    def outline(self, value, base=...):
+        if value is ...:
+            if base is ...:
+                return None
+            return base
+        return value
 
     @metafield[str]('basename')
     def basename(self, value, base=None):
@@ -135,18 +143,22 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
             return HttpMethod(base)
         return HttpMethod(value)
 
-    # @cached_property
-    # def http_method_names(self):
-    #     return frozenset(m for m in HttpMethod if m in self.methods)
 
-    @metafield[type[Schema]]()
+    # @metafield[type[Schema]]('request_schema')
+    # def assigned_request_schema(self, value, base=None):
+    #     if value is None:
+    #         return fallback_chain_dict(base)
+    #     elif isinstance(value, Mapping):
+    #         return fallback_chain_dict(base, value)
+    #     elif self._shape is ContentShape.multi:
+    #         return fallback_chain_dict(base, many=value)
+    #     else:
+    #         return fallback_chain_dict(base, detail=value, outline=value, many=None)
+    
+    @metafield[type[Schema]]('request_schema')
     def request_schema(self, value, base=None):
         return value or base
-        
-    @metafield[type[Schema]]()
-    def _x_response_schema(self, value, base=None):
-        return value or base
-        
+    
     @metafield[T_RespSchemaDict]()
     def response_schema(self, value, base=None) -> T_RespSchemaDict:
         if value is None:
@@ -218,6 +230,20 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
     @cached_property
     def ioc(self):
         return get_ioc_container()
+        
+    # def is_detail(self, default=None) -> bool:
+    #     if self.detail is None:
+    #         if self.outline is None:
+    #             return default
+    #         return not self.outline
+    #     return self.detail
+        
+    # def is_outline(self, default=None) -> bool:
+    #     if self.outline is None:
+    #         if self.detail is None:
+    #             return default
+    #         return not self.detail
+    #     return self.outline
 
     def get_response_schema(self):
         return self._x_response_schema

@@ -11,7 +11,8 @@ __version__ = ".".join(map(str, version))
 
 from djx.abc import Settings
 from djx.di import ioc
-from .util import app_is_installed
+from .util import app_is_installed, django_settings
 
 
-settings: Settings = ioc.proxy(Settings)
+ioc.type(Settings, django_settings, at='main', cache=True)
+settings: Settings = ioc.proxy(Settings, callable=True)

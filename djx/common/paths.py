@@ -5,17 +5,46 @@ import logging
 from types import new_class
 from pathlib import PurePosixPath, PurePath
 
-from .collections import UserString, fallbackdict
-from .utils import export
+from collections.abc import Sequence
+from djx.common.collections import UserString, fallbackdict
+from djx.common.utils import export
 
 
 
-_T_Path = t.TypeVar('_T_Path', bound=PurePath)
-_T_UriPath = t.TypeVar('_T_UriPath', bound='UriPath')
-_T_DotPath = t.TypeVar('_T_DotPath', bound='DotPath')
+_T_Path = t.TypeVar('_T_Path', bound=PurePath, covariant=True)
+_T_PathStr = t.TypeVar('_T_PathStr', bound='PathStr', covariant=True)
+_T_UriPath = t.TypeVar('_T_UriPath', bound='PureUriPath')
+# _T_DotPath = t.TypeVar('_T_DotPath', bound='DotPath')
 
 
 logger = logging.getLogger(__name__)
+
+
+
+
+class _PathStrParents(Sequence[_T_PathStr, _T_Path]):
+    """This object provides sequence-like access to the logical ancestors
+    of a path.  Don't try to construct it yourself."""
+    __slots__ = '_pathcls', 'parents',
+
+    _pathcls: type[_T_PathStr]
+    _parents: Sequence[_T_Path]
+
+    def __init__(self, path: _T_PathStr):
+        # We don't store the instance to avoid reference cycles
+        self._pathcls = type(path)
+        self._parents = path._path.parents
+        
+    def __len__(self):
+        return len(self._parents)
+
+    def __getitem__(self, idx):
+        p = self._parents[idx]
+        return self._pathcls._for_path(p)
+
+    def __repr__(self):
+        return "<{}.parents>".format(self._pathcls.__name__)
+
 
 @export()
 class PathStr(str, t.Generic[_T_Path]):
@@ -89,8 +118,116 @@ class PathStr(str, t.Generic[_T_Path]):
     def parts(self):
         return self._path.parts
 
+    @property
+    def drive(self):
+        """The drive prefix (letter or UNC path), if any."""
+        return self._path.drive
+
+    @property
+    def root(self):
+        """The root of the path, if any."""
+        return self._path.root
+
+    @property
+    def anchor(self):
+        """The concatenation of the drive and root, or ''."""
+        return self._path.anchor
+
+    @property
+    def name(self):
+        """The final path component, if any."""
+        return self._path.name
+
+    @property
+    def suffix(self):
+        """
+        The final component's last suffix, if any.
+
+        This includes the leading period. For example: '.txt'
+        """
+        return self._path.suffix
+
+    @property
+    def suffixes(self):
+        """
+        A list of the final component's suffixes, if any.
+
+        These include the leading periods. For example: ['.tar', '.gz']
+        """
+        return self._path.suffixes
+
+    @property
+    def stem(self):
+        """The final path component, minus its last suffix."""
+        return self._path.stem
+
+    def with_name(self, name):
+        """Return a new path with the file name changed."""
+        return self._for_path(self._path.with_name(name))
+
+    def with_stem(self, stem):
+        """Return a new path with the stem changed."""
+        return self._for_path(self._path.with_stem(stem))
+
+    def with_suffix(self, suffix):
+        """Return a new path with the file suffix changed.  If the path
+        has no suffix, add given suffix.  If the given suffix is an empty
+        string, remove the suffix from the path.
+        """
+        return self._for_path(self._path.with_suffix(suffix))
+        
+    def relative_to(self, *other):
+        """Return the relative path to another path identified by the passed
+        arguments.  If the operation is not possible (because this is not
+        a subpath of the other path), raise ValueError.
+        """
+        # For the purpose of this method, drive and root are considered
+        # separate parts, i.e.:
+        #   Path('c:/').relative_to('c:')  gives Path('/')
+        #   Path('c:/').relative_to('/')   raise ValueError
+        return self._for_path(self._path.relative_to(*other))
+
+    def joinpath(self, *args):
+        return self._for_path(self._path.joinpath(*args))
+
+    def is_relative_to(self, *other):
+        """Return True if the path is relative to another path or False.
+        """
+        return self._path.is_relative_to(*other)
+
+    @property
+    def parent(self):
+        """The logical parent of the path."""
+        return self._for_path(self._path.parent)
+
+    @property
+    def parents(self: _T_PathStr) -> _PathStrParents[_T_PathStr, _T_Path]:
+        """A sequence of this path's logical parents."""
+        return _PathStrParents(self)
+
+    def is_absolute(self):
+        """True if the path is absolute (has both a root and, if applicable,
+        a drive)."""
+        return self._path.is_absolute()
+
+    def is_reserved(self):
+        """Return True if the path contains one of the special names reserved
+        by the system, if any."""
+        return self._path.is_reserved()
+
+    def match(self, path_pattern):
+        """
+        Return True if this path matches the given pattern.
+        """
+        return self._path.match(path_pattern)
+
+    def __bytes__(self):
+        """Return the bytes representation of the path.  This is only
+        recommended to use under Unix."""
+        return bytes(self._path)
+
     def __reduce__(self):
-        return self.__class__, self.parts,
+        return self.__class__, self._path,
     
     def __copy__(self):
         return self._from_path(self._path)
@@ -140,7 +277,7 @@ class PathStr(str, t.Generic[_T_Path]):
 
 
 @export()
-class UriPath(PurePosixPath):
+class PureUriPath(PurePosixPath):
 
     __slots__ = ()
 
@@ -153,7 +290,7 @@ class UriPath(PurePosixPath):
 class UriPathStr(PathStr[_T_UriPath], t.Generic[_T_UriPath]):
 
     __slots__ = ()
-    __path_class__: t.ClassVar[type[_T_UriPath]] = UriPath
+    __path_class__: t.ClassVar[type[_T_UriPath]] = PureUriPath
 
 
 

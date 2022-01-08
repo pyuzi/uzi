@@ -44,9 +44,10 @@ T_UsingType = type[T_Injected]
 
 T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
 
-T_UsingFactory = Callable[['Provider', 'Scope', Injectable], t.Union[ResolverFunc[T_Injected], None]]
 
 T_UsingResolver = ResolverFunc[T_Injected]
+
+T_UsingFactory = Callable[['Provider', 'Scope', Injectable], t.Union[ResolverFunc[T_Injected], None]]
 
 T_UsingAny = t.Union[T_UsingCallable, T_UsingFactory, T_UsingResolver, T_UsingAlias, T_UsingValue]
 
@@ -220,7 +221,7 @@ class InjectedArgumentsDict(dict[str, t.Any]):
 
 _EMPTY = Parameter.empty
 
-_T_Empty = t.Literal[_EMPTY]
+_T_Empty = t.Literal[_EMPTY] # type: ignore
 
 _T_ArgViewTuple = tuple[str, t.Any, t.Union[Injectable, _T_Empty], t.Any]
 class ArgumentView:

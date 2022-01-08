@@ -140,8 +140,8 @@ class EmailStr(str):
             return unproxy(v)
 
         v = str_validator(v)
-        if kwargs:
-            v = constr_length_validator(v, **kwargs)
+        # if kwargs:
+        #     v = constr_length_validator(v, kwargs.get('field'), kwargs.get('config'))
 
         return cls(*validate_email(v))
 

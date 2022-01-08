@@ -169,7 +169,7 @@ class PolymorphicModelConfig(ModelConfig):
     def polymorphic_kwargs(self) -> dict[tuple[str], dict[tuple[t.Any], type[_T_Model]]]:
         if self.polymorphic_descendants:
             if types := self.polymorphic_types:
-                kwargmaps  = fallback_default_dict(fallbackdict)
+                kwargmaps  = fallback_default_dict(lambda k: fallbackdict())
                 ct_field = self.polymorphic_ctype_field
 
                 ctypes = kwargmaps[(ct_field.alias,)]

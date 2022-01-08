@@ -21,7 +21,8 @@ from django.urls import path, include
 
 urlpatterns = [
     # path("admin/", admin.site.urls),
-    path('api/', include('djx.api.tests.urls')),
+    # path('api/', include('djx.api.tests.urls')),
+    path('api/contacts/', include('djx.contacts.urls')),
     # path("func/", v.func),
     # path("1/", v.Dj.as_view()),
     # path("2/", v.Djx.as_view()),

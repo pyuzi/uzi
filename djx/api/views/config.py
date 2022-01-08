@@ -217,11 +217,12 @@ class BaseConfig(BaseMetadata, t.Generic[_T_Model]):
             if sch := dct['many']:
                 return sch
             elif sch := dct['detail'] if self.detail else dct['outline'] or dct['detail']:
-                return create_schema(
-                    f'{sch.__name__}Collection',
-                    __module__=self.target.__module__,
-                    __root__=(list[sch], ...)
-                )
+                return sch
+                # return create_schema(
+                #     f'{sch.__name__}Collection',
+                #     __module__=self.target.__module__,
+                #     __root__=(list[sch], ...)
+                # )
         elif self.detail:
             return dct['detail']
         else:
@@ -449,7 +450,7 @@ class GenericViewConfig(ViewConfig[_T_DbModel]):
         return orderedset(value if value is not None else base if base is not None else ())
     
     @cached_property
-    def filter_pipeline(self) -> Callable[['View[_T_DbModel]']]:
+    def filter_pipeline(self) -> Callable[['View[_T_DbModel]'], list]:
         return self._make_filter_pipeline()
 
     @metafield[type[t.Any]]()

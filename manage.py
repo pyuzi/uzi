@@ -2,6 +2,13 @@
 import os
 import sys
 
+try:
+    from devtools import debug
+except ImportError:
+    pass
+else:
+    __builtins__.vardump = debug
+
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "example_app.settings")

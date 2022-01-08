@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections import ChainMap
-from types import FunctionType
+from types import FunctionType, GenericAlias
 import typing as t 
 import http
 
@@ -62,6 +62,8 @@ def is_action_func(attr):
 class ViewFunction(Callable, t.Generic[_T_View]):
 
     __slots__ = ()
+
+    __class_getitem__ = classmethod(GenericAlias)
 
     __name__: str
 

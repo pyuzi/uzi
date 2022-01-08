@@ -306,17 +306,19 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
 
     def dump(self, data: t.Union[Iterable[_T_Entity], _T_Entity]=None):
         conf = self.config
+        shape = self.config.shape
+        many = shape is ContentShape.multi
         if data is None:
-            shape = conf.shape
             if shape is ContentShape.blank:
                 return None
             elif shape is ContentShape.multi:
-                data = list(self.objects)
+                data = self.objects
+                # data = list(self.objects)
             else:
                 data = self.object
 
-        if sch := conf.the_response_schema:
-            return sch.validate(data)
+        if sch := self.get_response_schema():
+            return sch._parse(data, many=many)
 
         return data
 
@@ -332,7 +334,7 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
             body = self.ioc[Body]
 
         res = body
-        if schema := self.config.request_schema:
+        if schema := self.get_request_schema():
             if isinstance(body, (str, bytes)):
                 res = schema.parse_raw(body, **kwds)
             else:
@@ -341,6 +343,12 @@ class View(t.Generic[_T_Entity], metaclass=ViewType):
 
     def _get_default_headers(self):
         return dict(self.config.headers)
+
+    def get_response_schema(self):
+        return self.config.the_response_schema
+    
+    def get_request_schema(self):
+        return self.config.request_schema
     
     def make_response(self, status=None):
         conf = self.config

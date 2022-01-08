@@ -243,7 +243,7 @@ class Injectable(metaclass=InjectableType):
             params = params,
         
         if len(params) > 1:
-            params = t.Union[params],
+            params = t.Union[params], # type: ignore
         elif not params:
             raise ValueError(f'atleast 1 type parameter is required 0 given.')
 
@@ -282,6 +282,8 @@ class ResolverFunc(Callable[['Injector'], T_Injected], t.Generic[T_Injected]):
                 pass
             
         return NotImplemented
+    
+    __class_getitem__ = classmethod(GenericAlias)
 
 
 

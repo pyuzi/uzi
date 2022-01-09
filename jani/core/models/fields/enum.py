@@ -4,7 +4,7 @@ from django.db import models
 from enum import Enum as BaseEnum, IntFlag as BaseIntFlag
 
 
-from jani.common.utils import export
+from jani.common.functools import export
 from jani.common.enum import EnumMeta
 
 

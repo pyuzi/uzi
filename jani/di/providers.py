@@ -13,8 +13,7 @@ from jani.common.typing import get_args, typed_signature
 
 
 
-from jani.common.utils import export
-from jani.common.utils.void import Void
+from jani.common.functools import export, Void
 from .util import unique_id
 
 

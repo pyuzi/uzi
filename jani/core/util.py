@@ -1,6 +1,6 @@
 from functools import cache
 
-from jani.common.utils import setdefault, getitem
+from jani.common.data import setdefault, getitem
 from jani.common.imports import ModuleImportRef
 
 

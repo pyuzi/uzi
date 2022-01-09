@@ -2,7 +2,7 @@ import typing as t
 from functools import partial
 from collections.abc import MutableMapping, Sequence, Set
 from jani.common.collections import fallbackdict
-from jani.common.utils import text
+from jani.common import text
 from ninja.errors import *
 
 try:

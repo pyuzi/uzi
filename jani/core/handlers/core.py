@@ -4,7 +4,7 @@ import typing as t
 from contextlib import contextmanager
 from django.core.handlers.base import BaseHandler
 
-from jani.common.utils import cached_property
+from jani.common.functools import cached_property
 
 from jani.di import get_ioc_container, REQUEST_SCOPE
 

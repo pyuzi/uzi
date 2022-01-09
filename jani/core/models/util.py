@@ -1,7 +1,8 @@
 import typing as t 
 import re
 
-from jani.common.utils import DataPath, export
+from jani.common.functools import export
+from jani.common.data import DataPath
 
 
 

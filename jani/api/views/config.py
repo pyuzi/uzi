@@ -11,11 +11,12 @@ from collections.abc import Callable, Mapping, Set, Sequence, Iterable
 from jani.api.abc import Headers
 from jani.api.negotiation import ContentNegotiator
 from jani.api.renderers import Renderer
+from jani.common import text
 from jani.common.collections import fallback_chain_dict, frozendict, orderedset
 from jani.common.typing import get_type_parameters
 
 from jani.di import ioc, get_ioc_container
-from jani.common.utils import export, cached_property, text
+from jani.common.functools import export, cached_property
 from jani.common.metadata import metafield, BaseMetadata, get_metadata_class
 from jani.di.common import Injectable
 from jani.di.container import IocContainer

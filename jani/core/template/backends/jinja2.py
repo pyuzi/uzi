@@ -11,7 +11,7 @@ from django.template.backends.base import BaseEngine
 
 from jani.core import settings
 from jani.core.abc import Request
-from jani.common.utils import cached_property
+from jani.common.functools import cached_property
 from jani.common.imports import ObjectImportRef
 
 from jinja2 import Environment

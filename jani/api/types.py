@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from jani.common.collections import frozendict
 from jani.common.enum import IntEnum, StrEnum, auto, Flag
 
-from jani.common.utils import export, cached_class_property
+from jani.common.functools import export, cached_class_property
 
 
 if t.TYPE_CHECKING:

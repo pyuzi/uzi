@@ -1,4 +1,4 @@
 
 
-from jani.common.utils import export
+from jani.common.functools import export
 

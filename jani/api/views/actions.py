@@ -5,10 +5,11 @@ import typing as t
 import http
 
 from collections.abc import Mapping, Callable
+from jani.common import text
 from jani.common.abc import Representation
 from jani.common.collections import MappingProxy, fallbackdict, frozendict
 
-from jani.common.utils import export, text
+from jani.common.functools import export
 
 
 from ..types import HttpMethod, T_HttpMethods, T_HttpMethodStr, T_HttpMethodName, Route

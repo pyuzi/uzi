@@ -8,6 +8,7 @@ from functools import cache, partial
 from itertools import chain
 from collections import ChainMap
 from collections.abc import Collection, Callable
+from jani.common import text
 
 
 from jani.common.abc import Orderable
@@ -17,8 +18,8 @@ from jani.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
 from jani.common.typing import get_origin
 
 
-from jani.common.utils import ( 
-    export, lookup_property, cached_property, cached_class_property, text
+from jani.common.functools import ( 
+    export, lookup_property, cached_property, cached_class_property
 )
 from jani.common.metadata import metafield, BaseMetadata, get_metadata_class
 

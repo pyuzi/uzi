@@ -3,7 +3,7 @@ import typing as t
 from django.apps import apps
 from jani.common.proxy import proxy
 from jani.common.imports import ImportRef
-from jani.common.utils import calling_frame
+from jani.common.functools import calling_frame
 
 
 if t.TYPE_CHECKING:

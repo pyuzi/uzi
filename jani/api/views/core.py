@@ -12,6 +12,7 @@ from django.core.exceptions import BadRequest
 from django.http.response import HttpResponseBase, HttpResponseNotAllowed
 from django.views.decorators.csrf import csrf_exempt
 from jani.api.abc import Headers
+from jani.common import text
 from jani.common.tests import data
 
 from jani.di.common import Depends, InjectionToken
@@ -21,7 +22,7 @@ from jani.di.scopes import REQUEST_SCOPE
 from ..abc import BodyParser, Args, Body, Kwargs
 from jani.common.collections import frozendict
 
-from jani.common.utils import export, lookup_property, text
+from jani.common.functools import export, lookup_property
 from jani.schemas import QueryLookupSchema, OrmSchema, Schema, parse_obj_as
 from jani.schemas.tools import _get_parsing_type
 

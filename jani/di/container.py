@@ -9,11 +9,12 @@ from types import FunctionType, GenericAlias, MethodType
 import typing as t
 
 from collections.abc import Callable, Mapping, Set, Iterable
+from jani.common import text
 
 from jani.common.collections import PriorityStack, fallback_default_dict, fallbackdict, frozendict
 from jani.common.imports import ImportRef
 from jani.common.proxy import proxy 
-from jani.common.utils import export, text
+from jani.common.functools import export
 
 from . import signals
 

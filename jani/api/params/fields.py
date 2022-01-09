@@ -2,7 +2,7 @@ import typing as t
 
 from collections.abc import Iterable, Callable, Mapping, Hashable
 
-from jani.common.utils import export
+from jani.common.functools import export
 from jani.common.collections import orderedset
 from jani.di import Injectable
 from pydantic.fields import FieldInfo

@@ -9,7 +9,7 @@ from django import http
 
 from jani.core.http import HttpMethod
 
-from jani.common.utils import export, cached_class_property, class_only_method
+from jani.common.functools import export, cached_class_property, class_only_method
 from jani.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 

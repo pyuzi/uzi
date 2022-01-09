@@ -5,11 +5,13 @@ import sys
 import typing as t
 
 from collections.abc import Mapping, Iterable, Hashable
+from jani.common import text
 from jani.common.collections import Arguments, frozendict
 from jani.common.imports import ImportRef
 from jani.common.proxy import unproxy
 
-from jani.common.utils import export, Void, calling_frame, text, DataPath
+from jani.common.functools import export, Void, calling_frame
+from jani.common.data import DataPath
 
 from jani.common.enum import IntEnum, auto
 

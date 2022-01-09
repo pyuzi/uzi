@@ -17,10 +17,10 @@ from jani.common.metadata import metafield, BaseMetadata
 from jani.common.moment import Moment, moment
 
 
-from jani.common.utils import (
+from jani.common.functools import (
     export, cached_property
 )
-from jani.common.utils.data import getitem, result, DataPath
+from jani.common.data import getitem, result, DataPath
 from jani.core.models.moment import MomentField
 
 from .alias import aliased

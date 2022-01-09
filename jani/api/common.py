@@ -4,7 +4,7 @@ import operator as op
 from functools import cache, reduce
 from collections.abc import Callable, Hashable, Mapping
 
-from jani.common.utils import export
+from jani.common.functools import export
 from jani.common.enum import StrEnum, IntFlag, auto
 
 

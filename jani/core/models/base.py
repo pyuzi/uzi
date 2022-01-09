@@ -20,7 +20,7 @@ from jani.common.moment import Moment
 from jani.common.proxy import proxy
 
 
-from jani.common.utils import (
+from jani.common.functools import (
     export, class_property, cached_class_property
 )
 

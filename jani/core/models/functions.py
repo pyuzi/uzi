@@ -6,7 +6,7 @@ from django.db.models import Field
 from django.db.models.functions import JSONObject as BaseJSONObject
 
 
-from jani.common.utils import export
+from jani.common.functools import export
 
 
 from .fields.json import JSONObjectField, _T_JSONObject, _T_ObjectFactory

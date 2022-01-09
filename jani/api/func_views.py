@@ -10,7 +10,7 @@ from jani.api.common import ParamFlag
 from jani.common.enum import IntFlag, auto
 # from jani.api.params.fields import Body, Cookie, File, Form, Header, Path, Query
 
-from jani.common.utils import export, class_property
+from jani.common.functools import export, class_property
 # from jani.common.typing import get_all_type_hints, get_true_types, get_origin, get_args, eval_type, iter_true_types
 
 from jani.di import get_ioc_container, IocContainer, Injector

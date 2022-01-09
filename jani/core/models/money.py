@@ -9,7 +9,7 @@ from django.db.models.expressions import BaseExpression
 
 from jani.common.money import Money, MoneyAbc, to_money, local_currency
 
-from jani.common.utils import class_property
+from jani.common.functools import class_property
 
 
 logger = logging.getLogger(__name__)

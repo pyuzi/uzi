@@ -1,7 +1,7 @@
 
 import typing as t
 from abc import ABCMeta, abstractmethod
-from jani.common.utils import export
+from jani.common.functools import export
 
 
 from jani.di import ioc

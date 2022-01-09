@@ -9,6 +9,7 @@ from functools import cache, partial
 from django.apps import apps
 from django.core.exceptions import ImproperlyConfigured
 from django.db import models as m
+from jani.common import text
 
 from jani.common.collections import PriorityStack, fallbackdict, nonedict
 
@@ -16,8 +17,9 @@ from jani.di import ioc, InjectedClassVar
 from jani.core import settings
 from jani.common.imports import ImportRef
 from jani.common.proxy import unproxy, proxy
-from jani.common.utils import (
-    export, text, getitem, class_property, cached_class_property, setdefault, 
+from jani.common.data import getitem, setdefault
+from jani.common.functools import (
+    export, class_property, cached_class_property, 
     class_only_method
 )
 

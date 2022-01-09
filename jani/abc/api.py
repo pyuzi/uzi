@@ -7,7 +7,7 @@ import typing as t
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import MutableMapping, Callable, Mapping, Collection, Iterator, Sequence
 from jani.common.collections import MappingProxy, frozendict, Arguments, _T_Args, _T_Kwargs
-from jani.common.utils import export
+from jani.common.functools import export
 from jani.common import json
 
 

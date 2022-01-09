@@ -9,9 +9,9 @@ from jani.common.collections import  frozendict, nonedict
 from jani.common.imports import ImportRef
 
 
-from jani.common.utils import export
+from jani.common.functools import export
 
-from jani.common.utils import Void
+from jani.common.functools import Void
 
 from .common import ( 
     Injectable, InjectorVar,

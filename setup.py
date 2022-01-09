@@ -12,7 +12,7 @@ setup(
     author="David Kyalo, Qwertie LTD",
     author_email="kyalo@qwertie.com",
     classifiers=[],
-    packages=find_namespace_packages(include=['jani.*']),
+    packages=find_namespace_packages(exclude=['jani.common', 'jani.di'], include=['jani.*']),
     include_package_data=True,
     python_requires="~=3.9",
     install_requires=[

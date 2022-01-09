@@ -10,10 +10,10 @@ from jani.common.collections import fallback_chain_dict, fallback_default_dict, 
 from jani.common.metadata import metafield
 
 
-from jani.common.utils import (
+from jani.common.functools import (
     export, cached_property
 )
-from jani.common.utils.data import DataPath, result
+from jani.common.data import DataPath, result
 
 from ..config import ModelConfig
 

@@ -3,7 +3,7 @@ from typing import ClassVar, Generic, Type, TypeVar
 from django.db import models
 from django.db.models import Manager, Model
 
-from jani.common.utils import export
+from jani.common.functools import export
 
 from rest_framework.generics import GenericAPIView as BaseGenericAPIView
 from rest_framework.views import APIView as BaseAPIView

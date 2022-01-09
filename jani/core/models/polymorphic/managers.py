@@ -2,7 +2,7 @@ import typing as t
 
 
 from django.db import models as m
-from jani.common.utils.data import result
+from jani.common.data import result
 
 
 from polymorphic.managers import (
@@ -15,7 +15,7 @@ from polymorphic_tree.managers import (
 )
 
 
-from jani.common.utils import (
+from jani.common.functools import (
     export, 
 )
 

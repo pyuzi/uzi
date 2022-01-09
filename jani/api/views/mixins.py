@@ -9,7 +9,7 @@ import typing as t
 from django.http import HttpRequest as Request, HttpResponse as Response
 
 from jani.schemas import Schema
-from jani.common.utils import export, assign
+from jani.common.functools import export
 
 from .generic import GenericView, _T_Model
 from ..types import HttpMethod 

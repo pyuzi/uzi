@@ -5,7 +5,7 @@ import typing as t
 from functools import partial
 
 from jani.common import typing as tt
-from jani.common.utils import export
+from jani.common.functools import export
 
 
 

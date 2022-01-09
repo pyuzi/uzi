@@ -9,7 +9,7 @@ from typing import (
 from enum import IntEnum, auto, unique 
 
 
-from jani.common.utils import export
+from jani.common.functools import export
 
 from jani.common.abc import Orderable
 

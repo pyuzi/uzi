@@ -9,7 +9,8 @@ from collections.abc import Hashable, Iterable
 from django.http import HttpRequest as Request, HttpResponse as Response
 
 from jani.schemas import Schema
-from jani.common.utils import export, assign
+from jani.common.data import assign
+from jani.common.functools import export
 from jani.core.models import base as m
 
 from .core import View, action

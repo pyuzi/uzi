@@ -2,13 +2,13 @@ import typing as t
 
 
 from django.db import models as m
-from jani.common.utils.data import result
+from jani.common.data import result
 
 from polymorphic.models import PolymorphicModel as BassePolymorphicModel
 from polymorphic_tree.models import PolymorphicMPTTModel, PolymorphicTreeForeignKey
 
 
-from jani.common.utils import (
+from jani.common.functools import (
     export, 
 )
 

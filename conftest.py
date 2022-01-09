@@ -33,7 +33,7 @@ def speed_profiler(ops_per_sec):
         return _profiler
 
     def make(n_=int(1e4), g_=None, /, **kwds):
-        from jani.common.utils._functools import calling_frame
+        from jani.common.functools import calling_frame
         if g_ is None:
             g_ = dict(calling_frame(locals=True))
 

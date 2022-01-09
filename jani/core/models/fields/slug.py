@@ -2,7 +2,8 @@ import typing as t
 from functools import partial
 from django.db import models as m
 from django.core import validators
-from jani.common.utils import text, export, cached_property
+from jani.common import text
+from jani.common.functools import export, cached_property
 
 
 _T_AutoSlugFunc = t.Callable[[m.Model, t.Optional[str]], t.Optional[str]]

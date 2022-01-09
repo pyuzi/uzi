@@ -8,7 +8,7 @@ from django.db.models.query_utils import DeferredAttribute
 
 from jani.common import json
 from jani.common.collections import AttributeMapping
-from jani.common.utils import export, cached_property
+from jani.common.functools import export, cached_property
 
 
 class _RawJson(str):

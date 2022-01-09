@@ -16,7 +16,7 @@ from collections.abc import Hashable, Sequence
 from jani.common.collections import orderedset, fallback_chain_dict, fallbackdict
 from jani.common.imports import ImportRef
 from jani.common.proxy import unproxy
-from jani.common.utils.data import assign, delitem, getitem
+from jani.common.data import assign, delitem, getitem
 from jani.common.saferef import SafeReferenceType, saferef
 
 from jani.core import settings

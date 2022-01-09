@@ -7,7 +7,7 @@ from jani.common.imports import ImportRef
 from jani.common.intervals import Bound
 from jani.common.proxy import proxy
 
-from jani.common.utils import export, cached_property
+from jani.common.functools import export, cached_property
 from jani.di import inspect, ioc
 
 

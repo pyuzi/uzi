@@ -15,7 +15,8 @@ from jani.common.collections import orderedset, AttributeMapping
 from jani.common.imports import ImportRef, ObjectImportRef
 
 from jani.core.models import ModelUrn
-from jani.common.utils import export, lookup_property, assign
+from jani.common.functools import export, lookup_property
+from jani.common.data import assign
 from jani.common.metadata import metafield, BaseMetadata, get_metadata_class
 from jani.schemas import QueryLookupSchema, OrmSchema, Schema, create_schema
 from pydantic.class_validators import validator

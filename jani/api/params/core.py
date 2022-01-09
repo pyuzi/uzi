@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence, Set
 from jani.common.collections import Arguments, frozendict
 
 from jani.di import get_ioc_container
-from jani.common.utils import export
+from jani.common.functools import export
 from jani.di.common import Depends, Injectable
 from jani.schemas.decorator import ParameterInfo
 

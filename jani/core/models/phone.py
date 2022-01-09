@@ -3,7 +3,7 @@ import typing as t
 from django.db import models 
 
 
-from jani.common.utils import export
+from jani.common.functools import export
 from jani.common.phone import PhoneNumber, PhoneFormat, PhoneStr, parse_phone, to_phone
 from jani.common.locale import locale, Locale
 

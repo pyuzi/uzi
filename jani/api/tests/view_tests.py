@@ -1,5 +1,5 @@
 import typing as t
-from jani.common.utils.data import DataPath 
+from jani.common.data import DataPath 
 import pytest
 from django.test import Client as DjClient, RequestFactory
 

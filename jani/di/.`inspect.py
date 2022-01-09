@@ -5,7 +5,7 @@ import typing as t
 
 from collections.abc import Mapping, Callable
 
-from jani.common.utils import export
+from jani.common.functools import export
 from jani.common.typing import get_origin, get_args, eval_type
 from jani.common.imports import ImportRef
 

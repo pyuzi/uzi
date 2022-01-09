@@ -23,8 +23,8 @@ from types import FunctionType
 from collections.abc import Callable
 
 
-from jani.common.utils import cached_property, export
-from jani.common.utils.data import DataPath, getitem, setdefault, setitem
+from jani.common.functools import cached_property, export
+from jani.common.data import DataPath, getitem, setdefault, setitem
 
 
 from .util import LookupDataPath

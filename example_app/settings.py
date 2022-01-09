@@ -31,7 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    "djx.core",
+    "jani.core",
 
     # 'rest_framework',
     'django_filters',
@@ -46,16 +46,16 @@ INSTALLED_APPS = [
     'polymorphic',
     'mptt',
 
-    "djx.iam",
-    # "djx.spaces",
-    # "djx.ledgers",
+    "jani.iam",
+    # "jani.spaces",
+    # "jani.ledgers",
 
-    "djx.schemas",
-    "djx.keydb",
-    "djx.contacts",
+    "jani.schemas",
+    "jani.keydb",
+    "jani.contacts",
 
-    "djx.cms",
-    # "djx.xtags",
+    "jani.cms",
+    # "jani.xtags",
     # "example_app",
 ]
 
@@ -118,11 +118,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
-if 'djx.iam' in INSTALLED_APPS:
+if 'jani.iam' in INSTALLED_APPS:
     AUTH_USER_MODEL = 'iam.User'
 
     AUTHENTICATION_BACKENDS = [
-        'djx.iam.backends.ModelBackend',
+        'jani.iam.backends.ModelBackend',
     ]
 
 # Internationalization

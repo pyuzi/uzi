@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/1.10/howto/deployment/wsgi/
 
 import os
 
-from djx.core.wsgi import get_wsgi_application
+from jani.core.wsgi import get_wsgi_application
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "example_app.settings")
 

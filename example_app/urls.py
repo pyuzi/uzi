@@ -21,10 +21,10 @@ from django.urls import path, include
 
 urlpatterns = [
     # path("admin/", admin.site.urls),
-    # path('api/', include('djx.api.tests.urls')),
-    path('api/contacts/', include('djx.contacts.urls')),
+    # path('api/', include('jani.api.tests.urls')),
+    path('api/contacts/', include('jani.contacts.urls')),
     # path("func/", v.func),
     # path("1/", v.Dj.as_view()),
-    # path("2/", v.Djx.as_view()),
+    # path("2/", v.Jani.as_view()),
     # path("3/", v.Rest.as_view()),
 ]

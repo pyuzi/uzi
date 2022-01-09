@@ -13,6 +13,6 @@ import os
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'example_app.settings')
 
 
-from djx.core.asgi import get_asgi_application
+from jani.core.asgi import get_asgi_application
 
 application = get_asgi_application()

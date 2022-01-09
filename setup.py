@@ -5,14 +5,14 @@ from setuptools import setup, find_namespace_packages
 
 
 setup(
-    name="django-extended",
+    name="Jani",
     version="0.0.1",
-    description="Django Extended",
+    description="Jani",
     long_description="Tools, utilities and apps for django",
     author="David Kyalo, Qwertie LTD",
     author_email="kyalo@qwertie.com",
     classifiers=[],
-    packages=find_namespace_packages(include=['djx.*']),
+    packages=find_namespace_packages(include=['jani.*']),
     include_package_data=True,
     python_requires="~=3.9",
     install_requires=[

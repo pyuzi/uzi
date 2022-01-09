@@ -62,7 +62,7 @@ LOGGING = {
             "level": "WARNING",
             "propagate": False,
         },
-        "djx": {
+        "jani": {
             "handlers": ["console", "mail_admins"],
             "level": "DEBUG",
             "propagate": True,

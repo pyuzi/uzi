@@ -2,7 +2,7 @@
 from django.db import models
 from django.utils import timezone
 
-# from djx.multisite.fields import SiteForeignKey
+# from jani.multisite.fields import SiteForeignKey
 
 
 class MySite(models.Model):

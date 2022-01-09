@@ -7,8 +7,8 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.views import APIView
 
 
-from djx.multisite.models import impl 
-from djx.core import views
+from jani.multisite.models import impl 
+from jani.core import views
 
 from time import time
 
@@ -40,7 +40,7 @@ class Dj(View):
     
 
 
-class Djx(views.View):
+class Jani(views.View):
 
     def get(self, req: HttpRequest):
         tick(req)

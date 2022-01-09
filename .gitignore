@@ -4,13 +4,6 @@
 */*.pyo
 *.sqlite3
 .installed.cfg
-develop-eggs
-dist
-downloads
-eggs
-parts
-*.egg-info
-src/*.egg-info
 
 !static_files/dist
 
@@ -22,12 +15,13 @@ src/*.egg-info
 /.cache
 .logs/
 pytest.ini
+/*.egg-info
 
 .vscode/
 
-
 .local/*
 !.local/git-keep
+**/*.local*
 
 XDG_CACHE_HOME
 
@@ -46,6 +40,8 @@ local_test_settings.py
 _local_test_settings.py
 */_local_test_settings.py
 
+# migrations
+# */migrations
 
 */**/wsgi_venv.txt
 */**/wsgi_venv.py
@@ -116,3 +112,8 @@ depo*.csv
 *.txt
 
 build
+
+third_party
+third_party/*
+secrets/google/*
+bin/*.csv

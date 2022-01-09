@@ -1,30 +1,40 @@
 #!/usr/bin/env python
 
 from setuptools import setup, find_namespace_packages
+from pathlib import Path
 
 
 
 setup(
-    name="Jani",
+    name="Jani-DI",
     version="0.0.1",
-    description="Jani",
-    long_description="Tools, utilities and apps for django",
-    author="David Kyalo, Qwertie LTD",
-    author_email="kyalo@qwertie.com",
-    classifiers=[],
-    packages=find_namespace_packages(exclude=['jani.common', 'jani.di'], include=['jani.*']),
+    author="David Kyalo",
+    description="A python development toolkit",
+    long_description=Path("README.md").read_text(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/davidkyalo/jani-common",
+    project_urls={
+        "Bug Tracker": "https://github.com/davidkyalo/jani-common/issues",
+    },
+    classifiers=[
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+    ],
+    packages=find_namespace_packages(include=["jani.di"]),
     include_package_data=True,
     python_requires="~=3.9",
-    install_requires=[
-        'arrow~=1.1.1',
-        'cachetools~=4.2.1',
-        'orjson>=3.5.2',
-        'uvicorn>=0.13.4',
-        'uvloop>=0.15.2',
-        'blinker>=1.4',
-    ],
-    extras_require={
-        'django': ['django~=3.2.4', 'django-ninja>=0.12.3'],
-        'phonenumbers': ['phonenumbers>=8.12.24',],
-    }
+    # install_requires=["typing-extensions >=4.0.1"],
+    # extras_require={
+    #     "json": ["orjson>=3.6.5"],
+    #     "locale": ["Babel >=2.9.1"],
+    #     "moment": ["arrow >=1.2.1"],
+    #     "money": ["Jani-Common[locale]", "py-moneyed >=2.0"],
+    #     "networks": ["pydantic[email]"],
+    #     "phone": ["Jani-Common[locale]", "phonenumbers >=8.12.40"],
+    #     "test": ["pytest >=6.2.5", "pytest-asyncio >=0.16.0"],
+    #     "dev": ["Jani-Common[test]", "memory-profiler"],
+    #     "all": [
+    #         "Jani-Common[json,locale,moment,money,networks,phone]",
+    #     ],
+    # },
 )

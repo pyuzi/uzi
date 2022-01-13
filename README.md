@@ -24,3 +24,7 @@ A good DI container:
 * __must support__ shared dependencies, so we wouldn’t need to exploit the Singleton Pattern
 * __must support__ use of profiles, so we can configure it accordingly on different environments
 * __should support__ the Decorator Pattern
+
+
+## Modularity
+The ability to isolate deps within their modules/packages

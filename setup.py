@@ -12,18 +12,20 @@ setup(
     description="A python development toolkit",
     long_description=Path("README.md").read_text(),
     long_description_content_type="text/markdown",
-    url="https://github.com/davidkyalo/jani-common",
+    url="https://github.com/davidkyalo/laza-common",
     project_urls={
-        "Bug Tracker": "https://github.com/davidkyalo/jani-common/issues",
+        "Bug Tracker": "https://github.com/davidkyalo/laza-common/issues",
     },
     classifiers=[
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
     ],
-    packages=find_namespace_packages(include=["jani.di"]),
+    packages=find_namespace_packages(include=["laza.di"]),
     include_package_data=True,
     python_requires="~=3.9",
-    # install_requires=["typing-extensions >=4.0.1"],
+    install_requires=[
+        "blinker ~=1.4",
+    ],
     # extras_require={
     #     "json": ["orjson>=3.6.5"],
     #     "locale": ["Babel >=2.9.1"],

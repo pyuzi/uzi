@@ -8,12 +8,12 @@ A Python Development Toolkit
 
 Basic install
 ```
-    pip install jani-di
+    pip install laza-di
 ```
 
 Full install. Installs all optional dependencies.
 ```
-    pip install jani-di[all]
+    pip install laza-di[all]
 ```
 
 What describes a good DI container#

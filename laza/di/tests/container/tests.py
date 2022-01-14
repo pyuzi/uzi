@@ -4,7 +4,7 @@ import inspect as ins
 import pytest
 
 
-from jani.di import IocContainer, Injector, ioc
+from laza.di import IocContainer, Injector, ioc
 
 
 

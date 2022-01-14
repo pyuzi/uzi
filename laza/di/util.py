@@ -3,7 +3,7 @@ import typing as t
 
 
 
-from jani.common.functools import export
+from laza.common.functools import export
 
 
 

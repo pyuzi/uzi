@@ -6,7 +6,7 @@ from dependency_injector import providers
 from dependency_injector import containers
 from dependency_injector import wiring
 
-from jani.di import ioc
+from laza.di import ioc
 
 
 N = int(5e4)

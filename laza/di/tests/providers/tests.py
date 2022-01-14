@@ -4,11 +4,10 @@ from contextlib import nullcontext
 
 import typing as t
 
-from memory_profiler import profile
 import pytest
 
 
-from jani.di import ioc, InjectedLookup
+from laza.di import ioc, InjectedLookup
 
 
 from .mocks import *
@@ -66,7 +65,7 @@ class SymbolTests:
                 assert inj[key] == val
 
                 
-                vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
+                # vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
 
                 ioc.alias(Early, Late, at='main')
                 assert isinstance(inj[Early], Late)
@@ -74,7 +73,7 @@ class SymbolTests:
                 ioc.alias(Late, key, at='main')
                 assert inj[Early] == val
 
-                vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
+                # vardump({ s.name: s.resolvers for s in ioc.scopes.values() if s.resolvers })
 
         assert 1
                 
@@ -108,10 +107,10 @@ class SymbolTests:
 
                             _n = int(2.5e4)
 
-                            vardump([injfoo(), injfoo(), injfoo()])
-                            vardump([injbafoo(), injbafoo(), injbafoo()])
+                            # vardump([injfoo(), injfoo(), injfoo()])
+                            # vardump([injbafoo(), injbafoo(), injbafoo()])
 
-                            vardump(_ioc_=ioc.injector, _inj_=inj)
+                            # vardump(_ioc_=ioc.injector, _inj_=inj)
                             injbar()
                             injfoo()
 

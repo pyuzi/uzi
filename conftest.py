@@ -6,8 +6,7 @@ import typing as t
 from timeit import repeat
 from statistics import median, median_high, mean
 
-from devtools import debug
-builtins.vardump = debug
+
 
 
 @pytest.fixture(scope='session')
@@ -35,7 +34,7 @@ def speed_profiler(ops_per_sec):
         return _profiler
 
     def make(n_=int(1e4), g_=None, /, **kwds):
-        from jani.common.functools import calling_frame
+        from laza.common.functools import calling_frame
         if g_ is None:
             g_ = dict(calling_frame(locals=True))
 

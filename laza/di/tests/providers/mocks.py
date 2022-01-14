@@ -5,12 +5,12 @@ import pytest
 
 
 
-from jani.di import (
+from laza.di import (
     ioc, Depends, Scope, InjectedProperty, Injector,
     Injectable, 
 )
 
-from jani.di.util import unique_id
+from laza.di.util import unique_id
 
 
 

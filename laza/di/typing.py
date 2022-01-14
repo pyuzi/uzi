@@ -4,8 +4,8 @@ import typing as t
 
 from functools import partial
 
-from jani.common import typing as tt
-from jani.common.functools import export
+from laza.common import typing as tt
+from laza.common.functools import export
 
 
 

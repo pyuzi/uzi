@@ -5,15 +5,15 @@ from operator import le
 import typing as t 
 from inspect import Parameter, Signature
 from abc import abstractmethod
-from jani.common.abc import Orderable
-from jani.common.collections import Arguments, frozendict, orderedset
+from laza.common.abc import Orderable
+from laza.common.collections import Arguments, frozendict, orderedset
 
 from collections.abc import  Callable, Hashable, Mapping, Sequence
-from jani.common.typing import get_args, typed_signature
+from laza.common.typing import get_args, typed_signature
 
 
 
-from jani.common.functools import export, Void
+from laza.common.functools import export, Void
 from .util import unique_id
 
 

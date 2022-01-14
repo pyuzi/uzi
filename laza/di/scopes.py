@@ -8,20 +8,20 @@ from functools import cache, partial
 from itertools import chain
 from collections import ChainMap
 from collections.abc import Collection, Callable
-from jani.common import text
+from laza.common import text
 
 
-from jani.common.abc import Orderable
+from laza.common.abc import Orderable
 
-from jani.common.collections import PriorityStack, fallback_default_dict, nonedict, orderedset, fallbackdict
-from jani.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
-from jani.common.typing import get_origin
+from laza.common.collections import PriorityStack, fallback_default_dict, nonedict, orderedset, fallbackdict
+from laza.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
+from laza.common.typing import get_origin
 
 
-from jani.common.functools import ( 
+from laza.common.functools import ( 
     export, lookup_property, cached_property, cached_class_property
 )
-from jani.common.metadata import metafield, BaseMetadata, get_metadata_class
+from laza.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 

@@ -54,24 +54,24 @@ class BasicGenericTests:
     def test_basic(self):
         
 
-        for t in (Foo, Bar, FooBar, IntFoo, FooBarBaz, FooBar[int, _T_Bar]):
-            if isinstance(t, GenericAlias):
-                vardump(
-                    t, 
-                    t.__origin__, 
-                    t.__args__, 
-                    t.__parameters__, 
-                    getattr(t, '__annotations__', None),
-                    t.__init__.__annotations__,
-                )
-            else:
-                vardump(
-                    t, 
-                    getattr(t, '__orig_bases__', None),
-                    t.__parameters__, 
-                    getattr(t, '__annotations__', None),
-                    t.__init__.__annotations__,
-                )
+        # for t in (Foo, Bar, FooBar, IntFoo, FooBarBaz, FooBar[int, _T_Bar]):
+        #     if isinstance(t, GenericAlias):
+        #         vardump(
+        #             t, 
+        #             t.__origin__, 
+        #             t.__args__, 
+        #             t.__parameters__, 
+        #             getattr(t, '__annotations__', None),
+        #             t.__init__.__annotations__,
+        #         )
+        #     else:
+        #         vardump(
+        #             t, 
+        #             getattr(t, '__orig_bases__', None),
+        #             t.__parameters__, 
+        #             getattr(t, '__annotations__', None),
+        #             t.__init__.__annotations__,
+        #         )
 
 
 

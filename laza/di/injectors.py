@@ -5,13 +5,13 @@ from threading import Lock
 from collections import deque
 from contextlib import AbstractContextManager as ContextManager, ExitStack, nullcontext
 from types import FunctionType
-from jani.common.collections import  frozendict, nonedict
-from jani.common.imports import ImportRef
+from laza.common.collections import  frozendict, nonedict
+from laza.common.imports import ImportRef
 
 
-from jani.common.functools import export
+from laza.common.functools import export
 
-from jani.common.functools import Void
+from laza.common.functools import Void
 
 from .common import ( 
     Injectable, InjectorVar,

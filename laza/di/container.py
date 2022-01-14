@@ -9,12 +9,12 @@ from types import FunctionType, GenericAlias, MethodType
 import typing as t
 
 from collections.abc import Callable, Mapping, Set, Iterable
-from jani.common import text
+from laza.common import text
 
-from jani.common.collections import PriorityStack, fallback_default_dict, fallbackdict, frozendict
-from jani.common.imports import ImportRef
-from jani.common.proxy import proxy 
-from jani.common.functools import export
+from laza.common.collections import PriorityStack, fallback_default_dict, fallbackdict, frozendict
+from laza.common.imports import ImportRef
+from laza.common.proxy import proxy 
+from laza.common.functools import export
 
 from . import signals
 

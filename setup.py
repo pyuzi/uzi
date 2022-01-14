@@ -4,7 +4,6 @@ from setuptools import setup, find_namespace_packages
 from pathlib import Path
 
 
-
 setup(
     name="laza-di",
     version="0.0.1",
@@ -20,7 +19,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
     ],
-    packages=find_namespace_packages(where='src.*', include=['laza.di']),
+    packages=find_namespace_packages(include=['laza.di']),
     include_package_data=True,
     python_requires="~=3.9",
     zip_safe=True,

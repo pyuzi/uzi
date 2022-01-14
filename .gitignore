@@ -5,7 +5,6 @@
 *.sqlite3
 .installed.cfg
 
-!static_files/dist
 
 *~
 *.~
@@ -15,7 +14,7 @@
 /.cache
 .logs/
 pytest.ini
-/*.egg-info
+*.egg-info
 
 .vscode/
 
@@ -59,6 +58,7 @@ venv
 __pycache__/
 .pytest_cache/
 
+
 # coverage result
 .coverage
 /coverage/
@@ -76,21 +76,9 @@ npm-debug.log
 #Folders
 .DS_Store
 
-# Webpack
-/assets/bundles/*
-/assets/webpack_bundles/*
-/webpack-stats.json
-/jquery-webpack-stats.json
-
-# Sass
-.sass-cache
-*.map
 
 # General
 /venv/
-/env/
-/output/
-/cache/
 
 
 
@@ -107,12 +95,12 @@ certs
 
 depo*.csv
 
-*.csv
 *.log
-*.csr
-*.txt
 
 build
+dist
+
+*.egg-info
 
 third_party
 third_party/*

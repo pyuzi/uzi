@@ -6,14 +6,14 @@ from pathlib import Path
 
 setup(
     name="laza-di",
-    version="0.0.2",
+    version="0.0.3",
     author="David Kyalo",
-    description="A python development toolkit",
+    description="Dependency injection library",
     long_description=Path("README.md").read_text(),
     long_description_content_type="text/markdown",
-    url="https://github.com/davidkyalo/laza-common",
+    url="https://github.com/laza-toolkit/di",
     project_urls={
-        "Bug Tracker": "https://github.com/davidkyalo/laza-common/issues",
+        "Bug Tracker": "https://github.com/laza-toolkit/di/issues",
     },
     classifiers=[
         "Programming Language :: Python :: 3.9",

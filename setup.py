@@ -6,7 +6,7 @@ from pathlib import Path
 
 setup(
     name="laza-di",
-    version="0.0.1",
+    version="0.0.2",
     author="David Kyalo",
     description="A python development toolkit",
     long_description=Path("README.md").read_text(),

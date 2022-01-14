@@ -1,4 +1,4 @@
-# JANI Common
+# Laza Common
 
 A Python Development Toolkit
 

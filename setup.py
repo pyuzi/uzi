@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 setup(
-    name="Jani-DI",
+    name="laza-di",
     version="0.0.1",
     author="David Kyalo",
     description="A python development toolkit",
@@ -20,23 +20,12 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
     ],
-    packages=find_namespace_packages(include=["laza.di"]),
+    packages=find_namespace_packages(where='src.*', include=['laza.di']),
     include_package_data=True,
     python_requires="~=3.9",
+    zip_safe=True,
     install_requires=[
         "blinker ~=1.4",
+        "laza-common"
     ],
-    # extras_require={
-    #     "json": ["orjson>=3.6.5"],
-    #     "locale": ["Babel >=2.9.1"],
-    #     "moment": ["arrow >=1.2.1"],
-    #     "money": ["Jani-Common[locale]", "py-moneyed >=2.0"],
-    #     "networks": ["pydantic[email]"],
-    #     "phone": ["Jani-Common[locale]", "phonenumbers >=8.12.40"],
-    #     "test": ["pytest >=6.2.5", "pytest-asyncio >=0.16.0"],
-    #     "dev": ["Jani-Common[test]", "memory-profiler"],
-    #     "all": [
-    #         "Jani-Common[json,locale,moment,money,networks,phone]",
-    #     ],
-    # },
 )

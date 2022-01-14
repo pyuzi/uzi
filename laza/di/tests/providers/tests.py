@@ -121,8 +121,8 @@ class SymbolTests:
                             profile(mkbar, injbar, 'Bar')
 
                     
-                            wrapbar = ioc.wrap(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
-                            wrapfunc = ioc.wrap(user_func_str, kwargs=dict(p='PATCHED USER'))
+                            wrapbar = ioc.inject(Bar, kwargs=dict(foo='PATCHED FOO', kw2='KEYWOARD_2'))
+                            wrapfunc = ioc.inject(user_func_str, kwargs=dict(p='PATCHED USER'))
 
                             print(f'\n WRAPPED ---> {wrapbar()!r}\n REAL   ---> {injbar()!r}')
                             print(f'\n WRAPPED ---> {wrapfunc()!r}\n REAL   ---> {injfunc()!r}')

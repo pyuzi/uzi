@@ -199,16 +199,16 @@ class IocContainer:
         return self.injector.make(func, *args, **kwargs)
 
     @t.overload
-    def wrap(self, cls: type[_T], /, *, scope: str=None, priority=-1, **kwds) -> type[_T]:
+    def inject(self, cls: type[_T], /, *, scope: str=None, priority=-1, **kwds) -> type[_T]:
         ...
     @t.overload
-    def wrap(self, func: Callable[..., _T], /, *, scope: str=None, priority=-1, **kwds) -> Callable[..., _T]:
+    def inject(self, func: Callable[..., _T], /, *, scope: str=None, priority=-1, **kwds) -> Callable[..., _T]:
         ...
     @t.overload
-    def wrap(self, *, scope: str=None, priority=-1, **kwds) -> Callable[[_T_Callable], _T_Callable]:
+    def inject(self, *, scope: str=None, priority=-1, **kwds) -> Callable[[_T_Callable], _T_Callable]:
         ...
 
-    def wrap(self, func: _T_Callable =..., /, *, scope: str=None, **kwds) -> _T_Callable:
+    def inject(self, func: _T_Callable =..., /, *, scope: str=None, **kwds) -> _T_Callable:
         scope = self.scope_name(scope, 'any')
 
         def decorate(fn):

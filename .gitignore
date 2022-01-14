@@ -57,7 +57,8 @@ venv
 /mediafiles/*
 __pycache__/
 .pytest_cache/
-
+.tox/
+/build/
 
 # coverage result
 .coverage
@@ -97,8 +98,7 @@ depo*.csv
 
 *.log
 
-build
-dist
+/dist/
 
 *.egg-info
 

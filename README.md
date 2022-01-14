@@ -1,21 +1,81 @@
-# Laza Common
+# Laza DI
 
-A Python Development Toolkit
+A super fast dependency injection library for python.
 
 
+```python
 
-## Install
+from laza.di import IocContainer
 
-Basic install
+ioc = IocContainer()
+
+
+@ioc.injectable()
+class A(object):
+    ...
+
+
+@ioc.injectable(shared=True)
+class B(object):
+    ...
+
+
+# Register 
+@ioc.injectable()
+class C(object):
+    def __init__(self, a: A, b: B): # <-- dependencies `A` and `B` are injected automatically
+        self.a = a
+        self.b = b
+
+
+@ioc.injectable()
+class Service(object):
+    def __init__(self, a: A, b: B, c: C):
+        self.a = a
+        self.b = b
+        self.c = c
+
+
+@ioc.inject
+def main(service: Service):
+    ...
+
+
+if __name__ == "__main__":
+
+    main()  # <-- dependency is injected automatically
+
+    # transient dependencies always resolve to a new values
+    assert ioc[A] is not ioc[A] is not ioc[A]
+    
+    # Shared dependencies always resolve to the same value.
+    assert ioc[B] is ioc[B] is ioc[B]
+    assert ioc[Service] is ioc[Service] is ioc[Service]
+
 ```
-    pip install laza-di
+
+
+
+## Installation
+
+Install from [PyPi](https://pypi.org/project/laza-di/)
+
+```
+pip install laza-di
 ```
 
-Full install. Installs all optional dependencies.
-```
-    pip install laza-di[all]
-```
 
+## Documentation
+
+Coming soon.
+
+
+## Production
+
+__This package is still in active development and should not be used in production environment__
+
+
+<!--
 What describes a good DI container#
 A good DI container:
 
@@ -28,3 +88,5 @@ A good DI container:
 
 ## Modularity
 The ability to isolate deps within their modules/packages
+
+-->

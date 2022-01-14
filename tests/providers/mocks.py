@@ -76,7 +76,7 @@ class _TestScope(Scope):
 
 I_FooName = Injectable('foo.name')
 
-@ioc.type(cache=True, at='main')
+@ioc.type(shared=True, at='main')
 class Foo:
     
     def __init__(self, name: Depends(str, on=I_FooName), *, user: Depends(str, on=token_abc), inj: Injector) -> None:
@@ -94,7 +94,7 @@ class Foo:
 ioc.value(I_FooName, 'My Name Is Foo!!')
 
 
-@ioc.alias(use=Foo, cache=False)
+@ioc.alias(use=Foo, shared=False)
 class Follow:
     pass
 
@@ -102,12 +102,13 @@ class Follow:
 
 
 
-@ioc.function(at='any', cache=True)
+
+@ioc.function(at='any', shared=True)
 def user_func_injectable(user: Depends(str, on=token_abc), d2: Follow):
     return f'user_func_injectable -> {user=!r} #{unique_id()}'
 
 
-@ioc.injectable(at='any', cache=True)
+@ioc.injectable(at='any', shared=True)
 def user_func_injectable(user: Depends(str, on=token_abc), d2: Follow):
     return f'user_func_injectable -> {user=!r} #{unique_id()}'
 
@@ -116,10 +117,10 @@ def user_func_injectable(user: Depends(str, on=token_abc), d2: Follow):
 
 I_Bar = Injectable('I_Bar')
 
-ioc.alias(I_Bar, user_func_injectable, cache=False)
+ioc.alias(I_Bar, user_func_injectable, shared=False)
 
 
-@ioc.injectable(cache=False, at='any')
+@ioc.injectable(shared=False, at='any')
 class Bar:
 
     infoo = InjectedProperty(Foo, scope='level_4')
@@ -153,13 +154,13 @@ def user_func_symb():
     return f'user_func_symb {token_xyz} -> #{unique_id(token_xyz)}'
     
 
-@ioc.injectable(token_abc, cache=False)
+@ioc.injectable(token_abc, shared=False)
 @ioc.injectable()
 def user_func_str(p=None):
     return f'user_func_str {token_abc} -> {p=!r} -> #{unique_id(token_abc)}'
     
 
-@ioc.injectable(at='any', cache=False)
+@ioc.injectable(at='any', shared=False)
 class Baz:
 
     def __init__(self):

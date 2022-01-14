@@ -398,7 +398,7 @@ class CallableProvider(Provider):
     _argument_view_cls = ArgumentView
 
     def _defaults_(self) -> dict:
-        return dict(cache=None, deps=frozendict())
+        return dict(shared=None, deps=frozendict())
         
     def check(self):
         super().check()
@@ -488,7 +488,7 @@ class CallableProvider(Provider):
     def provide(self, scope: 'Scope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
 
         func = self.factory
-        cache = self.cache
+        shared = self.shared
 
         sig = self.signature
         arguments = self.arguments
@@ -498,8 +498,8 @@ class CallableProvider(Provider):
         if not sig.parameters:
         
             def resolve(at):
-                nonlocal func, cache
-                return InjectorVar(at, make=func, cache=cache)
+                nonlocal func, shared
+                return InjectorVar(at, make=func, cache=shared)
 
             return ResolverInfo(resolve)
 
@@ -514,12 +514,12 @@ class CallableProvider(Provider):
         argv = self.create_arguments_view(sig, defaults, deps)
         
         def resolve(at: 'Injector'):
-            nonlocal cache
+            nonlocal shared
             def make(*a, **kw):
                 nonlocal func, argv, at
                 return func(*argv.args(at, kw), *a, **argv.kwds(at, kw))
 
-            return InjectorVar(at, make=make, cache=cache)
+            return InjectorVar(at, make=make, cache=shared)
 
         return ResolverInfo(resolve, set(all_deps.values()))
 
@@ -553,7 +553,7 @@ class AliasProvider(Provider[T_UsingAlias]):
         return NotImplemented
 
     def _defaults_(self) -> dict:
-        return dict(cache=None)
+        return dict(shared=None)
     
     def can_provide(self, scope: 'Scope', token: Injectable) -> bool:
         return scope.is_provided(self.target)
@@ -562,9 +562,9 @@ class AliasProvider(Provider[T_UsingAlias]):
         
         arguments = self.arguments or None
         real = self.target
-        cache = self.cache
+        shared = self.shared
 
-        if not (arguments or cache):
+        if not (arguments or shared):
             def resolve(at: 'Injector'):
                 nonlocal real
                 return at.vars[real]
@@ -576,13 +576,13 @@ class AliasProvider(Provider[T_UsingAlias]):
                         nonlocal inner, args, kwargs
                         return inner.make(*args, *a, **dict(kwargs, **kw))
 
-                    return InjectorVar(at, make=make, cache=cache)
+                    return InjectorVar(at, make=make, cache=shared)
 
         else:
             def resolve(at: 'Injector'):
-                nonlocal real, cache
+                nonlocal real, shared
                 if inner := at.vars[real]:
-                    return InjectorVar(at, make=lambda *a, **kw: inner.make(*a, **kw), cache=cache)
+                    return InjectorVar(at, make=lambda *a, **kw: inner.make(*a, **kw), cache=shared)
 
         return ResolverInfo(resolve, {real})
 

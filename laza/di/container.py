@@ -476,7 +476,7 @@ class IocContainer:
             *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> _T_Tags:
         ...
 
@@ -486,7 +486,7 @@ class IocContainer:
             use: T_UsingAlias, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
     @t.overload
@@ -495,7 +495,7 @@ class IocContainer:
             *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[T_UsingAlias], T_UsingAlias]:
         ...
 
@@ -523,7 +523,7 @@ class IocContainer:
             use: T_UsingValue, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> _T_Tags:
         ...
     @t.overload
@@ -532,7 +532,7 @@ class IocContainer:
             use: T_UsingValue,
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 
@@ -555,7 +555,7 @@ class IocContainer:
             use: T_UsingFunc, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> _T_Tags:
         ...
     @t.overload
@@ -564,7 +564,7 @@ class IocContainer:
             use: T_UsingFunc, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 
@@ -574,7 +574,7 @@ class IocContainer:
             *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[T_UsingFunc], T_UsingFunc]:
         ...
 
@@ -602,7 +602,7 @@ class IocContainer:
             use: T_UsingType, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> _T_Tags:
         ...
 
@@ -611,7 +611,7 @@ class IocContainer:
             use: T_UsingType, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
     @t.overload
@@ -620,7 +620,7 @@ class IocContainer:
             /, *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[T_UsingType], T_UsingType]:
         ...
 
@@ -645,7 +645,7 @@ class IocContainer:
                 use: T_UsingAny, 
                 *,
                 at: t.Union[_T_ScopeNames, None] = None,
-                cache:bool=None, 
+                shared:bool=None, 
                 kind: KindOfProvider,
                 priority: int = 1,  
                 **opts) -> _T_Tags:
@@ -655,7 +655,7 @@ class IocContainer:
                 *,
                 use: T_UsingAny, 
                 at: t.Union[_T_ScopeNames, None] = None,
-                cache:bool=None, 
+                shared:bool=None, 
                 kind: KindOfProvider,
                 priority: int = 1,  
                 **opts) -> Callable[[_T_Tags], _T_Tags]:
@@ -665,7 +665,7 @@ class IocContainer:
                 provide: t.Union[_T_Tags, None]=None,
                  /, *,
                 at: t.Union[_T_ScopeNames, None] = None,
-                cache:bool=None, 
+                shared:bool=None, 
                 kind: KindOfProvider,
                 priority: int = 1,  
                 **opts) -> Callable[[T_UsingAny], T_UsingAny]:
@@ -702,7 +702,7 @@ class IocContainer:
             *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> T_UsingFactory:
         ...
     @t.overload
@@ -711,7 +711,7 @@ class IocContainer:
             *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[T_UsingFactory], T_UsingFactory]:
         ...
 
@@ -720,7 +720,7 @@ class IocContainer:
             use: T_UsingFactory, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 
@@ -746,7 +746,7 @@ class IocContainer:
             *, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> T_UsingResolver:
         ...
     
@@ -755,7 +755,7 @@ class IocContainer:
             use: T_UsingResolver, 
             at: t.Union[_T_ScopeNames, None] = None, 
             priority: int = 1, 
-            cache:bool=None, 
+            shared:bool=None, 
             **opts) -> Callable[[_T_Tags], _T_Tags]:
         ...
 

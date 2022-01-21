@@ -1,34 +1,49 @@
 # from __future__ import annotations
 from collections import ChainMap
+from functools import wraps
 from logging import getLogger
 from operator import le
+from types import GenericAlias
 import typing as t 
 from inspect import Parameter, Signature
 from abc import abstractmethod
+from dataclasses import KW_ONLY, InitVar, dataclass, field
 from laza.common.abc import Orderable
 from laza.common.collections import Arguments, frozendict, orderedset
 
-from collections.abc import  Callable, Hashable, Mapping, Sequence
+from collections.abc import  Callable as TCallable, Hashable, Mapping, Sequence
 from laza.common.typing import get_args, typed_signature
 
 
-
 from laza.common.functools import export, Void
+
+from laza.common.enum import IntEnum
+
+from libs.common.laza.common.collections import KwargDict
+from libs.common.laza.common.enum import StrEnum
 from .util import unique_id
 
 
 from .common import (
-    InjectedLookup, KindOfProvider, ResolverInfo, InjectorVar, ResolverFunc,
+    InjectedLookup, KindOfProvider, InjectorVar,
     Injectable, T_Injected, T_Injectable
 )
 
+from .resolvers import Resolver, ResolverFunc
+
 
 if t.TYPE_CHECKING:
-    from . import Scope, InjectableSignature, Injector, Depends, IocContainer
+    from . import Scope as TScope, InjectableSignature, Injector, Depends, IocContainer
+
 
 
 logger = getLogger(__name__)
 
+_py_dataclass = dataclass
+@wraps(dataclass)
+def dataclass(cls=None, /, **kw):
+    kwds = dict(eq=False, slots=True)
+    return _py_dataclass(cls, **(kwds | kw))
 
 
 _T_Using = t.TypeVar('_T_Using')
@@ -38,7 +53,7 @@ T_UsingAlias = Injectable
 T_UsingVariant = Injectable
 T_UsingValue = T_Injected
 
-T_UsingFunc = Callable[..., T_Injected]
+T_UsingFunc = TCallable[..., T_Injected]
 T_UsingType = type[T_Injected]
 
 T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
@@ -46,135 +61,113 @@ T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
 
 T_UsingResolver = ResolverFunc[T_Injected]
 
-T_UsingFactory = Callable[['Provider', 'Scope', Injectable], t.Union[ResolverFunc[T_Injected], None]]
+T_UsingFactory = TCallable[['Provider', 'TScope', Injectable], t.Union[ResolverFunc[T_Injected], None]]
 
 T_UsingAny = t.Union[T_UsingCallable, T_UsingFactory, T_UsingResolver, T_UsingAlias, T_UsingValue]
 
 
 
+class ScopeName(StrEnum):
+    main = 'main'
+    local = 'local'
+    # module = 'module'
+
+
+
+class ProviderCondition(t.Callable[['Provider', 'TScpoe', T_Injectable], bool]):
+
+    __class_getitem__ = classmethod(GenericAlias)
+
+    def __call__(self, provider: 'Provider', scope: 'TScope', key: T_Injectable) -> bool:
+        ...
+
+
 
 
 @export()
-class Provider(Orderable, t.Generic[_T_Using]):
+@dataclass
+class Provider(t.Generic[_T_Using]):
 
-    # __slots__ = ('target', 'arguments', '')
+    provide: InitVar[Injectable] = None
+    provides: Injectable = field(init=False)
+    
+    using: InitVar[_T_Using] = None
+    uses: _T_Using = field(init=False)
 
-    ioc: 'IocContainer' = None
+    _: KW_ONLY
+    scope: str = None 
+    shared: bool = None
+    """Whether to share the resolved instance.
+    """
+    when: tuple[ProviderCondition] = ()
 
-    target: _T_Using
-    arguments: Arguments
 
-    deps: dict[str, Injectable]
+    # def __init_subclass__(cls, **kwds) -> None:
+    #     return dataclass(cls, )
+    #     return super().__init_subclass__()
 
-
-    kind: t.Final[KindOfProvider] = None
-
-    _sig: 'InjectableSignature'
-
-    __pos: int
-
-    def __init__(self, concrete: t.Any=..., /, **kwds) -> None:
-
-        self.target = concrete
-
-        self.arguments = Arguments.coerce(kwds.pop('arguments', None))\
-            .extend(kwds.pop('args', None) or (), kwds.pop('kwargs', None) or ())
-
-        kwds = dict(self._defaults_() or (), **kwds)
-        kwds['priority'] = kwds.get('priority', 1) or 0
-        
-        self._assing(**kwds)
-        self._boot_()
-        
-    def _defaults_(self) -> dict:
-        return dict(deps=frozendict())
-
-    def _boot_(self):
-        self.__pos = unique_id()
-
-    @property
-    def factory(self):
-        if callable(res := getattr(self.target, '__inject_new__', self.target)):
-            return res
-
-    @property
-    def signature(self) -> t.Union[Signature, None]:
-        if func := self.factory:
-            return typed_signature(func)
-
-    def _assing(self, **kwds):
-        setattr = self.__setattr__
-        for k,v in kwds.items():
-            if k[0] == '_' or k[-1] == '_':
-                raise AttributeError(f'invalid attribute {k!r}')
-            setattr(k, v)
-
-        return self
-
-    def get(self, key, default=None):
-        return getattr(self, key, default)
-
+    def __post_init__(self, provide=None, using=None):
+        if not hasattr(self, 'provides'):
+            self._set_provides(provide)    
+        if not hasattr(self, 'uses'):
+            self._set_uses(using)        
+    
+    def _set_provides(self, provide):
+        self.provides = provide
+    
+    def _set_uses(self, using):
+        self.uses = self.provides if using is None else using
+    
     def implicit_tag(self):
-        if isinstance(self.target, Hashable):
-            return self.target
+        if isinstance(self.uses, Hashable):
+            return self.uses
         return NotImplemented
 
     @abstractmethod
-    def provide(self, scope: 'Scope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
+    def _provide(self, scope: 'TScope', token: T_Injectable,  *args, **kwds) -> Resolver:
         ...
     
-    def can_provide(self, scope: 'Scope', dep: T_Injectable) -> bool:
-        if func := getattr(self.target, '__can_provide__', None):
+    def can_provide(self, scope: 'TScope', dep: T_Injectable) -> bool:
+        if func := getattr(self.uses, '__can_provide__', None):
             return bool(func(self, scope, dep))
         return True
 
-    def __call__(self, scope: 'Scope', token: T_Injectable,  *args, **kwds) -> ResolverFunc:
-        func, deps = ResolverInfo.coerce(self.provide(scope, token, *args, **kwds))
+    def __call__(self, scope: 'TScope', token: T_Injectable,  *args, **kwds) -> ResolverFunc:
+        func, deps = Resolver.coerce(self._provide(scope, token, *args, **kwds))
         if func is not None and deps:
             scope.register_dependency(token, *deps)
         return func
 
-    def __order__(self):
-        return (self.priority, self.__pos)
-
-    def __repr__(self):
-        return f'{self.__class__.__name__}({self.target!r})'
 
 
 
 @export()
-@KindOfProvider.factory._set_default_impl
-class FactoryProvider(Provider[T_UsingFactory]):
+@dataclass
+class Factory(Provider[T_UsingFactory]):
 
-    __slots__ = ()
-
-    def provide(self, scope: 'Scope', dep: T_Injectable,  *args, **kwds) -> ResolverInfo:
-        return ResolverInfo.coerce(self.target(self, scope, dep, *args, **kwds))
+    def _provide(self, scope: 'TScope', dep: T_Injectable) -> Resolver:
+        return Resolver.coerce(self.uses(self, scope, dep))
 
 
-
-@export()
-@KindOfProvider.resolver._set_default_impl
-class ResolverProvider(Provider[T_UsingResolver]):
-    __slots__ = ()
-
-    def provide(self, scope: 'Scope', dep: T_Injectable,  *args, **kwds) -> ResolverInfo:
-        return ResolverInfo.coerce(self.target)
 
 
 
 @export()
-@KindOfProvider.value._set_default_impl
-class ValueProvider(Provider[T_UsingValue]):
+@dataclass
+class Object(Provider[T_UsingValue]):
 
-    __slots__ = ()
+    shared: t.ClassVar = True
 
-    def provide(self, scope: 'Scope', dep: T_Injectable,  *args, **kwds) -> ResolverInfo:
-        value = self.target
-        return ResolverInfo(lambda at: InjectorVar(at, value))
+    def _provide(self, scope: 'TScope', dep: T_Injectable,  *args, **kwds) -> Resolver:
+        value = self.uses
+        return Resolver(dep, self, lambda at: InjectorVar(at, value))
 
-    def can_provide(self, scope: 'Scope', dep: T_Injectable) -> bool:
+    def can_provide(self, scope: 'TScope', dep: T_Injectable) -> bool:
         return True
+
+
+
+
 
 
 
@@ -369,32 +362,40 @@ class ArgumentView:
 
 
 @export()
-class CallableProvider(Provider):
+@dataclass
+class Callable(Provider[_T_Using]):
 
-    # __slots__ = ('_sig', '_params')
-    target: Callable[..., _T_Using]
+    EMPTY: t.ClassVar = _EMPTY
+    _argument_view_cls: t.ClassVar = ArgumentView
 
-    EMPTY = _EMPTY
+    _: KW_ONLY
+    args: InitVar[tuple] = None
+    kwargs: InitVar[KwargDict] = None
+    arguments: Arguments = field(init=False)
 
-    _argument_view_cls = ArgumentView
+    deps: dict[str, Injectable] = field(default_factory=frozendict)
 
-    def _defaults_(self) -> dict:
-        return dict(shared=None, deps=frozendict())
-        
-    def check(self):
-        super().check()
-        assert callable(self.target), (
-                f'`concrete` must be a valid Callable. Got: {type(self.target)}'
-            )
+    def __post_init__(self, args=None, kwargs=None, **kwds):
+        super().__post_init__(**kwds)
+        self.arguments = Arguments(args, kwargs)
 
-    def get_available_deps(self, sig: Signature, scope: 'Scope', deps: Mapping):
+    # def check(self):
+    #     super().check()
+    #     assert callable(self.uses), (
+    #             f'`concrete` must be a valid Callable. Got: {type(self.uses)}'5
+    #         )
+
+    def get_signature(self, scope: 'TScope', token: T_Injectable) -> t.Union[Signature, None]:
+        return typed_signature(self.uses)
+
+    def get_available_deps(self, sig: Signature, scope: 'TScope', deps: Mapping):
         return { n: d for n, d in deps.items() if scope.is_provided(d) }
 
-    def get_explicit_deps(self, sig: Signature, scope: 'Scope'):
+    def get_explicit_deps(self, sig: Signature, scope: 'TScope'):
         ioc = scope.ioc
         return  { n: d for n, d in self.deps.items() if ioc.is_injectable(d) }
 
-    def get_implicit_deps(self, sig: Signature, scope: 'Scope'):
+    def get_implicit_deps(self, sig: Signature, scope: 'TScope'):
         ioc = scope.ioc
         return  { n: p.annotation
             for n, p in sig.parameters.items() 
@@ -466,13 +467,14 @@ class CallableProvider(Provider):
             self.eval_var_kwd_param(sig, defaults, deps)
         )
 
-    def provide(self, scope: 'Scope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
+    def _provide(self, scope: 'TScope', token: T_Injectable,  *args, **kwds) -> Resolver:
 
-        func = self.factory
+        func = self.uses
         shared = self.shared
 
-        sig = self.signature
-        arguments = self.arguments
+        sig = self.get_signature(scope, token)
+
+        arguments = self.arguments.merge(*args, **kwds)
 
         bound = sig.bind_partial(*arguments.args, **arguments.kwargs) or None
         
@@ -482,7 +484,7 @@ class CallableProvider(Provider):
                 nonlocal func, shared
                 return InjectorVar(at, make=func, shared=shared)
 
-            return ResolverInfo(resolve)
+            return Resolver(resolve)
 
         defaults = frozendict(bound.arguments)
 
@@ -496,55 +498,51 @@ class CallableProvider(Provider):
         
         def resolve(at: 'Injector'):
             nonlocal shared
-            def make(*a, **kw):
+            def make(inj, *a, **kw):
                 nonlocal func, argv, at
                 return func(*argv.args(at, kw), *a, **argv.kwds(at, kw))
 
+            return make
+
             return InjectorVar(at, make=make, shared=shared)
 
-        return ResolverInfo(resolve, set(all_deps.values()))
-
-
-
-
-@KindOfProvider.func._set_default_impl
-class FunctionProvider(CallableProvider):
-    __slots__ = ()
-
-
-
-@KindOfProvider.type._set_default_impl
-class TypeProvider(CallableProvider):
-    __slots__ = ()
-    
-
-
-@KindOfProvider.meta._set_default_impl
-class MetaProvider(CallableProvider):
-    __slots__ = ()
+        return Resolver(factory=resolve, deps=set(all_deps.values()))
 
 
 
 
 @export()
-@KindOfProvider.alias._set_default_impl
-class AliasProvider(Provider[T_UsingAlias]):
+@dataclass
+class Function(Callable[TCallable[..., _T_Using]]):
+    ...
 
-    __slots__ = ()
+
+
+
+
+@export()
+@dataclass
+class Type(Callable[type[_T_Using]]):
+    ...
+
+
+
+@export()
+@dataclass
+class Alias(Provider[T_UsingAlias]):
+
+    shared: t.ClassVar = None
 
     def implicit_tag(self):
         return NotImplemented
 
-    def _defaults_(self) -> dict:
-        return dict(shared=None)
-    
-    def can_provide(self, scope: 'Scope', token: Injectable) -> bool:
-        return scope.is_provided(self.target)
+    def can_provide(self, scope: 'TScope', token: Injectable) -> bool:
+        return scope.is_provided(self.uses)
 
-    def provide(self, scope: 'Scope', dep: T_Injectable,  *_args, **_kwds) -> ResolverInfo:
+    def _provide(self, scope: 'TScope', dep: T_Injectable,  *_args, **_kwds) -> Resolver:
         
         arguments = self.arguments or None
-        real = self.target
+        real = self.uses
         shared = self.shared
 
         if not (arguments or shared):
@@ -560,38 +558,37 @@ class AliasProvider(Provider[T_UsingAlias]):
                         return inner.make(*args, *a, **dict(kwargs, **kw))
 
                     return InjectorVar(at, make=make, shared=shared)
-
         else:
             def resolve(at: 'Injector'):
                 nonlocal real, shared
                 if inner := at.vars[real]:
+
                     return InjectorVar(at, make=lambda *a, **kw: inner.make(*a, **kw), shared=shared)
 
-        return ResolverInfo(resolve, {real})
-
-
+        return Resolver(resolve, {real})
 
 
 
 
 @export()
-class UnionProvider(AliasProvider):
+@dataclass
+class Union(Alias):
 
-    __slots__ = ()
+    using: InitVar[_T_Using] = None
 
     _implicit_types_ = frozenset([type(None)]) 
 
-    def get_all_args(self, scope: 'Scope', token: Injectable):
+    def get_all_args(self, scope: 'TScope', token: Injectable):
         return get_args(token)
 
-    def get_injectable_args(self, scope: 'Scope', token: Injectable, *, include_implicit=True) -> tuple[Injectable]:
+    def get_injectable_args(self, scope: 'TScope', token: Injectable, *, include_implicit=True) -> tuple[Injectable]:
         implicits = self._implicit_types_ if include_implicit else set()
         return tuple(a for a in self.get_all_args(scope, token) if a in implicits or scope.is_provided(a))
     
-    def can_provide(self, scope: 'Scope', token: Injectable) -> bool:
+    def can_provide(self, scope: 'TScope', token: Injectable) -> bool:
         return len(self.get_injectable_args(scope, token, include_implicit=False)) > 0
 
-    def provide(self, scope: 'Scope', token):
+    def _provide(self, scope: 'TScope', token):
         
         args = self.get_injectable_args(scope, token)
 
@@ -599,32 +596,32 @@ class UnionProvider(AliasProvider):
             nonlocal args
             return next((v for a in args if (v := at.vars[a])), None)
 
-        return ResolverInfo(resolve, {*args})
+        return Resolver(resolve, {*args})
+
 
 
 
 @export()
-class AnnotationProvider(UnionProvider):
+@dataclass
+class Annotation(Union):
 
-    __slots__ = ()
     _implicit_types_ = frozenset() 
 
-    def get_all_args(self, scope: 'Scope', token: Injectable):
+    def get_all_args(self, scope: 'TScope', token: Injectable):
         return token.__metadata__[::-1]
 
 
 
 @export()
-class DependsProvider(AliasProvider):
+@dataclass
+class Dependency(Alias):
 
-    __slots__ = ()
-
-    def can_provide(self, scope: 'Scope', token: 'Depends') -> bool:
+    def can_provide(self, scope: 'TScope', token: 'Depends') -> bool:
         if token.on is ...:
             return False
         return scope.is_provided(token.on, start=token.at)
 
-    def provide(self, scope: 'Scope', token: 'Depends',  *_args, **_kwds) -> ResolverInfo:
+    def _provide(self, scope: 'TScope', token: 'Depends') -> Resolver:
 
         dep = token.on
         at = None if token.at is ... or token.at else token.at
@@ -667,22 +664,20 @@ class DependsProvider(AliasProvider):
 
                     return InjectorVar(inj, make=make)
 
-        return ResolverInfo(resolve, {dep})
-
+        return Resolver(resolve, {dep})
 
 
 
 
 
 @export()
-class LookupProvider(AliasProvider):
+@dataclass
+class Lookup(Alias):
 
-    __slots__ = ()
-
-    def can_provide(self, scope: 'Scope', token: 'InjectedLookup') -> bool:
+    def can_provide(self, scope: 'TScope', token: 'InjectedLookup') -> bool:
         return scope.is_provided(token.depends)
 
-    def provide(self, scope: 'Scope', token: 'InjectedLookup',  *_args, **_kwds) -> ResolverInfo:
+    def _provide(self, scope: 'TScope', token: 'InjectedLookup',  *_args, **_kwds) -> Resolver:
 
         dep = token.depends
         path = token.path
@@ -697,7 +692,5 @@ class LookupProvider(AliasProvider):
                 return InjectorVar(at, make=lambda: path.get(var.value))
             return 
 
-        return ResolverInfo(resolve, {dep})
-
-
+        return Resolver(resolve, {dep})
 

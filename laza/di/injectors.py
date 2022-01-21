@@ -4,7 +4,7 @@ from functools import partial
 from threading import Lock
 from collections import deque
 from contextlib import AbstractContextManager as ContextManager, ExitStack, nullcontext
-from types import FunctionType
+from types import FunctionType, GenericAlias
 from laza.common.collections import  frozendict, nonedict
 from laza.common.imports import ImportRef
 
@@ -225,7 +225,8 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.vars[key]
         if res is None:
-            return self.make(self.__missing__(key), *args, **kwds)
+            key = self.__missing__(key)
+            return self.make(key, *args, **kwds)
         elif (args or kwds):
             # logger.warning(
             #     f'calling {self.__class__.__name__}.make() with args or kwds. {key} got {args=}, {kwds=}'
@@ -249,7 +250,8 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
                 self.ioc.alias(key, concrete, at=self.name, priority=-10)
                 return concrete
         elif isinstance(key, (type, FunctionType)):
-            self.ioc.injectable(key, use=key, at=self.name, priority=-10)
+            logger.warning(f'Cannot bind {key!r} Implicit binding is deprecated.')
+            self.ioc.injectable(key, use=key, at=self.name)
             return key
         
         raise InjectorKeyError(f'{key} in {self!r}')

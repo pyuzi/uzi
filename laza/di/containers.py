@@ -16,8 +16,9 @@ from laza.common.imports import ImportRef
 from laza.common.proxy import proxy 
 from laza.common.functools import export
 
+from libs.common.laza.common.collections import orderedset
+
 from . import signals
-from . import providers as p
 
 from .common import (
     Depends,
@@ -32,12 +33,15 @@ from .exc import DuplicateProviderError
 from .typing import get_origin
 from .scopes import ScopeAlias, Scope as BaseScope, MAIN_SCOPE
 from .injectors import Injector
-from .providers import (
+from .providers_new import (
+    ScopeName, Lookup, p.Provider, Annotation, 
+    UnionProvider, DependsProvider,
     T_UsingAny, T_UsingAny, 
     T_UsingAlias, T_UsingResolver, 
     T_UsingFactory, T_UsingFunc, 
     T_UsingType, T_UsingValue,
 )
+
 
 
 
@@ -54,6 +58,36 @@ _T_ScopeNames = t.Union[str, Set[str]]
 
 
 _T_InjectorKey = t.Union[type[T_Injected], Callable[..., T_Injected], InjectionToken[T_Injected]]
+
+
+
+@export()
+@Injectable.register
+class Container(p.Provider):
+
+    __slots__ = (
+        'providers', '_lock', '_onboot', 'bootstrapped',
+        'default_scope', 'scopes', 'scope_aliases', 
+        '_main', 'ctxvar',
+    )
+
+    providers: orderedset[p.Provider] = None
+
+
+    def __init__(self,
+                *provides: p.Provider,
+                overrides: Iterable[p.Provider]=None,
+                depends: Iterable['Container']=None,
+                scope_aliases: t.Union[Mapping, None]=None):
+        ...
+    
+    def __getitem__(self, key: Injectable):
+        pass
+
+    def __setitem__(self, key: Injectable, val: p.Provider):
+        pass
+
+
 
 @export()
 class IocContainer:
@@ -81,10 +115,8 @@ class IocContainer:
 
     _non_providable: t.ClassVar[frozenset[Injectable]] = frozenset([None, type(None)])
 
-    def __init__(self, 
-                default_scope: str=MAIN_SCOPE, *,
-                scope_aliases: t.Union[Mapping, None]=None,
-                ctxvar=None):
+    def __init__(self,
+                scope_aliases: t.Union[Mapping, None]=None):
 
         setattr = object.__setattr__
         setattr(self, '_lock', RLock())
@@ -92,10 +124,8 @@ class IocContainer:
         setattr(self, 'bootstrapped', False)
 
         setattr(self, 'providers', fallback_default_dict(self._new_dep_stack))
-        setattr(self, 'scopes', fallbackdict(self._new_scope_instance))
         setattr(self, 'scope_aliases', fallbackdict(lambda k: k, scope_aliases or ()))
         
-        setattr(self, 'default_scope', default_scope)
 
         setattr(self, 'ctxvar', ctxvar or ContextVar(f'{self.__class__.__name__}.{ctxvar}', default=None))
 
@@ -125,7 +155,7 @@ class IocContainer:
     def scopekey(self, key):
         return self.Scope[self.scope_name(key)]
 
-    def get_scope_class(self, scope,  *, create=True) -> type['Scope']:
+    def get_scope_class(self, scope,  *, create=True) -> type['ScopeName']:
         return self.Scope._gettype(scope, create_implicit=create)
 
     def _make_main_injector_(self):
@@ -153,10 +183,10 @@ class IocContainer:
             self.signals.ready.send(self.__class__, instance=self)
 
     def _register_default_providers_(self):
-        self.register(t.Union, p.UnionProvider(), at='any')
-        self.register(t.Annotated, p.AnnotationProvider(), at='any')
-        self.register(Depends, p.DependsProvider(), at='any')
-        self.register(InjectedLookup, p.LookupProvider(), at='any')
+        self.register(t.Union, UnionProvider(), at='any')
+        self.register(t.Annotated, Annotation(), at='any')
+        self.register(Depends, DependsProvider(), at='any')
+        self.register(InjectedLookup, Lookup(), at='any')
         self.resolver({Injector, IocContainer}, lambda at: InjectorVar(at, at), at='any', priority=-10)
 
     def __setattr__(self, name, val):
@@ -173,80 +203,10 @@ class IocContainer:
         
         return proxy(resolve, callable=callable)
 
-    def at(self, *scopes: t.Union[str, ScopeAlias, type['Scope']], default=...):
+    def at(self, *scopes: t.Union[str, ScopeAlias, type['ScopeName']], default=...):
         """Get the first available Injector for given scope(s).
         """
         return self.injector.at(*scopes, default=default)
-
-    @t.overload
-    def make(self, cls: type[T_Injected], *args, **kwds) -> T_Injected:
-        ...
-        
-    @t.overload
-    def make(self, key: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
-        ...
-        
-    @t.overload
-    def make(self, token: InjectionToken[T_Injected], *args, **kwds) -> T_Injected:
-        ...
-        
-    def make(self, key: _T_InjectorKey[T_Injected], *args, **kwds) -> T_Injected:
-        return self.injector.make(key, *args, **kwds)
-
-    def get(self, tag: T_Injectable, default: _T = None, /, *args, **kwds):
-        return self.injector.get(tag, default, *args, **kwds)
-
-    def call(self, func: Callable[..., _T], /, *args: tuple, **kwargs) -> _T:
-        return self.injector.make(func, *args, **kwargs)
-
-    @t.overload
-    def inject(self, cls: type[_T], /, *, scope: str=None, priority=-1, **kwds) -> type[_T]:
-        ...
-    @t.overload
-    def inject(self, func: Callable[..., _T], /, *, scope: str=None, priority=-1, **kwds) -> Callable[..., _T]:
-        ...
-    @t.overload
-    def inject(self, *, scope: str=None, priority=-1, **kwds) -> Callable[[_T_Callable], _T_Callable]:
-        ...
-
-    def inject(self, func: _T_Callable =..., /, *, scope: str=None, **kwds) -> _T_Callable:
-        scope = self.scope_name(scope, 'any')
-
-        def decorate(fn):
-            if isinstance(fn, (type, GenericAlias)):
-                params: tuple[t.TypeVar] = getattr(fn, '__parameters__', ())
-                
-                if params:
-                    bases = fn, t.Generic.__class_getitem__(params)
-                else:
-                    bases = fn, 
-
-                class wrapper(*bases):
-                    __slots__ = ()
-
-                    def __new__(cls, *a, **kw):
-                        return self.injector.make(cls, *a, **kw)
-                    
-                    def __init__(self, *a, **kw) -> None:
-                        ...
-
-                wrapper = update_wrapper(wrapper, fn, updated=())
-            else:
-                def wrapper(*a, **kw):
-                    return self.injector.make(wrapper, *a, **kw)
-
-                if isinstance(fn, (FunctionType, MethodType)):
-                    wrapper = update_wrapper(wrapper, fn)
-                elif isinstance(fn, Callable):
-                    wrapper = update_wrapper(wrapper, fn, updated=())
-                
-            self.alias(wrapper, fn, at=scope, **kwds)
-            return wrapper
-        
-        if func is ...:
-            return decorate
-        else:
-            return decorate(func)
 
     def use(self, inj: t.Union[str, ScopeAlias, Injector] = 'main') -> AbstractContextManager[Injector]:
         return self._ctxmanager_(inj)
@@ -302,13 +262,13 @@ class IocContainer:
         else:
             return cb(*args, **kwds)
 
-    def scope_booted(self, scope: 'Scope'):
+    def scope_booted(self, scope: 'ScopeName'):
         self.signals.boot.send(self.Scope, instance=scope, ioc=self)
 
-    def scope_ready(self, scope: 'Scope'):
+    def scope_ready(self, scope: 'ScopeName'):
         self.signals.ready.send(self.Scope, instance=scope, ioc=self)
         
-    def get_scope_aliases(self, scope: 'Scope', *, include_embeded=False):
+    def get_scope_aliases(self, scope: 'ScopeName', *, include_embeded=False):
         yield scope.name
 
         for aka, sc in self.scope_aliases.items():
@@ -318,24 +278,6 @@ class IocContainer:
         if include_embeded:
             for e in scope.embeds:
                 yield from self.get_scope_aliases(e, include_embeded=True)
-            
-    def _new_scope_instance(self, name) -> 'Scope':
-        with self._lock:
-            aka = self.scope_name(name)
-            if name == aka:
-                if not name:
-                    raise KeyError(f'ivalid scope name {name!r}')
-
-                cls = self.get_scope_class(name, create=False)
-                if cls is self.Scope:
-                    raise KeyError(f'ivalid scope name {name!r}')
-                elif cls.config.is_abstract:
-                    raise TypeError(f'Cannot instantiate tag scope: {cls}')
-                
-                self.scopes[name] = cls(self)
-                return self.scopes[name]
-
-            return self.scopes[aka]
 
     def _new_dep_stack(self, key) -> dict:
         return dict()

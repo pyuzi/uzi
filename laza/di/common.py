@@ -1,10 +1,10 @@
 from abc import abstractmethod, ABCMeta
-from functools import cache
+from functools import cache, reduce
 from logging import getLogger
 import sys
 import typing as t
 
-from collections.abc import Mapping, Iterable, Hashable
+from collections.abc import Mapping, Iterable, Hashable, Set
 from laza.common import text
 from laza.common.collections import Arguments, frozendict
 from laza.common.imports import ImportRef
@@ -13,12 +13,14 @@ from laza.common.proxy import unproxy
 from laza.common.functools import export, Void, calling_frame
 from laza.common.data import DataPath
 
-from laza.common.enum import IntEnum, auto
+from laza.common.enum import IntEnum, BitSetFlag, auto
 
 
 from collections.abc import Callable
 
 from types import FunctionType, GenericAlias, MethodType, new_class
+
+from libs.common.laza.common.collections import frozenorderedset
 
 
 from .exc import InjectorKeyError
@@ -43,6 +45,20 @@ T_Default = t.TypeVar("T_Default")
 T_Injectable = t.TypeVar('T_Injectable', bound='Injectable', covariant=True)
 
 export('T_Injected', 'T_Injectable', 'T_Default')
+
+
+@export()
+class ProviderRole(BitSetFlag):
+
+    default: 'ProviderRole'     = auto()
+    """
+    """
+    final: 'ProviderRole'       = auto()
+    override: 'ProviderRole'    = auto()
+    sealed: 'ProviderRole'      = auto()
+    alternative: 'ProviderRole' = auto()
+
+
 
 
 
@@ -368,13 +384,13 @@ class InjectorVar(t.Generic[T_Injected]):
     _default_bind_: t.ClassVar[t.Union[bool, None]] = None
 
     def __new__(cls, 
-                injector: 'Injector', 
+                injector: 'Injector'=None, 
                 /,
                 value: T_Injected = Void, 
                 make: t.Union[Callable[..., T_Injected], None]=None, 
                 *, 
                 bind: t.Union[bool, None] = None,
-                cache: t.Union[bool, None] = None):
+                shared: t.Union[bool, None] = None):
         
         self = object.__new__(cls)
 
@@ -384,7 +400,7 @@ class InjectorVar(t.Generic[T_Injected]):
             else:
                 self.make = make
 
-            if cache is True or (cache is None and cls._default_cache_):
+            if shared is True or (shared is None and cls._default_cache_):
                 def get():
                     nonlocal self
                     if self.value is Void:

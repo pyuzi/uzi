@@ -17,7 +17,7 @@ from laza.common.proxy import proxy
 from laza.common.functools import export
 
 from . import signals
-from . import providers as p
+from . import providers_new as p
 
 from .common import (
     Depends,
@@ -32,7 +32,8 @@ from .exc import DuplicateProviderError
 from .typing import get_origin
 from .scopes import ScopeAlias, Scope as BaseScope, MAIN_SCOPE
 from .injectors import Injector
-from .providers import (
+from .providers_new import (
+    
     T_UsingAny, T_UsingAny, 
     T_UsingAlias, T_UsingResolver, 
     T_UsingFactory, T_UsingFunc, 
@@ -153,10 +154,10 @@ class IocContainer:
             self.signals.ready.send(self.__class__, instance=self)
 
     def _register_default_providers_(self):
-        self.register(t.Union, p.UnionProvider(), at='any')
-        self.register(t.Annotated, p.AnnotationProvider(), at='any')
-        self.register(Depends, p.DependsProvider(), at='any')
-        self.register(InjectedLookup, p.LookupProvider(), at='any')
+        self.register(t.Union, p.Union(), at='any')
+        self.register(t.Annotated, p.Annotation(), at='any')
+        self.register(Depends, p.Dependency(), at='any')
+        self.register(InjectedLookup, p.Lookup(), at='any')
         self.resolver({Injector, IocContainer}, lambda at: InjectorVar(at, at), at='any', priority=-10)
 
     def __setattr__(self, name, val):

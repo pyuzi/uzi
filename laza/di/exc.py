@@ -10,6 +10,11 @@ class InjectorKeyError(KeyError):
     pass
 
 
+@export()
+class DuplicateProviderError(ValueError):
+    pass
+
+
 
 
 class ProviderNotFoundError(LookupError):

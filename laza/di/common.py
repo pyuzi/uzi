@@ -4,6 +4,11 @@ from logging import getLogger
 import sys
 import typing as t
 
+
+
+from threading import Lock
+from collections import Counter
+
 from collections.abc import Mapping, Iterable, Hashable, Set
 from laza.common import text
 from laza.common.collections import Arguments, frozendict
@@ -30,6 +35,17 @@ from .typing import get_all_type_hints, get_args, get_origin, InjectableForm, ge
 logger = getLogger(__name__)
 
 
+
+
+__uid_map = Counter()
+__uid_lock = Lock()
+
+@export()
+def unique_id(ns=None):
+    global __uid_map, __uid_lock
+    with __uid_lock:
+        __uid_map[ns] += 1
+        return __uid_map[ns]
 
 
 

@@ -154,7 +154,7 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
         self.vars = vars
         self.__booted = False
 
-        self._ctx = scope.create_context(self)
+        # self._ctx = scope.create_context(self)
 
     @property
     def root(self) -> 'Injector':

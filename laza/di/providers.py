@@ -14,12 +14,11 @@ from laza.common.typing import get_args, typed_signature
 
 
 from laza.common.functools import export, Void
-from .util import unique_id
 
 
 from .common import (
     InjectedLookup, KindOfProvider, ResolverInfo, InjectorVar, ResolverFunc,
-    Injectable, T_Injected, T_Injectable
+    Injectable, T_Injected, T_Injectable, unique_id
 )
 
 
@@ -615,6 +614,15 @@ class AnnotationProvider(UnionProvider):
 
 
 @export()
+class InjectorProvider(Provider):
+
+    __slots__ = ()
+
+    def provide(self, scope: 'Scope', token: 'Depends') -> ResolverInfo:
+        return ResolverInfo(lambda at: InjectorVar(at, at))
+
+
+@export()
 class DependsProvider(AliasProvider):
 
     __slots__ = ()
@@ -624,7 +632,7 @@ class DependsProvider(AliasProvider):
             return False
         return scope.is_provided(token.on, start=token.at)
 
-    def provide(self, scope: 'Scope', token: 'Depends',  *_args, **_kwds) -> ResolverInfo:
+    def provide(self, scope: 'Scope', token: 'Depends') -> ResolverInfo:
 
         dep = token.on
         at = None if token.at is ... or token.at else token.at

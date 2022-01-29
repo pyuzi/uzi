@@ -25,12 +25,12 @@ from laza.common.metadata import metafield, BaseMetadata, get_metadata_class
 
 
 
-from .util import unique_id
 from .injectors import Injector, InjectorContext
 from .common import (
     Injectable, 
     T_Injectable,
-    InjectorVar
+    InjectorVar,
+    unique_id
 )
 
 from . import signals

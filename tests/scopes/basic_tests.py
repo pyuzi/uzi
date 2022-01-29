@@ -34,11 +34,11 @@ class BasicScopeTests:
 
 
         print(scope2) 
-        pprint([*scope2.dependencies]) 
-        pprint([*scope2.local_dependencies]) 
+        pprint([*scope2.requires]) 
+        pprint([*scope2.repository]) 
         pprint([*scope2.registry]) 
 
-        assert 0, '\n'
+        assert 1, '\n'
 
  
     def test_providers(self):
@@ -58,17 +58,21 @@ class BasicScopeTests:
 
 
         scope1 = MainScope(con3)
-        scope2 = Scope('scope2', scope1, con4)
+        scope2 = Scope('local', scope1)
+        scope3 = Scope('local2', scope2, con4)
 
-        inj = scope2.create(None)
-        print(inj[Foo])
-        print(inj[FooBarBaz])
+        with scope3.create(None) as inj:
+            
+            print(f'---> {inj=}')
+            print(f'---> {inj.scope.main._ctx.get()}')
+            print(inj[Foo])
+            print(inj[FooBarBaz])
 
-        assert isinstance(inj[Foo], Foo)
-        assert isinstance(inj[Baz], Baz)
-        assert inj[Foo] is not inj[Foo]
+            assert isinstance(inj[Foo], Foo)
+            assert isinstance(inj[Baz], Baz)
+            assert inj[Foo] is not inj[Foo]
        
-        assert 1, '\n'
+        assert 0, '\n'
  
    
 

@@ -64,18 +64,20 @@ class BasicScopeTests:
         scope2 = LocalScope(scope1)
         scope3 = LocalScope(scope2, con4)
 
-        with scope2.create() as inj_:
-            with scope3.create(inj_) as inj:
+        with scope2.create_injector() as inj_:
+            with scope3.create_injector(inj_) as inj:
                 print(f'---> {inj=}')
-                print(f'---> {inj.scope.main._ctx.get()}')
+                print(f'---> {inj.scope._context.get()!r}')
                 print(inj[Foo])
                 print(inj[FooBarBaz])
 
                 assert isinstance(inj[Foo], Foo)
                 assert isinstance(inj[Baz], Baz)
                 assert inj[Foo] is not inj[Foo]
-        
-        assert 1, '\n'
+
+
+                
+        assert 0, '\n'
  
    
 

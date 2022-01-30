@@ -103,8 +103,6 @@ class Provider(t.Generic[_T_Using]):
         ...
     
     def implicit_token(self):
-        if isinstance(self.uses, Hashable):
-            return self.uses
         return NotImplemented
 
     @abstractmethod
@@ -131,7 +129,7 @@ class FactoryProvider(Provider[T_UsingFactory]):
 
     def _provide(self, scope: 'AbcScope', dep: T_Injectable) -> ResolverInfo:
         return ResolverInfo.coerce(self.uses(self, scope, dep))
-
+    
 
 
 
@@ -485,7 +483,11 @@ class CallableProvider(Provider[_T_Using]):
 @export()
 @dataclass
 class FunctionProvider(CallableProvider[TCallable[..., _T_Using]]):
-    ...
+    
+
+    def implicit_token(self):
+        return self.uses
+
 
 
 
@@ -494,7 +496,11 @@ class FunctionProvider(CallableProvider[TCallable[..., _T_Using]]):
 @export()
 @dataclass
 class TypeProvider(CallableProvider[type[_T_Using]]):
-    ...
+
+    def implicit_token(self):
+        return self.uses
+
+
 
 
 
@@ -503,9 +509,6 @@ class TypeProvider(CallableProvider[type[_T_Using]]):
 class AliasProvider(Provider[T_UsingAlias]):
 
     shared: t.ClassVar = None
-
-    def implicit_token(self):
-        return NotImplemented
 
     def can_provide(self, scope: 'AbcScope', token: Injectable) -> bool:
         return scope.is_provided(self.uses)
@@ -533,7 +536,6 @@ class AliasProvider(Provider[T_UsingAlias]):
             def resolve(at: 'Injector'):
                 nonlocal real, shared
                 if inner := at.vars[real]:
-
                     return InjectorVar(make=lambda *a, **kw: inner.make(*a, **kw), shared=shared)
 
         return ResolverInfo(resolve, {real})

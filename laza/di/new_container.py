@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from contextvars import ContextVar
 from functools import update_wrapper
 from logging import getLogger
@@ -37,7 +37,7 @@ _T = t.TypeVar('_T')
 
 @export()
 @Injectable.register
-class AbcIocContainer(ProviderRegistry):
+class AbcIocContainer(ProviderRegistry, ABC):
 
     name: str
     requires: orderedset['IocContainer']
@@ -67,11 +67,11 @@ class AbcIocContainer(ProviderRegistry):
 
     @property
     @abstractmethod
-    def context(self) -> 'InjectorContext':
+    def _context(self) -> 'InjectorContext':
         ...
 
     def current_injector(self):
-        if ctx := self.context:
+        if ctx := self._context:
             return ctx.get()
 
     def _setup_requires(self):
@@ -81,10 +81,10 @@ class AbcIocContainer(ProviderRegistry):
         self.dependants = orderedset()
      
     def add_dependant(self, scope: 'AbcScope'):
-        if (ctx := self.context) and (dctx := scope.context) and dctx != ctx:
+        if (ctx := self._context) and (dctx := scope._context) and dctx != ctx:
             raise ValueError(
                 f'InjectorContext conflict in {self} '
-                f'{self.context=} and {scope.context}'
+                f'{self._context=} and {scope._context}'
             )
 
         self.dependants.add(scope)
@@ -136,9 +136,9 @@ class IocContainer(AbcIocContainer):
         super().__init__(*requires, name=name, shared=shared)
     
     @property
-    def context(self): # -> 'InjectorContext':
+    def _context(self): # -> 'InjectorContext':
         if dep := next(iter(self.dependants), None):
-            return dep.context
+            return dep._context
 
     @cached_property
     def repository(self):

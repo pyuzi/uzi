@@ -124,40 +124,37 @@ class ProviderRegistry:
     def _get_provider_class(self, kind: KindOfProvider, kwds: dict) -> type[p.Provider]:
         return kind.default_impl
 
-    def alias(self, provide: T_Injectable, use: T_Injectable, **kwds):
+    def alias(self, provide: T_Injectable, use: T_Injectable=None, **kwds):
         """Registers an `Alias provider`
         """
-        self.register(provide, p.AliasProvider(use, **kwds))
-  
+        def register(use_):
+            self.register(provide, p.AliasProvider(use_, **kwds))
+            return use_
+        
+        if use is None:
+            return register
+        else:
+            return register(use) 
+
     def value(self, provide: T_Injectable, use: p.T_UsingValue, **kwds):
         """Registers an `Value provider`
         """
         self.register(provide, p.ValueProvider(use, **kwds))
+        return use
 
     def function(self, use: type[T_Injectable]=None, /, provide: T_Injectable=None, **kwds):
-        def register(obj):
-            if use is None is provide:
-                provide_ = use_ = obj
-            else:
-                provide_, use_ = provide, obj
-           
-            self.register(provide_, p.FunctionProvider(use_, **kwds))
-            return obj
-        
+        def register(use_):
+            self.register(provide, p.FunctionProvider(use_, **kwds))
+            return use_
         if use is None:
             return register
         else:
             return register(use)    
    
     def type(self, use: type[T_Injectable]=None, /, provide: T_Injectable=None, **kwds):
-        def register(obj):
-            if use is None is provide:
-                provide_ = use_ = obj
-            else:
-                provide_, use_ = provide, obj
-           
-            self.register(provide_, p.TypeProvider(use_, **kwds))
-            return obj
+        def register(use_):
+            self.register(provide, p.TypeProvider(use_, **kwds))
+            return use_
         
         if use is None:
             return register

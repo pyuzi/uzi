@@ -41,6 +41,7 @@ class AbcScope(AbcIocContainer):
     """"""
 
     name: str
+    root: 'AbcScope'
     parent: 'AbcScope'
     injectors: dict[Injector, t.Union[Token, None]]
 
@@ -81,8 +82,10 @@ class AbcScope(AbcIocContainer):
 
         if parent is None:
             self.parent = parent
+            self.root = self
         elif isinstance(parent, AbcScope):
             self.parent = parent
+            self.root = parent.root
             parent.add_dependant(self)
         else:
             raise ValueError(
@@ -189,11 +192,11 @@ class AbcScope(AbcIocContainer):
             for src in sources:
                 deps[src].add(dep)
 
-    def create(self, parent: Injector=None) -> Injector:
+    def create_injector(self, parent: Injector=None) -> Injector:
         prt = self.parent
         if (parent and parent.scope) != prt:
             if prt and (not parent or parent.scope in prt):
-                parent = prt.create(parent)
+                parent = prt.create_injector(parent)
             else:
                 raise ValueError(
                     f'Error creating Injector. Invalid parent injector {parent=} '
@@ -204,10 +207,8 @@ class AbcScope(AbcIocContainer):
         return rv
 
     def dispatch_injector(self, inj: Injector):
-        ctx = self.context
+        ctx = self._context
         cur = ctx.get()
-
-        # print(f'- {self=!s} ---> {cur=}')
 
         if cur and self in cur.scope:
             self.injectors[inj] = None
@@ -217,7 +218,7 @@ class AbcScope(AbcIocContainer):
     def dispose_injector(self, inj: Injector):
         token = self.injectors.pop(inj)
         if token.__class__ is object:
-            self.context.reset(token)
+            self._context.reset(token)
 
     def add_dependant(self, scope: 'AbcScope'):
         if not isinstance(scope, AbcScope):
@@ -276,23 +277,14 @@ class AbcScope(AbcIocContainer):
 @export
 class MainScope(AbcScope):
     
-    main = None
+    _context = None
 
     def __init__(self, 
                 *requires: 'IocContainer', 
                 name: str='main',
                 context: InjectorContext=None):
-        self.main = self
         super().__init__(name, None, *requires)
-        self._ctx = context or InjectorContext(f'{self.name}.injector', default=None)
-
-    @property
-    def context(self) -> 'InjectorContext':
-        return self._ctx
-
-    def current_injector(self):
-        return self._ctx.get()
-
+        self._context = context or InjectorContext(f'{self.name}.injector', default=None)
 
 
 
@@ -300,18 +292,11 @@ class MainScope(AbcScope):
 @export
 class LocalScope(AbcScope):
     
+    _context = None
+    
     def __init__(self, 
                 parent: 'AbcScope',
                 *requires: 'IocContainer', 
                 name: str='local'):
         super().__init__(name, parent, *requires)
-
-    @property
-    def context(self) -> 'InjectorContext':
-        return self.main.context
-
-    @cached_property
-    def main(self) -> 'MainScope':
-        if self.parent:
-            return self.parent.main
-
+        self._context = self.parent._context

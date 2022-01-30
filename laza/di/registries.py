@@ -1,6 +1,6 @@
 from logging import getLogger
 import os
-from types import GenericAlias
+from types import FunctionType, GenericAlias
 import typing as t
 
 from collections.abc import Callable, Mapping, Set
@@ -10,12 +10,13 @@ from laza.common.typing import get_origin
 from laza.common.functools import cached_property, export
 
 
-from . import providers as p
+from . import new_providers as p
 from .common import (
     Injectable,
     ResolverFunc,
     T_Injectable,
     KindOfProvider,
+    ResolverInfo,
 )
 
 from .exc import DuplicateProviderError
@@ -27,36 +28,6 @@ logger = getLogger(__name__)
 
 
 ProviderDict = dict[T_Injectable, p.Provider]
-
-
-class ResolverDict(dict[T_Injectable, ResolverFunc]):
-
-    __slots__ = 'registry',
-    registry: Mapping[T_Injectable, p.Provider]
-
-    def __init__(self, registry: Mapping[T_Injectable, p.Provider]):
-        self.registry = registry
-
-    def __missing__(self, key):
-        if pro := self.registry[key]:
-            return self.setdefault(key, pro(self, key))
-        elif origin := get_origin(key):
-            if pro := self.registry[origin]:
-                return self.setdefault(key, pro(self, key))
-
-
-
-@export()
-class ResolverRegistry:
-
-    resolver_dict_class: t.ClassVar[type[ResolverDict]] = ResolverDict
-
-    @cached_property
-    def resolvers(self):
-        return self._create_resolvers()
-
-    def _create_resolvers(self):
-        return self.resolver_dict_class(self)
 
 
 
@@ -113,7 +84,7 @@ class ProviderRegistry:
         provider = self.create_provider(use, **kwds)
 
         if provide is None:
-            provide = provider.implicit_tag()
+            provide = provider.implicit_token()
             if provide is NotImplemented:
                 raise ValueError(f'no implicit tag for {provider!r}')
 
@@ -153,268 +124,54 @@ class ProviderRegistry:
     def _get_provider_class(self, kind: KindOfProvider, kwds: dict) -> type[p.Provider]:
         return kind.default_impl
 
-    @t.overload
-    def alias(self, 
-            tags: t.Union[T_Injectable, None], 
-            use: p.T_UsingAlias, 
-            *, 
-            shared:bool=None, 
-            **opts) -> T_Injectable:
-        ...
-
-    @t.overload
-    def alias(self, 
-            *, 
-            use: p.T_UsingAlias, 
-            shared:bool=None, 
-            **opts) -> Callable[[T_Injectable], T_Injectable]:
-        ...
-    @t.overload
-    def alias(self, 
-            tags: t.Union[T_Injectable, None],
-            *, 
-            shared:bool=None, 
-            **opts) -> Callable[[p.T_UsingAlias], p.T_UsingAlias]:
-        ...
-
-    def alias(self, tags: t.Union[T_Injectable, None]=..., use: p.T_UsingAlias=..., **kwds):
-        """Registers an `AliasProvider`
+    def alias(self, provide: T_Injectable, use: T_Injectable, **kwds):
+        """Registers an `Alias provider`
         """
-        def register(obj):
-            if use is ...:
-                tag, use_ = tags, obj
-            else:
-                tag, use_ = obj, use
-
-            self.register(tag, use_, kind=KindOfProvider.alias, **kwds)
-            return obj
-    
-        if tags is ... or use is ...:
-            return register
-        else:
-            return register(tags)    
-
-
-    @t.overload
-    def value(self, 
-            provide: T_Injectable, /,
-            use: p.T_UsingValue, *, 
-            shared:bool=None, 
-            **opts) -> T_Injectable:
-        ...
-    @t.overload
-    def value(self, 
-            *, 
-            use: p.T_UsingValue,
-            shared:bool=None, 
-            **opts) -> Callable[[T_Injectable], T_Injectable]:
-        ...
-
-    def value(self, provide:  t.Union[T_Injectable, None]=None, /, use: p.T_UsingValue=..., **kwds):
-        """Registers an `AliasProvider`
+        self.register(provide, p.AliasProvider(use, **kwds))
+  
+    def value(self, provide: T_Injectable, use: p.T_UsingValue, **kwds):
+        """Registers an `Value provider`
         """
-        def register(obj: T_Injectable):
-            self.register(obj, use, kind=KindOfProvider.value, **kwds)
+        self.register(provide, p.ValueProvider(use, **kwds))
 
-            return obj
-
-        if provide is None:
-            return register
-        else:
-            return register(provide)    
-
-    @t.overload
-    def function(self, 
-            provide: t.Union[T_Injectable, None], /, 
-            use: p.T_UsingFunc, *, 
-            shared:bool=None, 
-            **opts) -> T_Injectable:
-        ...
-    @t.overload
-    def function(self, 
-            *, 
-            use: p.T_UsingFunc, 
-            shared:bool=None, 
-            **opts) -> Callable[[T_Injectable], T_Injectable]:
-        ...
-
-    @t.overload
-    def function(self, 
-            provide: t.Union[T_Injectable, None]=None, /, 
-            *, 
-            shared:bool=None, 
-            **opts) -> Callable[[p.T_UsingFunc], p.T_UsingFunc]:
-        ...
-
-    def function(self, provide: t.Union[T_Injectable, None]=None, /, use: p.T_UsingFunc =..., **kwds):
-        """Registers an `AliasProvider`
-        """
+    def function(self, use: type[T_Injectable]=None, /, provide: T_Injectable=None, **kwds):
         def register(obj):
-            if use is ...:
-                tag, use_ = provide, obj
+            if use is None is provide:
+                provide_ = use_ = obj
             else:
-                tag, use_ = obj, use
-
-            self.register(tag, use_, kind=KindOfProvider.func, **kwds)
+                provide_, use_ = provide, obj
+           
+            self.register(provide_, p.FunctionProvider(use_, **kwds))
             return obj
-    
-        if provide is None or use is ...:
+        
+        if use is None:
             return register
         else:
-            return register(provide)    
-
-    @t.overload
-    def type(self, 
-            provide: t.Union[T_Injectable, None], 
-            /,
-            use: p.T_UsingType, *, 
-            shared:bool=None, 
-            **opts) -> T_Injectable:
-        ...
-
-    @t.overload
-    def type(self, *,
-            use: p.T_UsingType, 
-            shared:bool=None, 
-            **opts) -> Callable[[T_Injectable], T_Injectable]:
-        ...
-    @t.overload
-    def type(self, 
-            provide: t.Union[T_Injectable, None]=None, 
-            /, *, 
-            shared:bool=None, 
-            **opts) -> Callable[[p.T_UsingType], p.T_UsingType]:
-        ...
-
-    def type(self, provide: t.Union[T_Injectable, None]=None, /, use: p.T_UsingType =..., **kwds):
+            return register(use)    
+   
+    def type(self, use: type[T_Injectable]=None, /, provide: T_Injectable=None, **kwds):
         def register(obj):
-            if use is ...:
-                tag, use_ = provide, obj
+            if use is None is provide:
+                provide_ = use_ = obj
             else:
-                tag, use_ = obj, use
-
-            self.register(tag, use_, kind=KindOfProvider.type, **kwds)
+                provide_, use_ = provide, obj
+           
+            self.register(provide_, p.TypeProvider(use_, **kwds))
             return obj
-    
-        if provide is None or use is ...:
+        
+        if use is None:
             return register
         else:
-            return register(provide)    
-            
-    @t.overload
-    def injectable(self, 
-                provide: t.Union[T_Injectable, None], /,
-                use: p.T_UsingAny, 
-                *,
-                shared:bool=None, 
-                **opts) -> T_Injectable:
-        ...    
-    @t.overload
-    def injectable(self, 
-                *,
-                use: p.T_UsingAny, 
-                shared:bool=None, 
-                **opts) -> Callable[[T_Injectable], T_Injectable]:
-        ...
-    @t.overload
-    def injectable(self, 
-                provide: t.Union[T_Injectable, None]=None,
-                 /, *,
-                shared:bool=None, 
-                **opts) -> Callable[[p.T_UsingAny], p.T_UsingAny]:
-        ...
+            return register(use)    
+   
+    def factory(self, provide: T_Injectable, use: p.T_UsingFactory =None, **kwds):
+        def register(use_):
+            self.register(provide, p.FactoryProvider(use_, **kwds))
+            return use_
 
-    def injectable(self, provide: t.Union[T_Injectable, None]=None, /, use: p.T_UsingAny =..., **kwds):
-        def register(obj):
-            if use is ...:
-                tag, use_ = provide, obj
-            else:
-                tag, use_ = obj, use
-
-            kind = kwds.pop('kind', None)
-            if not kind:
-                if not callable(use_):
-                    raise TypeError(f'expected Callable but got {type(use_)} for {tag!r}')
-                elif isinstance(use_, (type, GenericAlias)):
-                    kind = KindOfProvider.type
-                else:
-                    kind = KindOfProvider.func
-
-            self.register(tag, use_, kind=kind, **kwds)
-            return obj
-    
-        if provide is None or use is ...:
+        if use is None:
             return register
         else:
-            return register(provide)    
+            return register(use)    
 
-    @t.overload
-    def provide(self, 
-            tags: T_Injectable, 
-            use: p.T_UsingFactory, 
-            *, 
-            shared:bool=None, 
-            **opts) -> p.T_UsingFactory:
-        ...
-    @t.overload
-    def provide(self, 
-            tags: T_Injectable, 
-            *, 
-            shared:bool=None, 
-            **opts) -> Callable[[p.T_UsingFactory], p.T_UsingFactory]:
-        ...
-
-    @t.overload
-    def provide(self, *, 
-            use: p.T_UsingFactory, 
-            shared:bool=None, 
-            **opts) -> Callable[[T_Injectable], T_Injectable]:
-        ...
-
-    def provide(self, provide: T_Injectable=..., use: p.T_UsingFactory =..., **kwds):
-        def register(obj):
-            if use is ...:
-                tag, use_ = provide, obj
-            else:
-                tag, use_ = obj, use
-
-            self.register(tag, use_, kind=KindOfProvider.factory, **kwds)
-            return obj
-    
-        if provide is ... or use is ...:
-            return register
-        else:
-            return register(provide)    
-
-    @t.overload
-    def resolver(self, 
-            tags: T_Injectable, 
-            use: p.T_UsingResolver, 
-            *, 
-            shared:bool=None, 
-            **opts) -> p.T_UsingResolver:
-        ...
-    
-    @t.overload
-    def resolver(self, *, 
-            use: p.T_UsingResolver, 
-            shared:bool=None, 
-            **opts) -> Callable[[T_Injectable], T_Injectable]:
-        ...
-
-    def resolver(self, tags: T_Injectable=..., use: p.T_UsingResolver =..., **kwds):
-        def register(obj):
-            if use is ...:
-                tag, use_ = tags, obj
-            else:
-                tag, use_ = obj, use
-
-            self.register(tag, use_, kind=KindOfProvider.resolver, **kwds)
-            return obj
-    
-        if tags is ... or use is ...:
-            return register
-        else:
-            return register(tags)    
-
-
+   

@@ -1,10 +1,6 @@
 from contextvars import ContextVar
 import logging
 import typing as t
-from functools import partial
-from threading import Lock
-from collections import deque
-from contextlib import AbstractContextManager as ContextManager, ExitStack, nullcontext
 from types import FunctionType, GenericAlias
 from laza.common.collections import  frozendict, nonedict
 from laza.common.imports import ImportRef
@@ -24,8 +20,8 @@ from .exc import InjectorKeyError
 
 
 if t.TYPE_CHECKING:
-    from .new_scopes import Scope
-    from .new_container import BaseContainer
+    from .new_scopes import AbcScope
+    from .new_container import AbcIocContainer
 
 
 export(Injectable)
@@ -33,9 +29,16 @@ export(Injectable)
 logger = logging.getLogger(__name__)
 
 
-T = t.TypeVar('T')
+_T = t.TypeVar('_T')
+_T_Injector = t.TypeVar('_T_Injector', bound='Injector', covariant=True)
 
 
+
+if t.TYPE_CHECKING:
+    class InjectorContext(ContextVar[_T_Injector]):
+        ...
+
+InjectorContext = ContextVar[_T_Injector]
 
 
 
@@ -69,13 +72,13 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
 
     _vars_class: t.ClassVar[type[InjectorVarDict]] = InjectorVarDict
 
-    scope: 'Scope'
+    scope: 'AbcScope'
     parent: 'Injector'
     vars: dict[T_Injectable, InjectorVar]
     
     level: int
 
-    def __init__(self, scope: 'Scope', parent: 'Injector'=None) -> None:
+    def __init__(self, scope: 'AbcScope', parent: 'Injector'=None) -> None:
         self.scope = scope
         self.parent = NullInjector() if parent is None else parent
         self.level = 0 if parent is None else parent.level + 1 
@@ -117,7 +120,7 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
     def _on_dispose(self):
         self.vars = None
 
-    def get(self, injectable: T_Injectable, default: T=None) -> t.Union[T_Injected, T]: 
+    def get(self, injectable: T_Injectable, default: _T=None) -> t.Union[T_Injected, _T]: 
         try:
             return self[injectable]
         except InjectorKeyError:
@@ -208,11 +211,11 @@ class NullInjector(Injector):
     level = -1
     
     def __init__(self, name=None):
-        _none_var = InjectorVar(self, value=None)
+        _none_var = InjectorVar(None)
         self.vars = _NullInjectorVars({ None: _none_var, type(None): _none_var })
         self.name = name or 'null'
 
-    def get(self, k: T_Injectable, default: T = None) -> T: 
+    def get(self, k: T_Injectable, default: _T = None) -> _T: 
         return default
         
     def __contains__(self, x) -> bool:

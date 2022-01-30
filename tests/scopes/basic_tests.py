@@ -5,9 +5,10 @@ import inspect as ins
 import pytest
 from functools import wraps
 
-from laza.di import Injector, InjectionToken
-from laza.di.new_container import Container
-from laza.di.new_scopes import Scope, MainScope
+from laza.di import new_providers as p
+from laza.di.new_container import IocContainer
+from laza.di.new_scopes import MainScope, LocalScope
+
 
 
 
@@ -24,13 +25,13 @@ class BasicScopeTests:
 
  
     def test_basic(self):
-        con1 = Container() 
-        con2 = Container() 
-        con3 = Container(con1, con2) 
-        con4 = Container(con3)
+        con1 = IocContainer() 
+        con2 = IocContainer() 
+        con3 = IocContainer(con1, con2) 
+        con4 = IocContainer(con3)
 
         scope1 = MainScope(con2, con1)
-        scope2 = Scope('scope2', scope1, con4)
+        scope2 = LocalScope(scope1, con4)
 
 
         print(scope2) 
@@ -42,37 +43,39 @@ class BasicScopeTests:
 
  
     def test_providers(self):
-        con1 = Container() 
+        con1 = IocContainer() 
 
-        con1.type(Foo, Foo)
-        con1.type(Bar, Bar)
-        
-        con2 = Container(shared=False) 
+        con1.type(Foo)
+        # con1[Foo] = p.Type(Foo)
+
+        con1.type(Bar)
+         
+        con2 = IocContainer(shared=False) 
         con2.type(Baz, Baz)
 
-        con3 = Container(con1, con2) 
+        con3 = IocContainer(con1, con2) 
         con3.type(FooBar, FooBar)
         con3.type(FooBarBaz, FooBarBaz)
 
-        con4 = Container(con2)
+        con4 = IocContainer(con2)
 
 
         scope1 = MainScope(con3)
-        scope2 = Scope('local', scope1)
-        scope3 = Scope('local2', scope2, con4)
+        scope2 = LocalScope(scope1)
+        scope3 = LocalScope(scope2, con4)
 
-        with scope3.create(None) as inj:
-            
-            print(f'---> {inj=}')
-            print(f'---> {inj.scope.main._ctx.get()}')
-            print(inj[Foo])
-            print(inj[FooBarBaz])
+        with scope2.create() as inj_:
+            with scope3.create(inj_) as inj:
+                print(f'---> {inj=}')
+                print(f'---> {inj.scope.main._ctx.get()}')
+                print(inj[Foo])
+                print(inj[FooBarBaz])
 
-            assert isinstance(inj[Foo], Foo)
-            assert isinstance(inj[Baz], Baz)
-            assert inj[Foo] is not inj[Foo]
-       
-        assert 0, '\n'
+                assert isinstance(inj[Foo], Foo)
+                assert isinstance(inj[Baz], Baz)
+                assert inj[Foo] is not inj[Foo]
+        
+        assert 1, '\n'
  
    
 

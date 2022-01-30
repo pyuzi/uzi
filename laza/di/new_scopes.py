@@ -19,18 +19,15 @@ from laza.common.functools import (
 
 
 
-from .new_injectors import Injector
+from .new_injectors import Injector, InjectorContext
 from .common import (
     Injectable, 
     T_Injectable,
-    InjectorVar,
-    unique_id
 )
 
 from . import signals
-from . import providers as p
-from .registries import ProviderRegistry, ResolverRegistry
-from .new_container import Container, BaseContainer
+from . import new_providers as p
+from .new_container import IocContainer, AbcIocContainer
 
 
 logger = logging.getLogger(__name__)
@@ -40,55 +37,53 @@ logger = logging.getLogger(__name__)
 
 
 @export
-class Scope(ResolverRegistry, BaseContainer):
+class AbcScope(AbcIocContainer):
     """"""
 
     name: str
-    parent: 'Scope'
+    parent: 'AbcScope'
     injectors: dict[Injector, t.Union[Token, None]]
 
-    requires: orderedset['Container']
-    dependants: orderedset['Container']
     shared: bool = True
     injector_class: type[Injector] = Injector
 
     def __init__(self, 
                 name: str,
-                parent: 'Scope',
-                *requires: 'Container', 
+                parent: 'AbcScope',
+                *requires: 'IocContainer', 
                 injector_class: type[Injector]=None):
-
-        super().__init__(*requires, name=name, shared=True)
         self.set_parent(parent)
+        super().__init__(*requires, name=name, shared=True)
         self.injectors = dict()
+
         if injector_class is not None:
             self.injector_class = injector_class
   
-    @property
-    def main(self) -> 'MainScope':
-        if self.parent:
-            return self.parent.main
-
     @cached_property
-    def containers(self) -> orderedset[Container]:
+    def containers(self) -> orderedset[IocContainer]:
         return orderedset(self._create_containers())
     
     @cached_property
-    def repository(self):
+    def repository(self) -> Mapping[T_Injectable, p.Provider]:
         return self._create_repository()
     
+    @cached_property
+    def resolvers(self):
+        return self._create_resolvers()
+
     @cached_property
     def _linked_deps(self) -> dict[SafeReferenceType[T_Injectable], SafeRefSet[T_Injectable]]:
         return SafeKeyRefDict.using(lambda: fallback_default_dict(SafeRefSet))()
 
-    def set_parent(self, parent: 'Scope'=None):
+    def set_parent(self, parent: 'AbcScope'=None):
         if hasattr(self, 'parent'):
             raise AttributeError(f'{self.__class__.__name__}.parent already set.')
 
         if parent is None:
             self.parent = parent
-        elif isinstance(parent, Scope):
-            self.parent = parent.add_dependant(self)
+        elif isinstance(parent, AbcScope):
+            self.parent = parent
+            parent.add_dependant(self)
         else:
             raise ValueError(
                 f'{parent.__class__.__qualname__!r}. '
@@ -99,7 +94,30 @@ class Scope(ResolverRegistry, BaseContainer):
     def _create_repository(self):
         return ChainMap({}, *(d.registry for d in self.containers))
 
-    def _expand_requirements(self, src: Container=None, *, memo_=None):
+    def _create_resolvers(self):
+       
+        get_provider: Callable[..., p.Provider] = self.repository.get
+
+        def fallback(key):
+            if pro := get_provider(key):
+                func, deps = pro._provide(self, key)
+                if setdefault(key, func) is func:
+                    if func is not None and deps:
+                        self.register_dependency(key, *deps)
+                return func
+            elif origin := get_origin(key):
+                if pro := get_provider(origin):
+                    func, deps = pro._provide(self, key)
+                    if setdefault(key, func) is func:
+                        if func is not None and deps:
+                            self.register_dependency(key, *deps)
+                    return func
+
+        res = fallbackdict(fallback)
+        setdefault = res.setdefault
+        return res
+
+    def _expand_requirements(self, src: IocContainer=None, *, memo_=None):
         if memo_ is None:
            memo_ = set()
 
@@ -110,7 +128,7 @@ class Scope(ResolverRegistry, BaseContainer):
             if d in memo_ or memo_.add(d):
                 continue
 
-            yield from t.cast(Sequence[tuple[Container, Container]], self._expand_requirements(d, memo_=memo_))
+            yield from t.cast(Sequence[tuple[IocContainer, IocContainer]], self._expand_requirements(d, memo_=memo_))
             yield src, d
 
     def _create_containers(self):
@@ -129,16 +147,16 @@ class Scope(ResolverRegistry, BaseContainer):
     def is_provided(self, 
                     obj: Injectable,
                     *, 
-                    start: Container=..., 
-                    stop: Container=..., 
+                    start: IocContainer=..., 
+                    stop: IocContainer=..., 
                     depth: int=sys.maxsize):
         return self.find_provider(obj, start=start, stop=stop, depth=depth) is not None
 
     def find_provider(self, 
                     key: Injectable, 
                     *,
-                    start: Container=..., 
-                    stop: Container=..., 
+                    start: IocContainer=..., 
+                    stop: IocContainer=..., 
                     depth: int=sys.maxsize) -> t.Union[p.Provider, None]:
 
         this = self
@@ -171,7 +189,7 @@ class Scope(ResolverRegistry, BaseContainer):
             for src in sources:
                 deps[src].add(dep)
 
-    def create(self, parent: Injector) -> Injector:
+    def create(self, parent: Injector=None) -> Injector:
         prt = self.parent
         if (parent and parent.scope) != prt:
             if prt and (not parent or parent.scope in prt):
@@ -186,8 +204,11 @@ class Scope(ResolverRegistry, BaseContainer):
         return rv
 
     def dispatch_injector(self, inj: Injector):
-        ctx = self.main._ctx
+        ctx = self.context
         cur = ctx.get()
+
+        # print(f'- {self=!s} ---> {cur=}')
+
         if cur and self in cur.scope:
             self.injectors[inj] = None
         else:
@@ -195,11 +216,11 @@ class Scope(ResolverRegistry, BaseContainer):
 
     def dispose_injector(self, inj: Injector):
         token = self.injectors.pop(inj)
-        if token is not None:
-            self.main._ctx.reset(token)
+        if token.__class__ is object:
+            self.context.reset(token)
 
-    def add_dependant(self, scope: 'Scope'):
-        if not isinstance(scope, Scope):
+    def add_dependant(self, scope: 'AbcScope'):
+        if not isinstance(scope, AbcScope):
             raise TypeError(
                 f'{scope.__class__.__qualname__} cannot be a '
                 f'{self.__class__.__name__} dependant.'
@@ -229,11 +250,11 @@ class Scope(ResolverRegistry, BaseContainer):
             d.flush(key, source or self, _skip=skip_)
 
     def __contains__(self, x):
-        if isinstance(x, Container):
+        if isinstance(x, IocContainer):
             return x in self.requires \
                 or any(x in d for d in self.requires) \
                 or x.shared and x in (self.parent or ())
-        elif isinstance(x, Scope):
+        elif isinstance(x, AbcScope):
             return x is self \
                 or x in (self.parent or ())
         else:
@@ -253,20 +274,44 @@ class Scope(ResolverRegistry, BaseContainer):
 
 
 @export
-class MainScope(Scope):
+class MainScope(AbcScope):
     
-    _ctx: ContextVar[Injector]
+    main = None
 
     def __init__(self, 
-                *requires: 'Container', 
+                *requires: 'IocContainer', 
                 name: str='main',
-                context: ContextVar=None):
+                context: InjectorContext=None):
+        self.main = self
         super().__init__(name, None, *requires)
-        self._ctx = context or ContextVar(f'{self.name}.injector', default=None)
+        self._ctx = context or InjectorContext(f'{self.name}.injector', default=None)
 
     @property
-    def main(self):
-        return self
+    def context(self) -> 'InjectorContext':
+        return self._ctx
 
-    def injector(self):
-        pass
+    def current_injector(self):
+        return self._ctx.get()
+
+
+
+
+
+@export
+class LocalScope(AbcScope):
+    
+    def __init__(self, 
+                parent: 'AbcScope',
+                *requires: 'IocContainer', 
+                name: str='local'):
+        super().__init__(name, parent, *requires)
+
+    @property
+    def context(self) -> 'InjectorContext':
+        return self.main.context
+
+    @cached_property
+    def main(self) -> 'MainScope':
+        if self.parent:
+            return self.parent.main
+

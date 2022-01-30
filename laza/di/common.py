@@ -389,9 +389,8 @@ class KindOfProvider(IntEnum, fields='default_impl', frozen=False):
 class InjectorVar(t.Generic[T_Injected]):
     """Resolver t.Generic[T_InjectedObject"""
 
-    __slots__ = 'injector', 'value', 'get', 'make',
+    __slots__ = 'value', 'get', 'make',
 
-    injector: 'Injector'
     value: T_Injected
     call: Callable[..., T_Injected]
     make: Callable[[], T_Injected]
@@ -400,22 +399,15 @@ class InjectorVar(t.Generic[T_Injected]):
     _default_bind_: t.ClassVar[t.Union[bool, None]] = None
 
     def __new__(cls, 
-                injector: 'Injector'=None, 
-                /,
                 value: T_Injected = Void, 
                 make: t.Union[Callable[..., T_Injected], None]=None, 
                 *, 
-                bind: t.Union[bool, None] = None,
                 shared: t.Union[bool, None] = None):
         
         self = object.__new__(cls)
 
         if make is not None:
-            if bind is True or (bind is None and cls._default_bind_):
-                self.make = make = MethodType(make, self)
-            else:
-                self.make = make
-
+            self.make = make
             if shared is True or (shared is None and cls._default_cache_):
                 def get():
                     nonlocal self
@@ -431,14 +423,12 @@ class InjectorVar(t.Generic[T_Injected]):
             self.make = make
             self.get = lambda: value
 
-
-        self.injector = injector
         self.value = value
         return self
 
     def __repr__(self) -> str: 
         make, value = self.make, self.value,
-        return f'{self.__class__.__name__}({self.injector}, {value=!r}, make={getattr(make, "__func__", make)!r})'
+        return f'{self.__class__.__name__}({value=!r}, make={getattr(make, "__func__", make)!r})'
 
 
 

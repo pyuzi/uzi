@@ -1,6 +1,9 @@
+from abc import abstractmethod
+from contextvars import ContextVar
+from functools import update_wrapper
 from logging import getLogger
 import os
-from types import GenericAlias
+from types import FunctionType, GenericAlias
 import typing as t
 
 from collections import ChainMap
@@ -13,8 +16,6 @@ from laza.common.functools import cached_property, calling_frame
 
 
 
-from . import providers as p
-from .injectors import Injector
 from .common import (
     Injectable,
     T_Injectable,
@@ -24,25 +25,27 @@ from .common import (
 from .registries import ProviderRegistry
 
 if t.TYPE_CHECKING:
-    from .new_scopes import Scope
+    from .new_scopes import AbcScope
+    from .new_injectors import Injector, InjectorContext
 
 
 logger = getLogger(__name__)
 
+_T = t.TypeVar('_T')
 
 
 
 @export()
 @Injectable.register
-class BaseContainer(ProviderRegistry):
+class AbcIocContainer(ProviderRegistry):
 
     name: str
-    requires: orderedset['Container']
-    dependants: orderedset['Container']
+    requires: orderedset['IocContainer']
+    dependants: orderedset['AbcScope']
     shared: bool = True
 
     def __init__(self, 
-                *requires: 'Container',
+                *requires: 'IocContainer',
                 name: str=None,
                 shared: bool=None):
 
@@ -62,31 +65,67 @@ class BaseContainer(ProviderRegistry):
         requires = [*self.requires]
         return f'{self.__class__.__name__}({self.name!r}, {requires=!r})'
 
+    @property
+    @abstractmethod
+    def context(self) -> 'InjectorContext':
+        ...
+
+    def current_injector(self):
+        if ctx := self.context:
+            return ctx.get()
+
     def _setup_requires(self):
         self.requires = orderedset()
      
     def _setup_dependants(self):
         self.dependants = orderedset()
      
-    def add_dependant(self, scope: 'Scope'):
+    def add_dependant(self, scope: 'AbcScope'):
+        if (ctx := self.context) and (dctx := scope.context) and dctx != ctx:
+            raise ValueError(
+                f'InjectorContext conflict in {self} '
+                f'{self.context=} and {scope.context}'
+            )
+
         self.dependants.add(scope)
+        
         return self
 
     def flush(self, tag, source=None):
         if source is None:
             for d in self.dependants:
                 d.flush(tag, self)
+   
+    def inject(self, func:  Callable[..., _T] =None, /):
+        def decorate(fn):
+
+            def wrapper(*a, **kw):
+                return self.injector.make(wrapper, *a, **kw)
+
+            wrapper.__injection_wrapper__ = True
+
+            if isinstance(fn, FunctionType):
+                wrapper = update_wrapper(wrapper, fn)
+            elif isinstance(fn, Callable):
+                wrapper = update_wrapper(wrapper, fn, updated=())
+            
+            self.alias(wrapper, fn)
+            return wrapper
         
-    
+        if func is None:
+            return decorate
+        else:
+            return decorate(func)
+
 
 
 @export()
-class Container(BaseContainer):
+class IocContainer(AbcIocContainer):
 
     shared: bool = True
 
     def __init__(self, 
-                *requires: 'Container',
+                *requires: 'IocContainer',
                 name: str=None,
                 shared: bool=None):
 
@@ -96,6 +135,11 @@ class Container(BaseContainer):
             
         super().__init__(*requires, name=name, shared=shared)
     
+    @property
+    def context(self): # -> 'InjectorContext':
+        if dep := next(iter(self.dependants), None):
+            return dep.context
+
     @cached_property
     def repository(self):
         return self._create_repository()
@@ -104,7 +148,7 @@ class Container(BaseContainer):
         return ChainMap({}, *(d.repository for d in self.requires))
  
     def __contains__(self, x):
-        if isinstance(x, Container):
+        if isinstance(x, IocContainer):
             return x is self \
                 or x in self.requires \
                 or any(x in d for d in self.requires)

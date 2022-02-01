@@ -596,7 +596,7 @@ class InjectedProperty(t.Generic[T_Injected]):
         if obj is None:
             return self
 
-        from .container import ioc
+        from .containers import ioc
 
         try:
             return (self.ioc or ioc)[self.depends]

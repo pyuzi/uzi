@@ -6,8 +6,8 @@ import pytest
 from functools import wraps
 
 from laza.di import Injector, InjectionToken
-from laza.di.new_container import Container
-from laza.di.new_scopes import Scope, MainScope
+from laza.di.container import Container
+from laza.di.scopes import Scope, MainScope
 
 
 

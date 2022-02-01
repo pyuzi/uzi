@@ -5,7 +5,7 @@ import typing as t
 from laza.common.functools import export
 
 if t.TYPE_CHECKING:
-    from .new_injectors import Injector
+    from .injectors import Injector
 
 
 

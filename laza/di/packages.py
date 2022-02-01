@@ -2,7 +2,7 @@
 
 
 from . import providers
-from .container import IocContainer
+from .containers import IocContainer
 
 
 

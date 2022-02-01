@@ -10,7 +10,7 @@ from laza.common.typing import get_origin
 from laza.common.functools import cached_property, export
 
 
-from . import new_providers as p
+from . import providers as p
 from .common import (
     Injectable,
     ResolverFunc,

@@ -7,7 +7,7 @@ from laza.common.functools import export
 from .common import Injectable, Depends, InjectionToken, InjectedLookup
 
 from . import providers_new as p
-from .container import IocContainer
+from .containers import IocContainer
 
 
 @export()

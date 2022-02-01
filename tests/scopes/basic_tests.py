@@ -5,9 +5,8 @@ import inspect as ins
 import pytest
 from functools import wraps
 
-from laza.di import new_providers as p
-from laza.di.new_container import IocContainer
-from laza.di.new_scopes import MainScope, LocalScope
+from laza.di.containers import IocContainer
+from laza.di.scopes import MainScope, LocalScope
 
 
 

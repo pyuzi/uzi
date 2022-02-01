@@ -364,14 +364,12 @@ class CallableProvider(Provider[_T_Using]):
         return { n: d for n, d in deps.items() if scope.is_provided(d) }
 
     def get_explicit_deps(self, sig: Signature, scope: 'AbcScope'):
-        ioc = scope.ioc
-        return  { n: d for n, d in self.deps.items() if ioc.is_injectable(d) }
+        return  { n: d for n, d in self.deps.items() if isinstance(d, Injectable) }
 
     def get_implicit_deps(self, sig: Signature, scope: 'AbcScope'):
-        ioc = scope.ioc
         return  { n: p.annotation
             for n, p in sig.parameters.items() 
-                if  p.annotation is not _EMPTY and ioc.is_injectable(p.annotation)
+                if  p.annotation is not _EMPTY and isinstance(p.annotation, Injectable)
         }
 
     def eval_arg_params(self, sig: Signature, defaults: Mapping[str, t.Any], deps: Mapping[str, Injectable]):
@@ -459,7 +457,6 @@ class CallableProvider(Provider[_T_Using]):
             return ResolverInfo(resolve)
 
         defaults = frozendict(bound.arguments)
-
         
         expl_deps = self.get_explicit_deps(sig, scope)
         impl_deps = self.get_implicit_deps(sig, scope)
@@ -468,11 +465,11 @@ class CallableProvider(Provider[_T_Using]):
         deps = self.get_available_deps(sig, scope, all_deps)
         argv = self.create_arguments_view(sig, defaults, deps)
         
-        def resolve(at: 'Injector'):
+        def resolve(inj: 'Injector'):
             nonlocal shared
-            def make(inj, *a, **kw):
-                nonlocal func, argv, at
-                return func(*argv.args(at, kw), *a, **argv.kwds(at, kw))
+            def make(*a, **kw):
+                nonlocal func, argv, inj
+                return func(*argv.args(inj, kw), *a, **argv.kwds(inj, kw))
             return InjectorVar(make=make, shared=shared)
 
         return ResolverInfo(resolve, set(all_deps.values()))

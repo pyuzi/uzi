@@ -95,7 +95,7 @@ class AbcScope(AbcIocContainer):
         return self
 
     def _create_repository(self):
-        return ChainMap({}, *(d.registry for d in self.containers))
+        return ChainMap(self.registry, *(d.registry for d in self.containers))
 
     def _create_resolvers(self):
        
@@ -192,17 +192,17 @@ class AbcScope(AbcIocContainer):
             for src in sources:
                 deps[src].add(dep)
 
-    def create_injector(self, parent: Injector=None) -> Injector:
+    def make(self, parent: Injector=None) -> Injector:
         prt = self.parent
         if (parent and parent.scope) != prt:
             if prt and (not parent or parent.scope in prt):
-                parent = prt.create_injector(parent)
+                parent = prt.make(parent)
             else:
                 raise ValueError(
                     f'Error creating Injector. Invalid parent injector {parent=} '
                     f'from {parent.scope=}. Expected {prt!r}.'
                 )
-
+        self.repository
         rv = self.injector_class(self, parent)
         return rv
 
@@ -214,11 +214,30 @@ class AbcScope(AbcIocContainer):
             self.injectors[inj] = None
         else:
             self.injectors[inj] = ctx.set(inj)
+        # self.setup_injector_vars(inj)
 
     def dispose_injector(self, inj: Injector):
         token = self.injectors.pop(inj)
-        if token.__class__ is object:
+        if token is not None:
             self._context.reset(token)
+        # self.teardown_injector_vars(inj)
+
+    def setup_injector_vars(self, inj: Injector):
+        resolvers = self.resolvers
+        def fallback(token):
+            nonlocal resolvers, setdefault, inj, parent
+            res = resolvers[token]
+            if res is None:
+                return setdefault(token, parent.vars[token]) 
+            return setdefault(token, res(inj))
+            
+        inj.vars = fallbackdict(fallback)
+        setdefault = inj.vars.setdefault
+        parent = inj.parent
+        return inj
+
+    def teardown_injector_vars(self, inj: Injector):
+        inj.vars = None
 
     def add_dependant(self, scope: 'AbcScope'):
         if not isinstance(scope, AbcScope):
@@ -249,6 +268,8 @@ class AbcScope(AbcIocContainer):
                     
         for d in self.dependants: 
             d.flush(key, source or self, _skip=skip_)
+
+
 
     def __contains__(self, x):
         if isinstance(x, IocContainer):

@@ -18,6 +18,7 @@ from laza.common.functools import cached_property, calling_frame
 
 from .common import (
     Injectable,
+    InjectionToken,
     T_Injectable,
     unique_id
 )
@@ -70,10 +71,6 @@ class AbcIocContainer(ProviderRegistry, ABC):
     def _context(self) -> 'InjectorContext':
         ...
 
-    def current_injector(self):
-        if ctx := self._context:
-            return ctx.get()
-
     def _setup_requires(self):
         self.requires = orderedset()
      
@@ -96,26 +93,24 @@ class AbcIocContainer(ProviderRegistry, ABC):
             for d in self.dependants:
                 d.flush(tag, self)
    
-    def inject(self, func:  Callable[..., _T] =None, /):
-        def decorate(fn):
+    def inject(self, func: Callable[..., _T]=None, **opts):
+        def decorator(fn: Callable[..., _T]):
+            token = InjectionToken(f'{fn.__module__}.{fn.__qualname__}')
+            self.function(fn, token)
 
             def wrapper(*a, **kw):
-                return self.injector.make(wrapper, *a, **kw)
+                nonlocal self, token
+                return self._context.get().make(token, *a, **kw)
 
-            wrapper.__injection_wrapper__ = True
+            wrapper = update_wrapper(wrapper, fn)
+            wrapper.__injection_token__ = token
 
-            if isinstance(fn, FunctionType):
-                wrapper = update_wrapper(wrapper, fn)
-            elif isinstance(fn, Callable):
-                wrapper = update_wrapper(wrapper, fn, updated=())
-            
-            self.alias(wrapper, fn)
             return wrapper
-        
+
         if func is None:
-            return decorate
+            return decorator
         else:
-            return decorate(func)
+            return decorator(func)    
 
 
 
@@ -123,6 +118,7 @@ class AbcIocContainer(ProviderRegistry, ABC):
 class IocContainer(AbcIocContainer):
 
     shared: bool = True
+    _context: 'InjectorContext' = None
 
     def __init__(self, 
                 *requires: 'IocContainer',
@@ -135,10 +131,10 @@ class IocContainer(AbcIocContainer):
             
         super().__init__(*requires, name=name, shared=shared)
     
-    @property
-    def _context(self): # -> 'InjectorContext':
-        if dep := next(iter(self.dependants), None):
-            return dep._context
+    # @property
+    # def _context(self): # -> 'InjectorContext':
+    #     if dep := next(iter(self.dependants), None):
+    #         return dep._context
 
     @cached_property
     def repository(self):
@@ -154,4 +150,10 @@ class IocContainer(AbcIocContainer):
                 or any(x in d for d in self.requires)
         else:
             return super().__contains__(x)
-    
+      
+    def add_dependant(self, scope: 'AbcScope'):
+        super().add_dependant(scope)
+        if self._context is None:
+            self._context = scope._context
+        
+        return self

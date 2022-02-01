@@ -170,5 +170,5 @@ class ProviderRegistry:
             return register
         else:
             return register(use)    
-
+  
    

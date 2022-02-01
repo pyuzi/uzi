@@ -287,7 +287,6 @@ class Injectable(metaclass=InjectableType):
 
 Injectable.register(type)
 Injectable.register(t.TypeVar)
-Injectable.register(MethodType)
 Injectable.register(FunctionType)
 Injectable.register(GenericAlias)
 Injectable.register(type(t.Generic[T_Injected]))

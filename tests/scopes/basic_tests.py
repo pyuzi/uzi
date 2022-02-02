@@ -6,6 +6,7 @@ import pytest
 from functools import wraps
 
 from laza.di.containers import IocContainer
+from laza.di.common import InjectionToken
 from laza.di.scopes import MainScope, LocalScope
 
 
@@ -121,9 +122,12 @@ class BasicScopeTests:
     def test_perfomance(self, speed_profiler):
         ioc = MainScope() 
 
-        ioc.type(Foo, shared=False)
-        ioc.type(Bar, shared=True)
-        ioc.type(Baz, shared=True)
+        SharedFoo = InjectionToken('SharedFoo')
+
+        ioc.type(Foo)
+        ioc.type(Foo, SharedFoo, shared=True)
+        ioc.type(Bar, shared=False)
+        ioc.type(Baz, shared=False)
 
 
         @ioc.inject
@@ -146,13 +150,16 @@ class BasicScopeTests:
         mkinject_2 = lambda: inject_2.__wrapped__(mkfoo(), mkbar(), mkbaz())
 
         _n = int(1e5)
-        profile = speed_profiler(_n, labels=('PY', 'DI'))
-        xprofile = speed_profiler(_n, labels=('DI', 'PY'))
+        _r = 3
+        profile = speed_profiler(_n, labels=('PY', 'DI'), repeat=_r)
+        xprofile = speed_profiler(_n, labels=('DI', 'PY'), repeat=_r)
 
 
         with ioc.make() as inj:
 
             infoo = lambda: inj[Foo]
+            insharedfoo = lambda: inj[SharedFoo]
+            insharedfoo_get = lambda: inj.vars[SharedFoo].get()
             inbar = lambda: inj[Bar]
             inbaz = lambda: inj[Baz]
 
@@ -160,8 +167,19 @@ class BasicScopeTests:
             profile(mkbar, inbar, 'Bar')
             profile(mkbaz, inbaz, 'Baz')
 
-            profile(mkinject_1, inject_1, inject_1.__name__)
-            profile(mkinject_2, inject_2, inject_2.__name__)
+            print('')
+
+            # profile(mkinject_1, inject_1, inject_1.__name__)
+            # profile(mkinject_2, inject_2, inject_2.__name__)
+
+            print('')
+
+            inj[SharedFoo]
+
+            profile = speed_profiler(_n, labels=('SHARED', 'UNIQUE'), repeat=_r)
+            profile(insharedfoo, insharedfoo_get, '')
+
+            print('')
 
         assert 0, '\n'
  

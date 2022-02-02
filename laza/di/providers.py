@@ -8,7 +8,7 @@ from abc import abstractmethod
 from dataclasses import InitVar, dataclass, field
 from laza.common.collections import Arguments, frozendict, orderedset
 
-from collections.abc import  Callable as TCallable, Hashable, Mapping
+from collections.abc import  Callable as TCallable, Set, Mapping
 from laza.common.typing import get_args, typed_signature
 
 
@@ -22,7 +22,7 @@ from .common import (
     InjectedLookup, InjectorVar,
     Injectable, Depends,
     T_Injected, T_Injectable, 
-    ResolverInfo, ResolverFunc
+    ResolverFunc
 )
 
 
@@ -75,21 +75,30 @@ class ProviderCondition(t.Callable[..., bool]):
 
 
 @export()
+class Handler(t.Protocol[T_Injected]):
+
+    deps: t.Optional[Set[T_Injectable]]
+
+    def __call__(self, provider: 'Provider', scope: 'AbcScope', token: T_Injectable) -> InjectorVar:
+        ...
+
+
+
+
+@export()
 @dataclass
 class Provider(t.Generic[_T_Using]):
 
-    # provide: InitVar[Injectable] = None
-    # provides: Injectable = field(init=False)
-    
     use: InitVar[_T_Using] = None
     uses: _T_Using = field(init=False)
+    """The object used to resolve 
+    """
 
     shared: bool = None
-
-
     """Whether to share the resolved instance.
     """
-    when: tuple[ProviderCondition] = ()
+
+    # when: tuple[ProviderCondition] = ()
 
     def __post_init__(self, use=None):
         self._setup()   
@@ -106,7 +115,7 @@ class Provider(t.Generic[_T_Using]):
         return NotImplemented
 
     @abstractmethod
-    def _provide(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
+    def provide(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
         ...
     
     def can_provide(self, scope: 'AbcScope', dep: T_Injectable) -> bool:
@@ -115,7 +124,7 @@ class Provider(t.Generic[_T_Using]):
         return True
 
     # def __call__(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> ResolverFunc:
-    #     func, deps = ResolverInfo.coerce(self._provide(scope, token, *args, **kwds))
+    #     func, deps = ResolverInfo.coerce(self.provide(scope, token, *args, **kwds))
     #     if func is not None and deps:
     #         scope.register_dependency(token, *deps)
     #     return func
@@ -127,8 +136,8 @@ class Provider(t.Generic[_T_Using]):
 @dataclass
 class FactoryProvider(Provider[T_UsingFactory]):
 
-    def _provide(self, scope: 'AbcScope', dep: T_Injectable) -> ResolverInfo:
-        return ResolverInfo.coerce(self.uses(self, scope, dep))
+    def provide(self, scope: 'AbcScope', dep: T_Injectable) -> Handler:
+        return Handler.coerce(self.uses(self, scope, dep))
     
 
 
@@ -140,9 +149,10 @@ class ValueProvider(Provider[T_UsingValue]):
 
     shared: t.ClassVar = True
 
-    def _provide(self, scope: 'AbcScope', dep: T_Injectable,  *args, **kwds) -> ResolverInfo:
+    def provide(self, scope: 'AbcScope', dep: T_Injectable,  *args, **kwds) -> Handler:
         var = InjectorVar(self.uses)
-        return ResolverInfo(lambda at: var)
+        # return Handler(lambda at: var)
+        return lambda at: var
 
     def can_provide(self, scope: 'AbcScope', dep: T_Injectable) -> bool:
         return True
@@ -437,7 +447,7 @@ class CallableProvider(Provider[_T_Using]):
             self.eval_var_kwd_param(sig, defaults, deps)
         )
 
-    def _provide(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> ResolverInfo:
+    def provide(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
 
         func = self.uses
         shared = self.shared
@@ -454,7 +464,8 @@ class CallableProvider(Provider[_T_Using]):
                 nonlocal func, shared
                 return InjectorVar(make=func, shared=shared)
 
-            return ResolverInfo(resolve)
+            # return Handler(resolve)
+            return resolve
 
         defaults = frozendict(bound.arguments)
         
@@ -472,7 +483,9 @@ class CallableProvider(Provider[_T_Using]):
                 return func(*argv.args(inj, kw), *a, **argv.kwds(inj, kw))
             return InjectorVar(make=make, shared=shared)
 
-        return ResolverInfo(resolve, set(all_deps.values()))
+        # return Handler(resolve, set(all_deps.values()))
+        resolve.deps = set(all_deps.values())
+        return resolve
 
 
 
@@ -510,9 +523,9 @@ class AliasProvider(Provider[T_UsingAlias]):
     def can_provide(self, scope: 'AbcScope', token: Injectable) -> bool:
         return scope.is_provided(self.uses)
 
-    def _provide(self, scope: 'AbcScope', dep: T_Injectable,  *_args, **_kwds) -> ResolverInfo:
+    def provide(self, scope: 'AbcScope', dep: T_Injectable,  *_args, **_kwds) -> Handler:
         
-        arguments = self.arguments or None
+        arguments =  None #self.arguments or None
         real = self.uses
         shared = self.shared
 
@@ -520,22 +533,25 @@ class AliasProvider(Provider[T_UsingAlias]):
             def resolve(at: 'Injector'):
                 nonlocal real
                 return at.vars[real]
-        elif arguments:
-            args, kwargs = arguments.args, arguments.kwargs
-            def resolve(at: 'Injector'):
-                if inner := at.vars[real]:
-                    def make(*a, **kw):
-                        nonlocal inner, args, kwargs
-                        return inner.make(*args, *a, **dict(kwargs, **kw))
 
-                    return InjectorVar(make=make, shared=shared)
+        # elif arguments:
+        #     args, kwargs = arguments.args, arguments.kwargs
+        #     def resolve(at: 'Injector'):
+        #         if inner := at.vars[real]:
+        #             def make(*a, **kw):
+        #                 nonlocal inner, args, kwargs
+        #                 return inner.make(*args, *a, **dict(kwargs, **kw))
+
+        #             return InjectorVar(make=make, shared=shared)
         else:
             def resolve(at: 'Injector'):
                 nonlocal real, shared
                 if inner := at.vars[real]:
-                    return InjectorVar(make=lambda *a, **kw: inner.make(*a, **kw), shared=shared)
+                    return InjectorVar(make=inner.make, shared=shared)
 
-        return ResolverInfo(resolve, {real})
+        # return Handler(resolve, {real})
+        resolve.deps = {real}
+        return resolve
 
 
 
@@ -544,7 +560,7 @@ class AliasProvider(Provider[T_UsingAlias]):
 @dataclass
 class UnionProvider(AliasProvider):
 
-    using: InitVar[_T_Using] = None
+    use: InitVar[_T_Using] = t.Union
 
     _implicit_types_ = frozenset([type(None)]) 
 
@@ -558,7 +574,7 @@ class UnionProvider(AliasProvider):
     def can_provide(self, scope: 'AbcScope', token: Injectable) -> bool:
         return len(self.get_injectable_args(scope, token, include_implicit=False)) > 0
 
-    def _provide(self, scope: 'AbcScope', token):
+    def provide(self, scope: 'AbcScope', token):
         
         args = self.get_injectable_args(scope, token)
 
@@ -566,7 +582,9 @@ class UnionProvider(AliasProvider):
             nonlocal args
             return next((v for a in args if (v := at.vars[a])), None)
 
-        return ResolverInfo(resolve, {*args})
+        # return Handler(resolve, {*args})
+        resolve.deps = {*args}
+        return resolve
 
 
 
@@ -574,6 +592,8 @@ class UnionProvider(AliasProvider):
 @export()
 @dataclass
 class AnnotationProvider(UnionProvider):
+
+    use: InitVar[_T_Using] = t.Annotated
 
     _implicit_types_ = frozenset() 
 
@@ -586,31 +606,52 @@ class AnnotationProvider(UnionProvider):
 @dataclass
 class DependencyProvider(AliasProvider):
 
+    use: InitVar[_T_Using] = Depends
+
     def can_provide(self, scope: 'AbcScope', token: 'Depends') -> bool:
         if token.on is ...:
             return False
         return scope.is_provided(token.on, start=token.at)
 
-    def _provide(self, scope: 'AbcScope', token: 'Depends') -> ResolverInfo:
+    def provide(self, scope: 'AbcScope', token: 'Depends') -> Handler:
 
         dep = token.on
         at = None if token.at is ... or token.at else token.at
         arguments = token.arguments or None
+
+        if arguments:
+            args, kwargs = arguments.args, arguments.kwargs
+            def resolve(inj: 'Injector'):
+                nonlocal dep
+                if inner := inj.vars[dep]:
+                    def make(*a, **kw):
+                        nonlocal inner, args, kwargs
+                        return inner.make(*args, *a, **(kwargs | kw))
+
+                    return InjectorVar(make=make)
+        else:
+            def resolve(inj: 'Injector'):
+                nonlocal dep
+                if inner := inj.vars[dep]:
+                    return InjectorVar(make=inner.make)
+
+
+        resolve.deps = {dep}
+        return resolve
 
         if at in scope.aliases:
             at = None
 
         # if at and arguments:
         
-        if at is None is arguments:
-            def resolve(at: 'Injector'):
-                nonlocal dep
-                return at.vars[dep]
-        elif arguments is None:
-            at = scope.ioc.scopekey(at)
+        if arguments:
             def resolve(inj: 'Injector'):
-                nonlocal dep, at
-                return inj[at].vars[dep]
+                nonlocal dep
+                return InjectorVar(make=inj.vars[dep].make(), )
+        elif arguments is None:
+            def resolve(inj: 'Injector'):
+                nonlocal dep
+                return inj.vars[dep]
         elif at is None:
             args, kwargs = arguments.args, arguments.kwargs
             def resolve(inj: 'Injector'):
@@ -634,7 +675,9 @@ class DependencyProvider(AliasProvider):
 
                     return InjectorVar(make=make)
 
-        return ResolverInfo(resolve, {dep})
+        # return Handler(resolve, {dep})
+        resolve.deps = {dep}
+        return resolve
 
 
 
@@ -647,7 +690,7 @@ class LookupProvider(AliasProvider):
     def can_provide(self, scope: 'AbcScope', token: 'InjectedLookup') -> bool:
         return scope.is_provided(token.depends)
 
-    def _provide(self, scope: 'AbcScope', token: 'InjectedLookup',  *_args, **_kwds) -> ResolverInfo:
+    def provide(self, scope: 'AbcScope', token: 'InjectedLookup',  *_args, **_kwds) -> Handler:
 
         dep = token.depends
         path = token.path
@@ -662,5 +705,7 @@ class LookupProvider(AliasProvider):
                 return InjectorVar(make=lambda: path.get(var.value))
             return 
 
-        return ResolverInfo(resolve, {dep})
+        # return Handler(resolve, {dep})
+        resolve.deps = {dep}
+        return resolve
 

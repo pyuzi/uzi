@@ -321,34 +321,6 @@ class ResolverFunc(Callable[['Injector'], T_Injected], t.Generic[T_Injected]):
 
 
 
-@export()
-class ResolverInfo(t.NamedTuple):
-
-    func: t.Union[ResolverFunc, None] = None
-    depends: set[T_Injectable] = frozenset()
-
-    @classmethod
-    def coerce(cls, obj):
-        if obj is None:
-            return cls()
-        typ = obj.__class__
-        if typ is cls:
-            return obj
-        elif issubclass(typ, tuple):
-            return cls(*obj)
-        elif issubclass(typ, Mapping):
-            return cls(**obj)
-        elif issubclass(typ, ResolverFunc):
-            return cls(obj)
-        elif issubclass(typ, Iterable):
-            return cls(*obj)
-        else:
-            raise TypeError(f'must be ResolverFunc, Iterable, Mapping or None not {typ.__name__}')
-    
-    def __bool__(self):
-        return self.func is not None
-
-
 
 @export()
 class KindOfProvider(IntEnum, fields='default_impl', frozen=False):
@@ -388,14 +360,102 @@ class KindOfProvider(IntEnum, fields='default_impl', frozen=False):
 class InjectorVar(t.Generic[T_Injected]):
     """Resolver t.Generic[T_InjectedObject"""
 
+    if t.TYPE_CHECKING:
+        def get(self) -> T_Injected:
+            ...
+            
+        def make(self, *a, **kw) -> T_Injected:
+            ...
+            
+
     __slots__ = 'value', 'get', 'make',
 
     value: T_Injected
-    call: Callable[..., T_Injected]
-    make: Callable[[], T_Injected]
 
-    _default_cache_: t.ClassVar[t.Union[bool, None]] = None
-    _default_bind_: t.ClassVar[t.Union[bool, None]] = None
+    def __new__(cls, *args, **kwds):
+        if cls is InjectorVar:
+            return SimpleInjectorVar(*args, **kwds)
+        else:
+            return object.__new__(cls)
+        
+
+
+@export()
+class ValueInjectorVar(InjectorVar[T_Injected]):
+    """Resolver t.Generic[T_InjectedObject"""
+
+    __slots__ = 'value',
+
+    def __new__(cls, value: T_Injected):
+        self = object.__new__(cls)
+        self.value = value
+        return self
+
+    def get(self) -> T_Injected:
+        return self.value
+
+    def make(self) -> T_Injected:
+        return self.value
+
+    def __repr__(self) -> str: 
+        value = self.value or self.make
+        return f'{self.__class__.__name__}({value=!r})'
+
+
+
+
+@export()
+class FactoryInjectorVar(InjectorVar[T_Injected]):
+    """Factory InjectorVar"""
+
+    __slots__ = 'make', 'get',
+
+    value = Void
+
+    def __new__(cls, make: T_Injected):
+        self = object.__new__(cls)
+        self.make = self.get = make
+        return self
+    
+    def __repr__(self) -> str: 
+        make = self.make
+        return f'{self.__class__.__name__}({make=!r})'
+
+
+
+
+
+@export()
+class LazyInjectorVar(InjectorVar[T_Injected]):
+    """Factory InjectorVar"""
+
+    __slots__ = 'make', 'value',
+
+    def __new__(cls, make: T_Injected):
+        self = object.__new__(cls)
+        self.make = make
+        return self
+
+    def get(self) -> T_Injected:
+        if self.value is Void:
+            self.value = self.make()
+        return self.value
+
+    def __repr__(self) -> str: 
+        make, value = self.make, self.value
+        return f'{self.__class__.__name__}({value=!r}, {make=!r})'
+
+
+
+
+
+@export()
+class SimpleInjectorVar(InjectorVar[T_Injected]):
+    """Resolver t.Generic[T_InjectedObject"""
+
+    __slots__ = 'value', 'get', 'make',
+
+    value: T_Injected
 
     def __new__(cls, 
                 value: T_Injected = Void, 
@@ -407,7 +467,7 @@ class InjectorVar(t.Generic[T_Injected]):
 
         if make is not None:
             self.make = make
-            if shared is True or (shared is None and cls._default_cache_):
+            if shared is True:
                 def get():
                     nonlocal self
                     if self.value is Void:

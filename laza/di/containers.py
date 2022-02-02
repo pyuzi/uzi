@@ -44,6 +44,16 @@ class AbcIocContainer(ProviderRegistry, ABC):
     requires: orderedset['IocContainer']
     dependants: orderedset['AbcScope']
     shared: bool = True
+    _default_requires: t.ClassVar[orderedset['IocContainer']] = ()
+
+    def __init_subclass__(cls, **kwds) -> None:
+        if '_default_requires' in cls.__dict__:
+            cls._default_requires = orderedset(
+                i or () for b in cls.__mro__ 
+                    if issubclass(b, cls) 
+                        for i in b._default_requires
+            )
+        return super().__init_subclass__(**kwds)
 
     def __init__(self, 
                 *requires: 'IocContainer',
@@ -56,8 +66,7 @@ class AbcIocContainer(ProviderRegistry, ABC):
         self.name = name
         self._setup_requires()
         self._setup_dependants()
-        requires and self.requires.update(requires)
-        # self[self] = p.InjectorProvider()
+        self.requires.update(requires, self._default_requires)
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}({self.name!r})'
@@ -71,6 +80,10 @@ class AbcIocContainer(ProviderRegistry, ABC):
     def _context(self) -> 'InjectorContext':
         ...
 
+    @property
+    def has_setup(self) -> bool:
+        return self._context is not None
+
     def _setup_requires(self):
         self.requires = orderedset()
      
@@ -78,15 +91,21 @@ class AbcIocContainer(ProviderRegistry, ABC):
         self.dependants = orderedset()
      
     def add_dependant(self, scope: 'AbcScope'):
-        if (ctx := self._context) and (dctx := scope._context) and dctx != ctx:
-            raise ValueError(
-                f'InjectorContext conflict in {self} '
-                f'{self._context=} and {scope._context}'
-            )
-
+        # if (ctx := self._context) and (dctx := scope._context) and dctx != ctx:
+        #     raise ValueError(
+        #         f'InjectorContext conflict in {self} '
+        #         f'{self._context=} and {scope._context}'
+        #     )
         self.dependants.add(scope)
-        
         return self
+
+    @abstractmethod
+    def setup(self, ctx: 'InjectorContext') -> 'AbcIocContainer':
+        ...
+        
+    @abstractmethod
+    def teardown(self) -> t.NoReturn:
+        ...
 
     def flush(self, tag, source=None):
         if source is None:
@@ -111,6 +130,7 @@ class AbcIocContainer(ProviderRegistry, ABC):
             return decorator
         else:
             return decorator(func)    
+
 
 
 
@@ -140,6 +160,21 @@ class IocContainer(AbcIocContainer):
     def repository(self):
         return self._create_repository()
     
+    def setup(self, ctx: 'InjectorContext') -> 'IocContainer':
+        old = self._context
+        if old is None:
+            self._context = ctx
+        elif ctx is not old:
+            raise RuntimeError(
+                f'InjectorContext conflict in {self}: {old=} -vs- new={ctx}'
+            )
+        return self
+        
+    def teardown(self, ctx: 'InjectorContext') -> 'IocContainer':
+        old = self._context
+        if old is ctx:
+            self._context = None
+
     def _create_repository(self):
         return ChainMap({}, *(d.repository for d in self.requires))
  
@@ -151,9 +186,9 @@ class IocContainer(AbcIocContainer):
         else:
             return super().__contains__(x)
       
-    def add_dependant(self, scope: 'AbcScope'):
-        super().add_dependant(scope)
-        if self._context is None:
-            self._context = scope._context
+    # def add_dependant(self, scope: 'AbcScope'):
+    #     super().add_dependant(scope)
+    #     if self._context is None:
+    #         self._context = scope._context
         
-        return self
+    #     return self

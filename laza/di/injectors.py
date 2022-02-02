@@ -7,6 +7,7 @@ from laza.common.imports import ImportRef
 
 
 from laza.common.functools import export
+from laza.common.typing import Protocol
 
 from laza.common.functools import Void
 
@@ -32,16 +33,36 @@ logger = logging.getLogger(__name__)
 
 
 _T = t.TypeVar("_T")
+_D = t.TypeVar("_D")
 _T_Injector = t.TypeVar("_T_Injector", bound="Injector", covariant=True)
 
 
-if t.TYPE_CHECKING:
-
-    class InjectorContext(ContextVar):
-        ...
 
 
-InjectorContext = ContextVar[_T_Injector]
+class _ContextToken(Protocol[_T_Injector]):
+
+    MISSING: t.ClassVar[object]
+
+    @property
+    def var(self) -> 'InjectorContext[_T_Injector]': ...
+    @property
+    def old_value(self) -> _T_Injector: ...
+    
+    
+
+class InjectorContext(Protocol[_T_Injector]):
+    def __init__(self, name: str, *, default: _T_Injector = ...) -> None: ...
+    @property
+    def name(self) -> str: ...
+    @t.overload
+    def get(self) -> _T_Injector: ...
+    @t.overload
+    def get(self, default: _D | _T_Injector) -> _D | _T_Injector: ...
+    def set(self, value: _T_Injector) -> _ContextToken[_T_Injector]: ...
+    def reset(self, token: _ContextToken[_T_Injector]) -> None: ...
+   
+   
+
 
 
 @export()
@@ -100,31 +121,23 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
     def name(self) -> str:
         return self.scope.name
 
-    def dispatch(self):
+    def dispatch(self, child: 'Injector'=None):
         self._dispatched += 1
         if self._dispatched == 1:
-            self.scope.dispatch_injector(self)
-            self.parent.dispatch()
-            self._on_dispatch()
-        return self
+            self.parent.dispatch(self)
+            self.scope.dispatch_injector(self, child)
+            return True
+        return False
 
-    def dispose(self):
-        if self._dispatched == 1:
-            self.scope.dispose_injector(self)
-            self.parent.dispose()
-            self._on_dispose()
-        elif self._dispatched <= 0:
-            raise RuntimeError(f"injector {self} already disposed.")
+    def dispose(self, child: 'Injector'=None):
         self._dispatched -= 1
-        return self
-
-    def _on_dispatch(self):
-        # ...
-        self.vars = self._vars_class(self)
-
-    def _on_dispose(self):
-        # ...
-        self.vars = None
+        if self._dispatched == 0:
+            self.scope.dispose_injector(self, child)
+            self.parent.dispose(self)
+            return True
+        elif self._dispatched < 0:
+            raise RuntimeError(f"injector {self} already disposed.")
+        return False
 
     def get(
         self, injectable: T_Injectable, default: _T = None
@@ -145,12 +158,8 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.vars[key]
         if res is None:
-            key = self.__missing__(key)
-            return self.make(key, *args, **kwds)
+            return self.make(self.__missing__(key), *args, **kwds)
         elif args or kwds:
-            # logger.warning(
-            #     f'calling {self.__class__.__name__}.make() with args or kwds. {key} got {args=}, {kwds=}'
-            # )
             return res.make(*args, **kwds)
         elif res.value is Void:
             return res.get()
@@ -190,7 +199,8 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
         return f"<{self}, {self.parent!r}>"
 
     def __enter__(self: "Injector") -> "Injector":
-        return self.dispatch()
+        self.dispatch()
+        return self
 
     def __exit__(self, *exc):
         self.dispose()
@@ -225,8 +235,8 @@ class NullInjector(Injector):
     def __contains__(self, x) -> bool:
         return False
 
-    def __bool__(self):
-        return False
+    # def __bool__(self):
+    #     return False
 
     def __len__(self):
         return 0
@@ -234,8 +244,8 @@ class NullInjector(Injector):
     def __missing__(self, k: T_Injectable, args=None, kwds=None) -> None:
         raise InjectorKeyError(f"{k} in {self!r}")
 
-    def dispatch(self):
-        return self
+    def dispatch(self, head: 'Injector'=None):
+        return False
 
-    def dispose(self):
-        return self
+    def dispose(self, head: 'Injector'=None):
+        return False

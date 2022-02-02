@@ -1,11 +1,7 @@
 from logging import getLogger
-import os
-from types import FunctionType, GenericAlias
 import typing as t
 
-from collections.abc import Callable, Mapping, Set
 
-from laza.common.typing import get_origin
 
 from laza.common.functools import cached_property, export
 
@@ -13,10 +9,7 @@ from laza.common.functools import cached_property, export
 from . import providers as p
 from .common import (
     Injectable,
-    ResolverFunc,
     T_Injectable,
-    KindOfProvider,
-    ResolverInfo,
 )
 
 from .exc import DuplicateProviderError
@@ -52,7 +45,7 @@ class ProviderRegistry:
         return x in self.repository
     
     def __delitem__(self, key: Injectable):
-        if not self.unregister(key):
+        if not self.unprovide(key):
             raise KeyError(key)
 
     def __getitem__(self, key: Injectable):
@@ -62,13 +55,13 @@ class ProviderRegistry:
             return None
 
     def __setitem__(self, key: Injectable, value: p.Provider):
-        return self.register(key, value)
+        return self.provide(key, value)
 
     def get(self, key, default=None):
         return self.repository.get(key, default)
 
     def setdefault(self, key: Injectable, value: p.Provider=None):
-        return self.register(key, value, default=True)
+        return self.provide(key, value, default=True)
 
     def flush(self, tag: T_Injectable):
         ...
@@ -76,12 +69,13 @@ class ProviderRegistry:
     def _create_registry(self) -> ProviderDict:
         return dict()
 
-    def register(self, 
+    def provide(self, 
             provide: t.Union[T_Injectable, None] , /,
             use: t.Union[p.Provider, p.T_UsingAny], 
             default: bool=None,
             **kwds):
-        provider = self.create_provider(use, **kwds)
+
+        provider = self.create_provider(provide, use, **kwds)
 
         if provide is None:
             provide = provider.implicit_token()
@@ -99,7 +93,7 @@ class ProviderRegistry:
         self.flush(provide)
         return provider
         
-    def unregister(self, 
+    def unprovide(self, 
             tag: Injectable, /,
             uses: t.Union[p.Provider, p.T_UsingAny]=None):
 
@@ -112,23 +106,23 @@ class ProviderRegistry:
         
         return False
             
-    def create_provider(self, provider: t.Union[p.Provider, p.T_UsingAny], **kwds: dict) -> p.Provider:
-        if isinstance(provider, p.Provider):
+    def create_provider(self, provide, use: t.Union[p.Provider, p.T_UsingAny], **kwds: dict) -> p.Provider:
+        if isinstance(use, p.Provider):
             if kwds:
                 raise ValueError(f'got unexpected keyword arguments {tuple(kwds)}')
-            return provider
+            return use
 
-        cls = self._get_provider_class(KindOfProvider(kwds.pop('kind')), kwds)
-        return cls(provider, **kwds)
+        cls = self._get_provider_class(provide, use, kwds)
+        return cls(use, **kwds)
 
-    def _get_provider_class(self, kind: KindOfProvider, kwds: dict) -> type[p.Provider]:
-        return kind.default_impl
+    def _get_provider_class(self, provide, use, kwds: dict) -> type[p.Provider]:
+        raise LookupError(f'unkown provider: {provide=} {use=}')
 
     def alias(self, provide: T_Injectable, use: T_Injectable=None, **kwds):
         """Registers an `Alias provider`
         """
         def register(use_):
-            self.register(provide, p.AliasProvider(use_, **kwds))
+            self.provide(provide, p.AliasProvider(use_, **kwds))
             return use_
         
         if use is None:
@@ -139,12 +133,12 @@ class ProviderRegistry:
     def value(self, provide: T_Injectable, use: p.T_UsingValue, **kwds):
         """Registers an `Value provider`
         """
-        self.register(provide, p.ValueProvider(use, **kwds))
+        self.provide(provide, p.ValueProvider(use, **kwds))
         return use
 
     def function(self, use: type[T_Injectable]=None, /, provide: T_Injectable=None, **kwds):
         def register(use_):
-            self.register(provide, p.FunctionProvider(use_, **kwds))
+            self.provide(provide, p.FunctionProvider(use_, **kwds))
             return use_
         if use is None:
             return register
@@ -153,7 +147,7 @@ class ProviderRegistry:
    
     def type(self, use: type[T_Injectable]=None, /, provide: T_Injectable=None, **kwds):
         def register(use_):
-            self.register(provide, p.TypeProvider(use_, **kwds))
+            self.provide(provide, p.TypeProvider(use_, **kwds))
             return use_
         
         if use is None:
@@ -163,7 +157,7 @@ class ProviderRegistry:
    
     def factory(self, provide: T_Injectable, use: p.T_UsingFactory =None, **kwds):
         def register(use_):
-            self.register(provide, p.FactoryProvider(use_, **kwds))
+            self.provide(provide, p.FactoryProvider(use_, **kwds))
             return use_
 
         if use is None:

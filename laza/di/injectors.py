@@ -68,7 +68,7 @@ class InjectorContext(Protocol[_T_Injector]):
 @export()
 class InjectorVarDict(dict[T_Injectable, InjectorVar]):
 
-    __slots__ = ("injector",)
+    __slots__ = "injector",
 
     injector: "Injector"
 
@@ -81,6 +81,7 @@ class InjectorVarDict(dict[T_Injectable, InjectorVar]):
         if res is None:
             return self.setdefault(key, inj.parent.vars[key])
         return self.setdefault(key, res(inj))
+
 
 
 @export()

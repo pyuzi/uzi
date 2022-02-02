@@ -115,19 +115,11 @@ class Provider(t.Generic[_T_Using]):
         return NotImplemented
 
     @abstractmethod
-    def provide(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
+    def _handler(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
         ...
     
     def can_provide(self, scope: 'AbcScope', dep: T_Injectable) -> bool:
-        # if func := getattr(self.uses, '__can_provide__', None):
-        #     return bool(func(self, scope, dep))
         return True
-
-    # def __call__(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> ResolverFunc:
-    #     func, deps = ResolverInfo.coerce(self.provide(scope, token, *args, **kwds))
-    #     if func is not None and deps:
-    #         scope.register_dependency(token, *deps)
-    #     return func
 
 
 
@@ -136,7 +128,7 @@ class Provider(t.Generic[_T_Using]):
 @dataclass
 class FactoryProvider(Provider[T_UsingFactory]):
 
-    def provide(self, scope: 'AbcScope', dep: T_Injectable) -> Handler:
+    def _handler(self, scope: 'AbcScope', dep: T_Injectable) -> Handler:
         return Handler.coerce(self.uses(self, scope, dep))
     
 
@@ -149,9 +141,8 @@ class ValueProvider(Provider[T_UsingValue]):
 
     shared: t.ClassVar = True
 
-    def provide(self, scope: 'AbcScope', dep: T_Injectable,  *args, **kwds) -> Handler:
+    def _handler(self, scope: 'AbcScope', dep: T_Injectable,  *args, **kwds) -> Handler:
         var = InjectorVar(self.uses)
-        # return Handler(lambda at: var)
         return lambda at: var
 
     def can_provide(self, scope: 'AbcScope', dep: T_Injectable) -> bool:
@@ -447,7 +438,7 @@ class CallableProvider(Provider[_T_Using]):
             self.eval_var_kwd_param(sig, defaults, deps)
         )
 
-    def provide(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
+    def _handler(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
 
         func = self.uses
         shared = self.shared
@@ -523,7 +514,7 @@ class AliasProvider(Provider[T_UsingAlias]):
     def can_provide(self, scope: 'AbcScope', token: Injectable) -> bool:
         return scope.is_provided(self.uses)
 
-    def provide(self, scope: 'AbcScope', dep: T_Injectable,  *_args, **_kwds) -> Handler:
+    def _handler(self, scope: 'AbcScope', dep: T_Injectable,  *_args, **_kwds) -> Handler:
         
         arguments =  None #self.arguments or None
         real = self.uses
@@ -574,7 +565,7 @@ class UnionProvider(AliasProvider):
     def can_provide(self, scope: 'AbcScope', token: Injectable) -> bool:
         return len(self.get_injectable_args(scope, token, include_implicit=False)) > 0
 
-    def provide(self, scope: 'AbcScope', token):
+    def _handler(self, scope: 'AbcScope', token):
         
         args = self.get_injectable_args(scope, token)
 
@@ -613,7 +604,7 @@ class DependencyProvider(AliasProvider):
             return False
         return scope.is_provided(token.on, start=token.at)
 
-    def provide(self, scope: 'AbcScope', token: 'Depends') -> Handler:
+    def _handler(self, scope: 'AbcScope', token: 'Depends') -> Handler:
 
         dep = token.on
         at = None if token.at is ... or token.at else token.at
@@ -639,45 +630,45 @@ class DependencyProvider(AliasProvider):
         resolve.deps = {dep}
         return resolve
 
-        if at in scope.aliases:
-            at = None
+        # if at in scope.aliases:
+        #     at = None
 
-        # if at and arguments:
+        # # if at and arguments:
         
-        if arguments:
-            def resolve(inj: 'Injector'):
-                nonlocal dep
-                return InjectorVar(make=inj.vars[dep].make(), )
-        elif arguments is None:
-            def resolve(inj: 'Injector'):
-                nonlocal dep
-                return inj.vars[dep]
-        elif at is None:
-            args, kwargs = arguments.args, arguments.kwargs
-            def resolve(inj: 'Injector'):
-                nonlocal dep
-                if inner := inj.vars[dep]:
-                    def make(*a, **kw):
-                        nonlocal inner, args, kwargs
-                        return inner.make(*args, *a, **dict(kwargs, **kw))
+        # if arguments:
+        #     def resolve(inj: 'Injector'):
+        #         nonlocal dep
+        #         return InjectorVar(make=inj.vars[dep].make(), )
+        # elif arguments is None:
+        #     def resolve(inj: 'Injector'):
+        #         nonlocal dep
+        #         return inj.vars[dep]
+        # elif at is None:
+        #     args, kwargs = arguments.args, arguments.kwargs
+        #     def resolve(inj: 'Injector'):
+        #         nonlocal dep
+        #         if inner := inj.vars[dep]:
+        #             def make(*a, **kw):
+        #                 nonlocal inner, args, kwargs
+        #                 return inner.make(*args, *a, **dict(kwargs, **kw))
 
-                    return InjectorVar(make=make)
-        else:
-            at = scope.ioc.scopekey(at)
-            args, kwargs = arguments.args, arguments.kwargs
-            def resolve(inj: 'Injector'):
-                nonlocal at, dep
-                inj = inj[at]
-                if inner := inj.vars[dep]:
-                    def make(*a, **kw):
-                        nonlocal inner, args, kwargs
-                        return inner.make(*args, *a, **dict(kwargs, **kw))
+        #             return InjectorVar(make=make)
+        # else:
+        #     at = scope.ioc.scopekey(at)
+        #     args, kwargs = arguments.args, arguments.kwargs
+        #     def resolve(inj: 'Injector'):
+        #         nonlocal at, dep
+        #         inj = inj[at]
+        #         if inner := inj.vars[dep]:
+        #             def make(*a, **kw):
+        #                 nonlocal inner, args, kwargs
+        #                 return inner.make(*args, *a, **dict(kwargs, **kw))
 
-                    return InjectorVar(make=make)
+        #             return InjectorVar(make=make)
 
-        # return Handler(resolve, {dep})
-        resolve.deps = {dep}
-        return resolve
+        # # return Handler(resolve, {dep})
+        # resolve.deps = {dep}
+        # return resolve
 
 
 
@@ -690,7 +681,7 @@ class LookupProvider(AliasProvider):
     def can_provide(self, scope: 'AbcScope', token: 'InjectedLookup') -> bool:
         return scope.is_provided(token.depends)
 
-    def provide(self, scope: 'AbcScope', token: 'InjectedLookup',  *_args, **_kwds) -> Handler:
+    def _handler(self, scope: 'AbcScope', token: 'InjectedLookup',  *_args, **_kwds) -> Handler:
 
         dep = token.depends
         path = token.path

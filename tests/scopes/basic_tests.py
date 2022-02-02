@@ -126,8 +126,8 @@ class BasicScopeTests:
 
         ioc.type(Foo)
         ioc.type(Foo, SharedFoo, shared=True)
-        ioc.type(Bar, shared=False)
-        ioc.type(Baz, shared=False)
+        ioc.type(Bar, shared=True)
+        ioc.type(Baz, shared=True)
 
 
         @ioc.inject
@@ -169,8 +169,8 @@ class BasicScopeTests:
 
             print('')
 
-            # profile(mkinject_1, inject_1, inject_1.__name__)
-            # profile(mkinject_2, inject_2, inject_2.__name__)
+            profile(mkinject_1, inject_1, inject_1.__name__)
+            profile(mkinject_2, inject_2, inject_2.__name__)
 
             print('')
 

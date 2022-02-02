@@ -24,7 +24,7 @@ class ValueProviderTests(ProviderTestCase):
     cls = ValueProvider
 
     def test_provides_value(self, provider: ValueProvider, scope, injector):
-        assert provider.provide(scope, type)(injector).value is provider.uses
+        assert provider._handler(scope, type)(injector).value is provider.uses
         
         
     

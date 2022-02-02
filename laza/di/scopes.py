@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 _T_Scope = t.TypeVar('_T_Scope', bound='AbcScope', covariant=True)
 
 
-_ioc_local = IocContainer()
+_ioc_local = IocContainer(shared=False)
 _ioc_main = IocContainer(_ioc_local)
 
 
@@ -179,11 +179,11 @@ class AbcScope(AbcIocContainer):
 
         def fallback(key):
             if pro := get_provider(key):
-                hand = pro.provide(self, key)
+                hand = pro._handler(self, key)
                 return setdefault(key, self.register_handler(key, hand))
             elif origin := get_origin(key):
                 if pro := get_provider(origin):
-                    hand = pro.provide(self, key)
+                    hand = pro._handler(self, key)
                     return setdefault(key, self.register_handler(key, hand))
 
         res = fallbackdict(fallback)
@@ -366,7 +366,7 @@ class AbcScope(AbcIocContainer):
 class MainScope(AbcScope):
     
     _context = None
-    _default_requires = _ioc_local,
+    _default_requires = _ioc_main,
 
     def __init__(self, 
                 *requires: 'IocContainer', 

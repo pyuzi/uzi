@@ -152,9 +152,10 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
         res = self.vars[key]
         if res is None:
             return self[self.__missing__(key)]
-        elif res.value is Void:
-            return res.get()
-        return res.value
+        # elif res.value is Void:
+        #     return res.get()
+        # return res.value
+        return res.get()
 
     def make(self, key: T_Injectable, /, *args, **kwds) -> T_Injected:
         res = self.vars[key]
@@ -162,9 +163,10 @@ class Injector(t.Generic[T_Injectable, T_Injected]):
             return self.make(self.__missing__(key), *args, **kwds)
         elif args or kwds:
             return res.make(*args, **kwds)
-        elif res.value is Void:
-            return res.get()
-        return res.value
+        # elif res.value is Void:
+        #     return res.get()
+        # return res.value
+        return res.get()
 
     def __missing__(self, key):
         if isinstance(key, ImportRef):

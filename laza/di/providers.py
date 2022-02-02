@@ -19,8 +19,8 @@ from laza.common.collections import KwargDict
 
 
 from .common import (
-    InjectedLookup, InjectorVar,
-    Injectable, Depends,
+    FactoryInjectorVar, InjectedLookup, InjectorVar,
+    Injectable, Depends, SharedInjectorVar,
     T_Injected, T_Injectable, 
     ResolverFunc
 )
@@ -448,14 +448,15 @@ class CallableProvider(Provider[_T_Using]):
         arguments = self.arguments.merge(*args, **kwds)
 
         bound = sig.bind_partial(*arguments.args, **arguments.kwargs) or None
+        var_cls = SharedInjectorVar if shared else FactoryInjectorVar
         
         if not sig.parameters:
         
             def resolve(at):
-                nonlocal func, shared
-                return InjectorVar(make=func, shared=shared)
+                nonlocal func, shared, var_cls
+                # return InjectorVar(make=func, shared=shared)
+                return var_cls(func)
 
-            # return Handler(resolve)
             return resolve
 
         defaults = frozendict(bound.arguments)
@@ -466,15 +467,14 @@ class CallableProvider(Provider[_T_Using]):
         all_deps = dict(impl_deps, **expl_deps)
         deps = self.get_available_deps(sig, scope, all_deps)
         argv = self.create_arguments_view(sig, defaults, deps)
-        
         def resolve(inj: 'Injector'):
-            nonlocal shared
+            nonlocal shared, var_cls
             def make(*a, **kw):
                 nonlocal func, argv, inj
                 return func(*argv.args(inj, kw), *a, **argv.kwds(inj, kw))
-            return InjectorVar(make=make, shared=shared)
+            # return InjectorVar(make=make, shared=shared)
+            return var_cls(make)
 
-        # return Handler(resolve, set(all_deps.values()))
         resolve.deps = set(all_deps.values())
         return resolve
 
@@ -540,7 +540,6 @@ class AliasProvider(Provider[T_UsingAlias]):
                 if inner := at.vars[real]:
                     return InjectorVar(make=inner.make, shared=shared)
 
-        # return Handler(resolve, {real})
         resolve.deps = {real}
         return resolve
 

@@ -368,7 +368,7 @@ class InjectorVar(t.Generic[T_Injected]):
             ...
             
 
-    __slots__ = 'value', 'get', 'make',
+    __slots__ = ()
 
     value: T_Injected
 
@@ -398,7 +398,7 @@ class ValueInjectorVar(InjectorVar[T_Injected]):
         return self.value
 
     def __repr__(self) -> str: 
-        value = self.value or self.make
+        value = self.value
         return f'{self.__class__.__name__}({value=!r})'
 
 
@@ -410,7 +410,7 @@ class FactoryInjectorVar(InjectorVar[T_Injected]):
 
     __slots__ = 'make', 'get',
 
-    value = Void
+    # value = Void
 
     def __new__(cls, make: T_Injected):
         self = object.__new__(cls)
@@ -426,7 +426,7 @@ class FactoryInjectorVar(InjectorVar[T_Injected]):
 
 
 @export()
-class LazyInjectorVar(InjectorVar[T_Injected]):
+class SharedInjectorVar(InjectorVar[T_Injected]):
     """Factory InjectorVar"""
 
     __slots__ = 'make', 'value',
@@ -434,12 +434,18 @@ class LazyInjectorVar(InjectorVar[T_Injected]):
     def __new__(cls, make: T_Injected):
         self = object.__new__(cls)
         self.make = make
+        # self.value = Void
         return self
 
     def get(self) -> T_Injected:
-        if self.value is Void:
+        try:
+            return self.value
+        except:
             self.value = self.make()
-        return self.value
+            return self.value
+        # if self.value is Void:
+        #     self.value = self.make()
+        # return self.value
 
     def __repr__(self) -> str: 
         make, value = self.make, self.value
@@ -469,10 +475,10 @@ class SimpleInjectorVar(InjectorVar[T_Injected]):
             self.make = make
             if shared is True:
                 def get():
-                    nonlocal self
-                    if self.value is Void:
-                        self.value = self.make()
-                    return self.value
+                    nonlocal make, value
+                    if value is Void:
+                        value = make()
+                    return value
                 self.get = get
             else:
                 self.get = make
@@ -516,32 +522,25 @@ class Depends:
 
     def __new__(cls, 
                 tp: T_Depends=..., 
-                /, *, 
                 on: Injectable = ..., 
-                at: str =..., 
-                args: tuple=(), 
-                kwargs: Mapping[str, t.Any]=frozendict(),
-                arguments: Arguments=...):
+                /, 
+                *args, 
+                **kwargs):
 
-        if arguments is ...:
-            arguments = Arguments(args, kwargs)
-        else:
-            arguments = Arguments.coerce(arguments)
+        if on is ...:
+            on = tp
+            if not isinstance(tp, (type, GenericAlias, t.TypeVar)):
+                tp = ...
+                
+        arguments = Arguments(args, kwargs)
 
         if isinstance(on, cls):
-            ann = on.replace(at=at, arguments=on.arguments.extend(arguments))
+            ann = on.replace(arguments=on.arguments.extend(arguments))
         else:
             ann = object.__new__(cls)
-            # if on is ...:
-            #     if tp is ...:
-            #         raise TypeError(
-            #             f'{cls.__name__}(type, /, *, on: Injectable = ..., at: str =...) '
-            #             f'should be used with at least the `type` or the dependency argument `on`.'
-            #         )
             ann.on = on
-            ann.at = at 
             ann.arguments = arguments
-
+        
         if tp is ...:
             return ann
         elif get_origin(tp) is t.Annotated:
@@ -584,7 +583,6 @@ class Depends:
     def replace(self,
                 *, 
                 on: Injectable = ..., 
-                at: str =..., 
                 args: tuple=(), 
                 kwargs: Mapping[str, t.Any]=frozendict(),
                 arguments: Arguments=...) -> 'Depends':
@@ -594,7 +592,6 @@ class Depends:
 
         return self.__class__(
             on=self.on if on is ... else on,
-            at=self.at if at is ... else at,
             arguments=arguments
         )
     

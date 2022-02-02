@@ -163,9 +163,9 @@ class BasicScopeTests:
             inbar = lambda: inj[Bar]
             inbaz = lambda: inj[Baz]
 
-            profile(mkfoo, infoo, 'Foo')
-            profile(mkbar, inbar, 'Bar')
-            profile(mkbaz, inbaz, 'Baz')
+            # profile(mkfoo, infoo, 'Foo')
+            # profile(mkbar, inbar, 'Bar')
+            # profile(mkbaz, inbaz, 'Baz')
 
             print('')
 
@@ -174,10 +174,15 @@ class BasicScopeTests:
 
             print('')
 
-            inj[SharedFoo]
+            xprofile(inject_1, mkinject_1, inject_1.__name__)
+            xprofile(inject_2, mkinject_2, inject_2.__name__)
 
-            profile = speed_profiler(_n, labels=('SHARED', 'UNIQUE'), repeat=_r)
-            profile(insharedfoo, insharedfoo_get, '')
+            print('')
+
+            # inj[SharedFoo]
+
+            # profile = speed_profiler(_n, labels=('SHARED', 'UNIQUE'), repeat=_r)
+            # profile(insharedfoo, insharedfoo_get, '')
 
             print('')
 

@@ -26,8 +26,8 @@ from .common import (
 from .registries import ProviderRegistry
 
 if t.TYPE_CHECKING:
-    from .scopes import AbcScope
     from .injectors import Injector, InjectorContext
+    from .scopes import Scope
 
 
 logger = getLogger(__name__)
@@ -42,7 +42,7 @@ class AbcIocContainer(ProviderRegistry, ABC):
 
     name: str
     requires: orderedset['IocContainer']
-    dependants: orderedset['AbcScope']
+    dependants: orderedset['Injector']
     shared: bool = True
     _default_requires: t.ClassVar[orderedset['IocContainer']] = ()
 
@@ -90,7 +90,7 @@ class AbcIocContainer(ProviderRegistry, ABC):
     def _setup_dependants(self):
         self.dependants = orderedset()
      
-    def add_dependant(self, scope: 'AbcScope'):
+    def add_dependant(self, scope: 'Injector'):
         # if (ctx := self._context) and (dctx := scope._context) and dctx != ctx:
         #     raise ValueError(
         #         f'InjectorContext conflict in {self} '

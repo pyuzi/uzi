@@ -6,7 +6,8 @@ from collections.abc import Set
 
 
 from laza.di.providers import Provider
-from laza.di.common import InjectorVar
+from laza.di.scopes import ScopeVar
+
 
 
 
@@ -20,12 +21,12 @@ class ProviderTestCase:
     cls: t.ClassVar[type[Provider]] = Provider
     strict_injectorvar = True
 
-    def test_basic(self, provider: Provider, scope, injector):
+    def test_basic(self, provider: Provider, injector, scope):
         assert isinstance(provider, self.cls)
-        hand = provider._handler(scope, type)
+        hand = provider.compile(injector, type)
         assert callable(hand)
         assert isinstance(getattr(hand, 'deps', set()), Set)
-        assert isinstance(hand(injector), InjectorVar) or not self.strict_injectorvar
+        assert isinstance(hand(scope), ScopeVar) or not self.strict_injectorvar
         
         
     

@@ -1,15 +1,9 @@
 from pprint import pprint
-from types import GenericAlias
-import typing as t
-import inspect as ins
 import pytest
-from functools import wraps
 
 from laza.di.containers import IocContainer
 from laza.di.common import InjectionToken
-from laza.di.scopes import MainScope, LocalScope
-
-
+from laza.di.injectors import MainInjector, LocalInjector
 
 
 
@@ -30,8 +24,8 @@ class BasicScopeTests:
         con3 = IocContainer(con1, con2) 
         con4 = IocContainer(con3)
 
-        scope1 = MainScope(con2, con1)
-        scope2 = LocalScope(scope1, con4)
+        scope1 = MainInjector(con2, con1)
+        scope2 = LocalInjector(scope1, con4)
 
 
         print(scope2) 
@@ -60,17 +54,12 @@ class BasicScopeTests:
         con4 = IocContainer(con2)
 
 
-        scope1 = MainScope(con3)
-        scope2 = LocalScope(scope1)
-        scope3 = LocalScope(scope2, con4)
+        scope1 = MainInjector(con3)
+        scope2 = LocalInjector(scope1)
+        scope3 = LocalInjector(scope2, con4)
 
         with scope2.make() as inj_:
             with scope3.make(inj_) as inj:
-                print(f'---> {inj=}')
-                print(f'---> {inj.scope._context.get()!r}')
-                print(inj[Foo])
-                print(inj[FooBarBaz])
-
                 assert isinstance(inj[Foo], Foo)
                 assert isinstance(inj[Baz], Baz)
                 assert inj[Foo] is not inj[Foo]
@@ -104,23 +93,18 @@ class BasicScopeTests:
             return baz, foo
 
 
-        scope1 = MainScope(con3)
-        scope2 = LocalScope(scope1)
-        scope3 = LocalScope(scope2, con4)
+        scope1 = MainInjector(con3)
+        scope2 = LocalInjector(scope1)
+        scope3 = LocalInjector(scope2, con4)
 
         with scope2.make() as inj_:
             with scope3.make(inj_) as inj:
-                print(f'---> {inj=}')
-                print(f'---> {inj.scope._context.get()!r}')
-                # print(inj[Foo])
-                print(f'{inject_con4()=}')
-
                 assert all(isinstance(o, c) for o,c in zip(inject_con4(), (Baz, Foo)))
                
         assert 1, '\n'
  
     def test_perfomance(self, speed_profiler):
-        ioc = MainScope() 
+        ioc = MainInjector() 
 
         SharedFoo = InjectionToken('SharedFoo')
 
@@ -163,9 +147,9 @@ class BasicScopeTests:
             inbar = lambda: inj[Bar]
             inbaz = lambda: inj[Baz]
 
-            # profile(mkfoo, infoo, 'Foo')
-            # profile(mkbar, inbar, 'Bar')
-            # profile(mkbaz, inbaz, 'Baz')
+            profile(mkfoo, infoo, 'Foo')
+            profile(mkbar, inbar, 'Bar')
+            profile(mkbaz, inbaz, 'Baz')
 
             print('')
 
@@ -174,15 +158,15 @@ class BasicScopeTests:
 
             print('')
 
-            xprofile(inject_1, mkinject_1, inject_1.__name__)
-            xprofile(inject_2, mkinject_2, inject_2.__name__)
+            # xprofile(inject_1, mkinject_1, inject_1.__name__)
+            # xprofile(inject_2, mkinject_2, inject_2.__name__)
 
-            print('')
+            # print('')
 
-            # inj[SharedFoo]
+            inj[SharedFoo]
 
-            # profile = speed_profiler(_n, labels=('SHARED', 'UNIQUE'), repeat=_r)
-            # profile(insharedfoo, insharedfoo_get, '')
+            profile = speed_profiler(_n, labels=('SHARED', 'UNIQUE'), repeat=_r)
+            profile(insharedfoo, insharedfoo_get, '')
 
             print('')
 

@@ -58,15 +58,15 @@ def speed_profiler(ops_per_sec):
             res2, t2, tt2 = ops_per_sec(n, *repeat(fn2, number=n, repeat=r, globals=g))
 
             if res1 > res2:
-                d = f'{lbl1} {round(res1/res2, dec)}x faster'
+                d = f'{lbl1} {round(res1/res2, dec):,}x faster'
             else:
-                d = f'{lbl2}  {round(res2/res1, dec)}x faster'
-            a, b = f'{round(tt1, dec)} secs'.ljust(12) + f' avg {round(t1, dec)} secs'.ljust(16) \
-                        + f'{round(res1, dec)} ops/sec'.ljust(16+dec), \
-                    f'{round(tt2, dec)} secs'.ljust(12) + f' avg {round(t2, dec)} secs'.ljust(16) \
-                        + f'{round(res2, dec)} ops/sec'.ljust(16+dec)
+                d = f'{lbl2}  {round(res2/res1, dec):,}x faster'
+            a, b = f'{round(tt1, dec):,} secs'.ljust(12) + f' avg {round(t1, dec):,} secs'.ljust(16) \
+                        + f'{round(res1, dec):,} ops/sec'.ljust(16+dec), \
+                    f'{round(tt2, dec):,} secs'.ljust(12) + f' avg {round(t2, dec):,} secs'.ljust(16) \
+                        + f'{round(res2, dec):,} ops/sec'.ljust(16+dec)
 
-            print(f' - {title or f"{lbl1}-vs-{lbl2}"}[{r}x{n}={r * n}ops] {d}\n   - {lbl1}={a!s}\n   - {lbl2}={b!s}')
+            print(f' - {title or f"{lbl1}-vs-{lbl2}"}[{r:,}x{n:,}={r * n:,}ops] {d}\n   - {lbl1}={a!s}\n   - {lbl2}={b!s}')
         return profiler
 
     return make

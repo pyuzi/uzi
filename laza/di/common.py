@@ -1,6 +1,7 @@
 from abc import abstractmethod, ABCMeta
-from functools import cache, reduce
+from functools import cache, lru_cache, reduce
 from logging import getLogger
+from threading import Lock
 import sys
 import typing as t
 
@@ -25,7 +26,6 @@ from collections.abc import Callable
 
 from types import FunctionType, GenericAlias, MethodType, new_class
 
-from libs.common.laza.common.collections import frozenorderedset
 
 
 from .exc import InjectorKeyError
@@ -303,7 +303,7 @@ Injectable.register(ImportRef)
 class ResolverFunc(Callable[['Injector'], T_Injected], t.Generic[T_Injected]):
 
     @abstractmethod
-    def __call__(self, injector: 'Injector') -> t.Union['InjectorVar[T_Injected]', None]:
+    def __call__(self, injector: 'Injector') -> t.Union['ScopeVar[T_Injected]', None]:
         ...
 
     @classmethod
@@ -357,31 +357,31 @@ class KindOfProvider(IntEnum, fields='default_impl', frozen=False):
 
 
 @export()
-class InjectorVar(t.Generic[T_Injected]):
+class ScopeVar(t.Generic[T_Injected]):
     """Resolver t.Generic[T_InjectedObject"""
-
-    if t.TYPE_CHECKING:
-        def get(self) -> T_Injected:
-            ...
-            
-        def make(self, *a, **kw) -> T_Injected:
-            ...
-            
 
     __slots__ = ()
 
-    value: T_Injected
+    value: T_Injected = Void
 
+    def get(self) -> T_Injected:
+        ...
+        
+    def make(self, *a, **kw) -> T_Injected:
+        ...
+        
     def __new__(cls, *args, **kwds):
-        if cls is InjectorVar:
-            return SimpleInjectorVar(*args, **kwds)
+        if cls is ScopeVar:
+            return SimpleScopeVar(*args, **kwds)
         else:
             return object.__new__(cls)
         
 
 
+
+
 @export()
-class ValueInjectorVar(InjectorVar[T_Injected]):
+class ValueScopeVar(ScopeVar[T_Injected]):
     """Resolver t.Generic[T_InjectedObject"""
 
     __slots__ = 'value',
@@ -389,6 +389,7 @@ class ValueInjectorVar(InjectorVar[T_Injected]):
     def __new__(cls, value: T_Injected):
         self = object.__new__(cls)
         self.value = value
+    
         return self
 
     def get(self) -> T_Injected:
@@ -403,14 +404,11 @@ class ValueInjectorVar(InjectorVar[T_Injected]):
 
 
 
-
 @export()
-class FactoryInjectorVar(InjectorVar[T_Injected]):
+class FactoryScopeVar(ScopeVar[T_Injected]):
     """Factory InjectorVar"""
 
     __slots__ = 'make', 'get',
-
-    # value = Void
 
     def __new__(cls, make: T_Injected):
         self = object.__new__(cls)
@@ -424,39 +422,52 @@ class FactoryInjectorVar(InjectorVar[T_Injected]):
 
 
 
-
 @export()
-class SharedInjectorVar(InjectorVar[T_Injected]):
+class SingletonScopeVar(ScopeVar[T_Injected]):
     """Factory InjectorVar"""
 
-    __slots__ = 'make', 'value',
+    __slots__ = 'make', 'value', 'lock',
 
     def __new__(cls, make: T_Injected):
         self = object.__new__(cls)
         self.make = make
-        # self.value = Void
+        self.value = Void
+        self.lock = Lock()
         return self
 
     def get(self) -> T_Injected:
-        try:
-            return self.value
-        except:
-            self.value = self.make()
-            return self.value
-        # if self.value is Void:
-        #     self.value = self.make()
-        # return self.value
-
+        if self.value is Void:
+            with self.lock:
+                if self.value is Void:
+                    self.value = self.make()
+        return self.value
+        
     def __repr__(self) -> str: 
         make, value = self.make, self.value
         return f'{self.__class__.__name__}({value=!r}, {make=!r})'
 
 
 
+@export()
+class LruCachedScopeVar(ScopeVar[T_Injected]):
+    """Factory InjectorVar"""
+
+    __slots__ = 'make', 'get',
+
+    def __new__(cls, make: T_Injected, *, maxsize: bool=128, typed: bool=False):
+        self = object.__new__(cls)
+        self.make = self.get = lru_cache(maxsize, typed)(make)
+        return self
+    
+    def __repr__(self) -> str: 
+        make = self.make
+        return f'{self.__class__.__name__}({make=!r})'
+
+
 
 
 @export()
-class SimpleInjectorVar(InjectorVar[T_Injected]):
+class SimpleScopeVar(ScopeVar[T_Injected]):
     """Resolver t.Generic[T_InjectedObject"""
 
     __slots__ = 'value', 'get', 'make',
@@ -494,6 +505,8 @@ class SimpleInjectorVar(InjectorVar[T_Injected]):
     def __repr__(self) -> str: 
         make, value = self.make, self.value,
         return f'{self.__class__.__name__}({value=!r}, make={getattr(make, "__func__", make)!r})'
+
+
 
 
 

@@ -15,7 +15,7 @@ parametrize = pytest.mark.parametrize
 
 
 @pytest.fixture
-def provider(injector):
+def provider():
     return ValueProvider(object())
 
 
@@ -23,8 +23,8 @@ class ValueProviderTests(ProviderTestCase):
     
     cls = ValueProvider
 
-    def test_provides_value(self, provider: ValueProvider, scope, injector):
-        assert provider._handler(scope, type)(injector).value is provider.uses
+    def test_provides_value(self, provider: ValueProvider, injector, scope):
+        assert provider.compile(injector, type)(scope).value is provider.uses
         
         
     

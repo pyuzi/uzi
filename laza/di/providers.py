@@ -19,8 +19,8 @@ from laza.common.collections import KwargDict
 
 
 from .common import (
-    FactoryInjectorVar, InjectedLookup, InjectorVar,
-    Injectable, Depends, SharedInjectorVar,
+    FactoryScopeVar, InjectedLookup, ScopeVar,
+    Injectable, Depends, SingletonScopeVar,
     T_Injected, T_Injectable, 
     ResolverFunc
 )
@@ -28,8 +28,8 @@ from .common import (
 
 
 if t.TYPE_CHECKING:
-    from .scopes import AbcScope
     from .injectors import Injector
+    from .scopes import Scope
 
 
 
@@ -68,7 +68,7 @@ class ProviderCondition(t.Callable[..., bool]):
 
     __class_getitem__ = classmethod(GenericAlias)
 
-    def __call__(self, provider: 'Provider', scope: 'AbcScope', key: T_Injectable) -> bool:
+    def __call__(self, provider: 'Provider', scope: 'Injector', key: T_Injectable) -> bool:
         ...
 
 
@@ -79,7 +79,7 @@ class Handler(t.Protocol[T_Injected]):
 
     deps: t.Optional[Set[T_Injectable]]
 
-    def __call__(self, provider: 'Provider', scope: 'AbcScope', token: T_Injectable) -> InjectorVar:
+    def __call__(self, provider: 'Provider', scope: 'Injector', token: T_Injectable) -> ScopeVar:
         ...
 
 
@@ -114,11 +114,14 @@ class Provider(t.Generic[_T_Using]):
     def implicit_token(self):
         return NotImplemented
 
+    def compile(self, scope: 'Injector', token: T_Injectable) -> Handler:
+        return self._compile(scope, token)
+    
     @abstractmethod
-    def _handler(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
+    def _compile(self, scope: 'Injector', token: T_Injectable) -> Handler:
         ...
     
-    def can_provide(self, scope: 'AbcScope', dep: T_Injectable) -> bool:
+    def can_provide(self, scope: 'Injector', dep: T_Injectable) -> bool:
         return True
 
 
@@ -128,7 +131,7 @@ class Provider(t.Generic[_T_Using]):
 @dataclass
 class FactoryProvider(Provider[T_UsingFactory]):
 
-    def _handler(self, scope: 'AbcScope', dep: T_Injectable) -> Handler:
+    def _compile(self, scope: 'Injector', dep: T_Injectable) -> Handler:
         return Handler.coerce(self.uses(self, scope, dep))
     
 
@@ -141,11 +144,11 @@ class ValueProvider(Provider[T_UsingValue]):
 
     shared: t.ClassVar = True
 
-    def _handler(self, scope: 'AbcScope', dep: T_Injectable,  *args, **kwds) -> Handler:
-        var = InjectorVar(self.uses)
+    def _compile(self, scope: 'Injector', dep: T_Injectable) -> Handler:
+        var = ScopeVar(self.uses)
         return lambda at: var
 
-    def can_provide(self, scope: 'AbcScope', dep: T_Injectable) -> bool:
+    def can_provide(self, scope: 'Injector', dep: T_Injectable) -> bool:
         return True
 
 
@@ -159,9 +162,9 @@ class InjectedArgumentsDict(dict[str, t.Any]):
     
     __slots__ = 'inj',
 
-    inj: 'Injector'
+    inj: 'Scope'
 
-    def __init__(self, inj: 'Injector', /, deps=()):
+    def __init__(self, inj: 'Scope', /, deps=()):
         dict.__init__(self, deps)
         self.inj = inj
 
@@ -204,7 +207,7 @@ class ArgumentView:
 
         return self
 
-    def args(self, inj: 'Injector', vals: dict[str, t.Any]=frozendict()):
+    def args(self, inj: 'Scope', vals: dict[str, t.Any]=frozendict()):
         for n, v, i, d in self._args:
             if v is not _EMPTY:
                 yield v
@@ -245,7 +248,7 @@ class ArgumentView:
                     continue
                 break
 
-    def var_arg(self, inj: 'Injector', vals: Mapping[str, t.Any]=frozendict()):
+    def var_arg(self, inj: 'Scope', vals: Mapping[str, t.Any]=frozendict()):
         if _var := self._var_arg:
             n, v, i = _var
             if v is not _EMPTY:
@@ -253,7 +256,7 @@ class ArgumentView:
             elif i is not _EMPTY:
                 yield from inj.get(i, ())
 
-    def kwargs(self, inj: 'Injector', vals: dict[str, t.Any]=frozendict()):
+    def kwargs(self, inj: 'Scope', vals: dict[str, t.Any]=frozendict()):
         if vals:
             for n, v, i, d in self._kwargs:
                 v = vals.pop(n, v)
@@ -286,7 +289,7 @@ class ArgumentView:
                     continue
                 break
 
-    def kwds(self, inj: 'Injector', vals: dict[str, t.Any]=frozendict()):
+    def kwds(self, inj: 'Scope', vals: dict[str, t.Any]=frozendict()):
         kwds = dict()
         if vals:
             for n, v, i, d in self._kwds:
@@ -330,7 +333,7 @@ class ArgumentView:
         vals and kwds.update(vals)
         return kwds
 
-    def var_kwd(self, inj: 'Injector', vals: Mapping[str, t.Any]=frozendict()):
+    def var_kwd(self, inj: 'Scope', vals: Mapping[str, t.Any]=frozendict()):
         kwds = dict()
         if _var := self._var_kwd:
             n, v, i = _var
@@ -358,16 +361,16 @@ class CallableProvider(Provider[_T_Using]):
     def _setup(self):
         self.arguments = Arguments.coerce(self.arguments)
 
-    def get_signature(self, scope: 'AbcScope', token: T_Injectable) -> t.Union[Signature, None]:
+    def get_signature(self) -> t.Union[Signature, None]:
         return typed_signature(self.uses)
 
-    def get_available_deps(self, sig: Signature, scope: 'AbcScope', deps: Mapping):
+    def get_available_deps(self, sig: Signature, scope: 'Injector', deps: Mapping):
         return { n: d for n, d in deps.items() if scope.is_provided(d) }
 
-    def get_explicit_deps(self, sig: Signature, scope: 'AbcScope'):
+    def get_explicit_deps(self, sig: Signature):
         return  { n: d for n, d in self.deps.items() if isinstance(d, Injectable) }
 
-    def get_implicit_deps(self, sig: Signature, scope: 'AbcScope'):
+    def get_implicit_deps(self, sig: Signature):
         return  { n: p.annotation
             for n, p in sig.parameters.items() 
                 if  p.annotation is not _EMPTY and isinstance(p.annotation, Injectable)
@@ -438,45 +441,45 @@ class CallableProvider(Provider[_T_Using]):
             self.eval_var_kwd_param(sig, defaults, deps)
         )
 
-    def _handler(self, scope: 'AbcScope', token: T_Injectable,  *args, **kwds) -> Handler:
+    def _compile(self, injector: 'Injector', ____token: T_Injectable) -> Handler:
 
         func = self.uses
         shared = self.shared
 
-        sig = self.get_signature(scope, token)
+        sig = self.get_signature()
 
-        arguments = self.arguments.merge(*args, **kwds)
+        arguments = self.arguments
 
         bound = sig.bind_partial(*arguments.args, **arguments.kwargs) or None
-        var_cls = SharedInjectorVar if shared else FactoryInjectorVar
+        var_cls = SingletonScopeVar if shared else FactoryScopeVar
         
         if not sig.parameters:
-        
-            def resolve(at):
-                nonlocal func, shared, var_cls
-                # return InjectorVar(make=func, shared=shared)
+            def handler(scp):
+                nonlocal func, var_cls
                 return var_cls(func)
 
-            return resolve
+            return handler
 
         defaults = frozendict(bound.arguments)
         
-        expl_deps = self.get_explicit_deps(sig, scope)
-        impl_deps = self.get_implicit_deps(sig, scope)
+        expl_deps = self.get_explicit_deps(sig)
+        impl_deps = self.get_implicit_deps(sig)
 
         all_deps = dict(impl_deps, **expl_deps)
-        deps = self.get_available_deps(sig, scope, all_deps)
+        deps = self.get_available_deps(sig, injector, all_deps)
         argv = self.create_arguments_view(sig, defaults, deps)
-        def resolve(inj: 'Injector'):
-            nonlocal shared, var_cls
+
+        def handler(scp: 'Scope'):
+            nonlocal var_cls
+            
             def make(*a, **kw):
-                nonlocal func, argv, inj
-                return func(*argv.args(inj, kw), *a, **argv.kwds(inj, kw))
-            # return InjectorVar(make=make, shared=shared)
+                nonlocal func, argv, scp
+                return func(*argv.args(scp, kw), *a, **argv.kwds(scp, kw))
+
             return var_cls(make)
 
-        resolve.deps = set(all_deps.values())
-        return resolve
+        handler.deps = set(all_deps.values())
+        return handler
 
 
 
@@ -511,37 +514,26 @@ class AliasProvider(Provider[T_UsingAlias]):
 
     shared: t.ClassVar = None
 
-    def can_provide(self, scope: 'AbcScope', token: Injectable) -> bool:
+    def can_provide(self, scope: 'Injector', token: Injectable) -> bool:
         return scope.is_provided(self.uses)
 
-    def _handler(self, scope: 'AbcScope', dep: T_Injectable,  *_args, **_kwds) -> Handler:
+    def _compile(self, ____injector: 'Injector', ____token: T_Injectable) -> Handler:
         
-        arguments =  None #self.arguments or None
         real = self.uses
         shared = self.shared
 
-        if not (arguments or shared):
-            def resolve(at: 'Injector'):
+        if not shared:
+            def handler(at: 'Scope'):
                 nonlocal real
                 return at.vars[real]
-
-        # elif arguments:
-        #     args, kwargs = arguments.args, arguments.kwargs
-        #     def resolve(at: 'Injector'):
-        #         if inner := at.vars[real]:
-        #             def make(*a, **kw):
-        #                 nonlocal inner, args, kwargs
-        #                 return inner.make(*args, *a, **dict(kwargs, **kw))
-
-        #             return InjectorVar(make=make, shared=shared)
         else:
-            def resolve(at: 'Injector'):
+            def handler(at: 'Scope'):
                 nonlocal real, shared
                 if inner := at.vars[real]:
-                    return InjectorVar(make=inner.make, shared=shared)
+                    return SingletonScopeVar(make=inner.make)
 
-        resolve.deps = {real}
-        return resolve
+        handler.deps = {real}
+        return handler
 
 
 
@@ -554,27 +546,26 @@ class UnionProvider(AliasProvider):
 
     _implicit_types_ = frozenset([type(None)]) 
 
-    def get_all_args(self, scope: 'AbcScope', token: Injectable):
+    def get_all_args(self, scope: 'Injector', token: Injectable):
         return get_args(token)
 
-    def get_injectable_args(self, scope: 'AbcScope', token: Injectable, *, include_implicit=True) -> tuple[Injectable]:
+    def get_injectable_args(self, scope: 'Injector', token: Injectable, *, include_implicit=True) -> tuple[Injectable]:
         implicits = self._implicit_types_ if include_implicit else set()
         return tuple(a for a in self.get_all_args(scope, token) if a in implicits or scope.is_provided(a))
     
-    def can_provide(self, scope: 'AbcScope', token: Injectable) -> bool:
+    def can_provide(self, scope: 'Injector', token: Injectable) -> bool:
         return len(self.get_injectable_args(scope, token, include_implicit=False)) > 0
 
-    def _handler(self, scope: 'AbcScope', token):
+    def _compile(self, injector: 'Injector', token):
         
-        args = self.get_injectable_args(scope, token)
+        args = self.get_injectable_args(injector, token)
 
-        def resolve(at: 'Injector'):
+        def handle(scp: 'Scope'):
             nonlocal args
-            return next((v for a in args if (v := at.vars[a])), None)
+            return next((v for a in args if (v := scp.vars[a])), None)
 
-        # return Handler(resolve, {*args})
-        resolve.deps = {*args}
-        return resolve
+        handle.deps = {*args}
+        return handle
 
 
 
@@ -587,7 +578,7 @@ class AnnotationProvider(UnionProvider):
 
     _implicit_types_ = frozenset() 
 
-    def get_all_args(self, scope: 'AbcScope', token: Injectable):
+    def get_all_args(self, scope: 'Injector', token: Injectable):
         return token.__metadata__[::-1]
 
 
@@ -598,32 +589,31 @@ class DependencyProvider(AliasProvider):
 
     use: InitVar[_T_Using] = Depends
 
-    def can_provide(self, scope: 'AbcScope', token: 'Depends') -> bool:
+    def can_provide(self, scope: 'Injector', token: 'Depends') -> bool:
         if token.on is ...:
             return False
         return scope.is_provided(token.on, start=token.at)
 
-    def _handler(self, scope: 'AbcScope', token: 'Depends') -> Handler:
+    def _compile(self, injector: 'Injector', token: 'Depends') -> Handler:
 
         dep = token.on
-        at = None if token.at is ... or token.at else token.at
         arguments = token.arguments or None
 
         if arguments:
             args, kwargs = arguments.args, arguments.kwargs
-            def resolve(inj: 'Injector'):
+            def resolve(scp: 'Scope'):
                 nonlocal dep
-                if inner := inj.vars[dep]:
+                if inner := scp.vars[dep]:
                     def make(*a, **kw):
                         nonlocal inner, args, kwargs
                         return inner.make(*args, *a, **(kwargs | kw))
 
-                    return InjectorVar(make=make)
+                    return FactoryScopeVar(make=make)
         else:
-            def resolve(inj: 'Injector'):
+            def resolve(scp: 'Scope'):
                 nonlocal dep
-                if inner := inj.vars[dep]:
-                    return InjectorVar(make=inner.make)
+                if inner := scp.vars[dep]:
+                    return FactoryScopeVar(make=inner.make)
 
 
         resolve.deps = {dep}
@@ -677,25 +667,22 @@ class DependencyProvider(AliasProvider):
 @dataclass
 class LookupProvider(AliasProvider):
 
-    def can_provide(self, scope: 'AbcScope', token: 'InjectedLookup') -> bool:
+    def can_provide(self, scope: 'Injector', token: 'InjectedLookup') -> bool:
         return scope.is_provided(token.depends)
 
-    def _handler(self, scope: 'AbcScope', token: 'InjectedLookup',  *_args, **_kwds) -> Handler:
+    def _compile(self, injector: 'Injector', token: 'InjectedLookup') -> Handler:
 
         dep = token.depends
         path = token.path
 
-        def resolve(at: 'Injector'):
+        def hander(scp: 'Scope'):
             nonlocal dep, path
-            if var := at.vars[dep]:
+            if var := scp.vars[dep]:
                 if var.value is Void:
-                    return InjectorVar(make=lambda: path.get(var.get()))
-
-                # px = proxy(lambda: path.get(var.get()))
-                return InjectorVar(make=lambda: path.get(var.value))
+                    return FactoryScopeVar(make=lambda: path.get(var.get()))
+                return FactoryScopeVar(make=lambda: path.get(var.value))
             return 
 
-        # return Handler(resolve, {dep})
-        resolve.deps = {dep}
-        return resolve
+        hander.deps = {dep}
+        return hander
 

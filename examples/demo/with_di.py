@@ -3,8 +3,8 @@ import os
 
 from after import ApiClient, Service
 
-from laza.di.scopes import MainScope
-from laza.di.common import InjectionToken, Depends, InjectedLookup
+from laza.di.injectors import MainScope
+from laza.di.common import Depends
 
 
 ioc = MainScope()

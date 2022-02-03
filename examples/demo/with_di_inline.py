@@ -1,6 +1,6 @@
 import os
 
-from laza.di.scopes import MainScope
+from laza.di.injectors import MainScope
 from laza.di.common import Depends as Dep
 
 

@@ -2,35 +2,35 @@ import pytest
 import typing as t
 
 
+from laza.di.injectors import MainInjector, LocalInjector
+from laza.di.containers import IocContainer
+
 
 @pytest.fixture()
 def ioc():
-    from laza.di.containers import IocContainer
     return IocContainer()
 
 
 @pytest.fixture()
-def main_scope():
-    from laza.di.scopes import MainScope
-    return MainScope()
+def main_injector():
+    return MainInjector()
 
 
 @pytest.fixture()
-def local_scope(main_scope):
-    from laza.di.scopes import LocalScope
-    return LocalScope(main_scope)
+def local_injector(main_injector):
+    return LocalInjector(main_injector)
 
 
 
 
 @pytest.fixture()
-def scope(main_scope):
-    return main_scope
+def injector(main_injector):
+    return main_injector
 
 
 
 @pytest.fixture()
-def injector(scope):
-    with scope.make() as inj:
-        yield inj
+def scope(injector):
+    with injector.make() as scp:
+        yield scp
 

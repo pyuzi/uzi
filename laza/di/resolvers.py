@@ -9,10 +9,10 @@ from laza.common.functools import export
 
 
 
-from .common import T_Injectable, T_Injected, InjectorVar
+from .common import T_Injectable, T_Injected, ScopeVar
 
 if t.TYPE_CHECKING:
-    from .injectors import Injector
+    from .scopes import Scope
     from .providers_new import Provider
 
 
@@ -59,7 +59,7 @@ class Resolver:
                 *, 
                 value: t.Any=None, 
                 factory: t.Any=None, 
-                using: Callable[['Injector'], 'Resolver']=None, 
+                using: Callable[['Scope'], 'Resolver']=None, 
                 deps: set[T_Injectable]=None) -> None:
         self.key = key
         self.src = src
@@ -73,7 +73,7 @@ class Resolver:
     def __bool__(self):
         return self.use is not None
 
-    def __call__(self, inj: 'Injector') -> InjectorVar:
+    def __call__(self, inj: 'Scope') -> ScopeVar:
         return self.use(inj)
     
 
@@ -82,9 +82,9 @@ class Resolver:
 @dataclass(slots=True, frozen=True)
 class FuncResolver(Resolver):
 
-    def __call__(self, inj: 'Injector') -> InjectorVar:
+    def __call__(self, inj: 'Scope') -> ScopeVar:
         fn = self.use(inj)
         if fn is not None:
-            return InjectorVar(make=fn, shared=self.src.shared)
+            return ScopeVar(make=fn, shared=self.src.shared)
         
     

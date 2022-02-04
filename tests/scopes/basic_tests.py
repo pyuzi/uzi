@@ -36,34 +36,27 @@ class BasicScopeTests:
         assert 1, '\n'
 
  
-    def _test_providers(self):
-        con1 = IocContainer() 
+    def test_providers(self):
+        con = IocContainer() 
 
-        con1.type(Foo)
+        con.type(Foo)
         # con1[Foo] = p.Type(Foo)
 
-        con1.type(Bar)
-         
-        con2 = IocContainer() 
-        con2.type(Baz)
-        con2.type(Bar)
+        con.type(Bar)
+        con.type(Baz)
 
-        con3 = IocContainer(con1, con2) 
-        con3.type(FooBar, FooBar)
-        con3.type(FooBarBaz, FooBarBaz)
-
-        con4 = IocContainer(con2)
+        con.type(FooBar, FooBar)
+        con.type(FooBarBaz, FooBarBaz)
 
 
-        scope1 = MainInjector(con3)
-        scope2 = LocalInjector(scope1)
-        scope3 = LocalInjector(scope2, con4)
 
-        with scope2.make() as inj_:
-            with scope3.make(inj_) as inj:
-                assert isinstance(inj[Foo], Foo)
-                assert isinstance(inj[Baz], Baz)
-                assert inj[Foo] is not inj[Foo]
+        scope = MainInjector(con)
+
+        with scope.make() as inj:
+            assert isinstance(inj[Foo], Foo)
+            assert isinstance(inj.vars[Bar].get(), Bar)
+            assert isinstance(inj[Baz], Baz)
+            assert inj[Foo] is not inj[Foo]
 
         assert 1, '\n'
  

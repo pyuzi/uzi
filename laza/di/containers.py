@@ -55,7 +55,7 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
     _requires: orderedset['IocContainer']
     _bindings: dict[Injectable, Provider[T_UsingAny, T_Injected]]
     _bootstrapped: bool = False
-    _bind_stack: orderedset[t.Any]
+    _pending: orderedset[t.Any]
 
     def __init_subclass__(cls, **kwds) -> None:
         if '_default_requires' in cls.__dict__:
@@ -118,7 +118,7 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
 
     def add(self, item: Provider) -> Self:
         if self._bootstrapped is not True:
-            self._bind_stack.add(item)
+            self._pending.add(item)
             return self
         
         binding = item.bind(self)
@@ -141,7 +141,7 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
 
     def _init_bindings(self):
         self._bindings = dict()
-        self._bind_stack = orderedset()
+        self._pending = orderedset()
 
     def _init_registry(self):
         self._registry = orderedset()
@@ -153,10 +153,14 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
         self.dependants = orderedset()
      
     def _empty_bind_stack(self):
-        stack = self._bind_stack
-        while stack:
-            r = stack.pop().bind(self)
+        stack = self._pending
+        for it in self._pending:
+            r  = it.bind(self)
             print(f'  -{self}->{r._uses}, {r._provides}')
+
+        # while stack:
+        #     r = stack.pop().bind(self)
+        #     print(f'  -{self}->{r._uses}, {r._provides}')
 
 
     def add_dependant(self, scope: 'Injector'):
@@ -179,7 +183,7 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
     def inject(self, func: Callable[..., _T]=None, **opts):
         def decorator(fn: Callable[..., _T]):
             token = InjectionToken(f'{fn.__module__}.{fn.__qualname__}')
-            self.function(token, fn)
+            self.function(token).using(fn)
 
             def wrapper(*a, **kw):
                 nonlocal self, token
@@ -188,7 +192,6 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
             wrapper = update_wrapper(wrapper, fn)
             wrapper.__injection_token__ = token
 
-            print(f'xxxxx'*10)
             return wrapper
 
         if func is None:

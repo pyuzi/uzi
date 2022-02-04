@@ -722,8 +722,10 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
         impl_deps = self.get_implicit_deps(sig)
 
         all_deps = dict(impl_deps, **expl_deps)
-        deps = self.get_available_deps(sig, all_deps)
+        deps = all_deps # self.get_available_deps(sig, all_deps)
         argv = self.create_arguments_view(sig, defaults, deps)
+
+        # print(f'compile -> {func} \n ***{all_deps=}*** \n ***{deps}***')
 
         def handler(scp: 'Scope'):
             nonlocal var_cls
@@ -951,7 +953,7 @@ class RegistrarMixin(ABC, t.Generic[T_Injected]):
         alias = Alias
         value = Value
         factory = Factory
-        function = Value
+        function = Function
         type = Type
     else:
         alias = _provder_factory_method(Alias)

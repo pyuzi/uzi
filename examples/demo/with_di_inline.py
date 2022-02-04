@@ -22,7 +22,7 @@ class ApiClient:
         self.timeout = timeout  # <-- dependency is injected
 
 
-@ioc.type()
+@ioc.type
 class Service:
 
     def __init__(self, api_client: ApiClient):

@@ -1,10 +1,10 @@
 import pytest
 
+import typing as t
 
 
 
-
-from laza.di.providers import ValueProvider
+from laza.di.providers import Value
 
 
 from .abc import ProviderTestCase
@@ -14,17 +14,20 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
+_T = t.TypeVar('_T')
+
 @pytest.fixture
 def provider():
-    return ValueProvider(object())
+    return Value(_T, object())
+
 
 
 class ValueProviderTests(ProviderTestCase):
     
-    cls = ValueProvider
+    cls = Value
 
-    def test_provides_value(self, provider: ValueProvider, injector, scope):
-        assert provider.compile(injector, type)(scope).value is provider.uses
+    def test_provides_value(self, provider: Value, injector, scope):
+        assert provider.compile(type)(scope).value is provider.uses
         
         
     

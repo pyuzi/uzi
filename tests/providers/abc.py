@@ -23,7 +23,7 @@ class ProviderTestCase:
 
     def test_basic(self, provider: Provider, injector, scope):
         assert isinstance(provider, self.cls)
-        hand = provider.compile(injector, type)
+        hand = provider.compile(type)
         assert callable(hand)
         assert isinstance(getattr(hand, 'deps', set()), Set)
         assert isinstance(hand(scope), ScopeVar) or not self.strict_injectorvar

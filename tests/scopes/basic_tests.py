@@ -36,7 +36,7 @@ class BasicScopeTests:
         assert 1, '\n'
 
  
-    def test_providers(self):
+    def _test_providers(self):
         con1 = IocContainer() 
 
         con1.type(Foo)
@@ -44,8 +44,9 @@ class BasicScopeTests:
 
         con1.type(Bar)
          
-        con2 = IocContainer(shared=False) 
+        con2 = IocContainer() 
         con2.type(Baz)
+        con2.type(Bar)
 
         con3 = IocContainer(con1, con2) 
         con3.type(FooBar, FooBar)
@@ -66,7 +67,7 @@ class BasicScopeTests:
 
         assert 1, '\n'
  
-    def test_inject(self):
+    def _test_inject(self):
         con1 = IocContainer() 
 
         con1.type(Foo)
@@ -109,9 +110,9 @@ class BasicScopeTests:
         SharedFoo = InjectionToken('SharedFoo')
 
         ioc.type(Foo)
-        ioc.type(Foo, SharedFoo, shared=True)
-        ioc.type(Bar, shared=True)
-        ioc.type(Baz, shared=True)
+        ioc.type(SharedFoo, Foo)
+        ioc.type(Bar)
+        ioc.type(Baz)
 
 
         @ioc.inject
@@ -141,11 +142,11 @@ class BasicScopeTests:
 
         with ioc.make() as inj:
 
-            infoo = lambda: inj[Foo]
+            infoo = lambda: inj.vars[Foo].get()
             insharedfoo = lambda: inj[SharedFoo]
             insharedfoo_get = lambda: inj.vars[SharedFoo].get()
-            inbar = lambda: inj[Bar]
-            inbaz = lambda: inj[Baz]
+            inbar = lambda: inj.vars[Bar].get()
+            inbaz = lambda: inj.vars[Baz].get()
 
             profile(mkfoo, infoo, 'Foo')
             profile(mkbar, inbar, 'Bar')

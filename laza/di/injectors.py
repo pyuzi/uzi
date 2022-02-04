@@ -139,6 +139,7 @@ class Injector(AbcIocContainer):
         return True
 
     def setup(self, ctx: 'InjectorContext'=None):
+        self._bootstrapped or self.bootstrap()
         old = self._context 
         if old is None:
             if ctx is not None:
@@ -146,7 +147,7 @@ class Injector(AbcIocContainer):
             elif self.parent:
                 return self.parent.setup()
             else:
-                ctx = self.scope_context_class(f'{self.name}.injector', default=None)
+                ctx = self.scope_context_class(self.name, default=None)
             
             self._context = ctx
             for ls in (self.containers, self.children):
@@ -182,7 +183,7 @@ class Injector(AbcIocContainer):
         return False
                         
     def _create_repository(self):
-        return ChainMap(self.registry, *(d.registry for d in self.containers))
+        return ChainMap(self._bindings, *(d._bindings for d in self.containers))
 
     def _create_resolvers(self):
        
@@ -190,11 +191,11 @@ class Injector(AbcIocContainer):
 
         def fallback(key):
             if pro := get_provider(key):
-                hand = pro.compile(self, key)
+                hand = pro.compile(key)
                 return setdefault(key, self.register_handler(key, hand))
             elif origin := get_origin(key):
                 if pro := get_provider(origin):
-                    hand = pro.compile(self, key)
+                    hand = pro.compile(key)
                     return setdefault(key, self.register_handler(key, hand))
 
         res = fallbackdict(fallback)
@@ -208,7 +209,7 @@ class Injector(AbcIocContainer):
         if src is None:
             src = self
 
-        for d in src.requires:
+        for d in src._requires:
             if d in memo_ or memo_.add(d):
                 continue
 
@@ -223,7 +224,7 @@ class Injector(AbcIocContainer):
             if not(d.shared and d in parent) and (yv := d.add_dependant(self))
         )
     
-    def _setup_dependants(self):
+    def _init_dependants(self):
         pass
 
     def is_provided(self, 
@@ -247,7 +248,7 @@ class Injector(AbcIocContainer):
             if start not in this:
                 return None
 
-            while not (start is this or start in this.requires):
+            while not (start is this or start in this._requires):
                 if this.parent is None:
                     return None
                 this = this.parent 
@@ -261,7 +262,7 @@ class Injector(AbcIocContainer):
         if not(depth > 0 and this.parent):
             return None
         elif stop and stop is not ...:
-            if stop is this or stop in this.requires:
+            if stop is this or stop in this._requires:
                 return None
         return this.parent.find_provider(key, stop=stop, depth=depth-1)
 
@@ -346,8 +347,8 @@ class Injector(AbcIocContainer):
 
     def __contains__(self, x):
         if isinstance(x, IocContainer):
-            return x in self.requires \
-                or any(x in d for d in self.requires) \
+            return x in self._requires \
+                or any(x in d for d in self._requires) \
                 or x.shared and x in (self.parent or ())
         elif isinstance(x, Injector):
             return x is self \

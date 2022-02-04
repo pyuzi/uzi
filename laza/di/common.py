@@ -16,7 +16,7 @@ from laza.common.collections import Arguments, frozendict
 from laza.common.imports import ImportRef
 from laza.common.proxy import unproxy
 
-from laza.common.functools import export, Void, calling_frame
+from laza.common.functools import export, Missing, calling_frame
 from laza.common.data import DataPath
 
 from laza.common.enum import IntEnum, BitSetFlag, auto
@@ -56,7 +56,7 @@ if t.TYPE_CHECKING:
 
 
 
-T_Injected = t.TypeVar("T_Injected")
+T_Injected = t.TypeVar("T_Injected", covariant=True)
 T_Default = t.TypeVar("T_Default")
 T_Injectable = t.TypeVar('T_Injectable', bound='Injectable', covariant=True)
 
@@ -362,7 +362,7 @@ class ScopeVar(t.Generic[T_Injected]):
 
     __slots__ = ()
 
-    value: T_Injected = Void
+    value: T_Injected = Missing
 
     def get(self) -> T_Injected:
         ...
@@ -431,14 +431,14 @@ class SingletonScopeVar(ScopeVar[T_Injected]):
     def __new__(cls, make: T_Injected):
         self = object.__new__(cls)
         self.make = make
-        self.value = Void
+        self.value = Missing
         self.lock = Lock()
         return self
 
     def get(self) -> T_Injected:
-        if self.value is Void:
+        if self.value is Missing:
             with self.lock:
-                if self.value is Void:
+                if self.value is Missing:
                     self.value = self.make()
         return self.value
         
@@ -475,7 +475,7 @@ class SimpleScopeVar(ScopeVar[T_Injected]):
     value: T_Injected
 
     def __new__(cls, 
-                value: T_Injected = Void, 
+                value: T_Injected = Missing, 
                 make: t.Union[Callable[..., T_Injected], None]=None, 
                 *, 
                 shared: t.Union[bool, None] = None):
@@ -487,13 +487,13 @@ class SimpleScopeVar(ScopeVar[T_Injected]):
             if shared is True:
                 def get():
                     nonlocal make, value
-                    if value is Void:
+                    if value is Missing:
                         value = make()
                     return value
                 self.get = get
             else:
                 self.get = make
-        elif value is Void:
+        elif value is Missing:
             raise TypeError(f'{cls.__name__} one of value or call must be provided.')
         else:
             self.make = make

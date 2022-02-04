@@ -1,14 +1,18 @@
 import os
 
-from laza.di.injectors import MainScope
+from laza.di.injectors import MainInjector
 from laza.di.common import Depends as Dep
 
 
 
-ioc = MainScope()
+ioc = MainInjector()
 
 
-@ioc.type(shared=True).singleton().using()
+@ioc.type(shared=True)\
+    .args(1,2,3)\
+    .kwargs(api_key='KEY')\
+    .singleton()\
+    .using()
 class ApiClient:
 
     def __init__(self, 

@@ -9,7 +9,7 @@ from laza.common.imports import ImportRef
 from laza.common.functools import export
 from laza.common.typing import Protocol
 
-from laza.common.functools import Void
+from laza.common.functools import Missing
 
 from .common import (
     Injectable,
@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 
 _T = t.TypeVar("_T")
-
 
 
 

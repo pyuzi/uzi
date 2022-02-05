@@ -1,6 +1,6 @@
 # from __future__ import annotations
 from functools import lru_cache, wraps
-from inspect import ismemberdescriptor
+from inspect import ismemberdescriptor, signature
 from logging import getLogger
 from types import FunctionType, GenericAlias, new_class
 import typing as t 
@@ -20,13 +20,13 @@ from laza.common.enum import BitSetFlag, auto
 
 
 
-
+from .vars import ScopeVar, FactoryScopeVar, SingletonScopeVar
 from .common import (
-    FactoryScopeVar, InjectedLookup, ScopeVar,
-    Injectable, Depends, SingletonScopeVar,
+    InjectedLookup,
+    Injectable, Depends,
     T_Injected, T_Injectable, 
-    ResolverFunc
 )
+
 
 
 if t.TYPE_CHECKING:
@@ -63,8 +63,8 @@ T_UsingAny = t.Union[T_UsingCallable, T_UsingAlias, T_UsingValue]
 
 
 def _fluent_decorator(default=Missing, *, fluent: bool=False):
-    def decorator(fn: _T_Fn) -> _T_Fn:
-        
+    def decorator(func: _T_Fn) -> _T_Fn:
+
         if t.TYPE_CHECKING:
             @t.overload
             def wrapper(self, v, *a, **kwds) -> Self: ...
@@ -72,24 +72,31 @@ def _fluent_decorator(default=Missing, *, fluent: bool=False):
             def wrapper(self, **kwds) -> Callable[[_T], _T]: ...
 
             if fluent is True:
-                @wraps(fn)
+                @wraps(func)
                 def wrapper(self, v=default, /, *args, **kwds) -> t.Union[_T, Callable[..., _T]]:
                     ...
             else:
-                @wraps(fn)
+                @wraps(func)
                 def wrapper(self, v: _T=default, /, *args, **kwds) -> t.Union[_T, Callable[..., _T]]:
                     ...
-        @wraps(fn)
+        
+        fn = func
+        while hasattr(fn, '_is_fluent_decorator'):
+            fn = fn.__wrapped__
+
+        @wraps(func)
         def wrapper(self, v=default, /, *args, **kwds):
-            nonlocal fn, default, fluent
+            nonlocal func, default, fluent
             if v is default:
                 def decorator(val: _T) -> _T:
-                    nonlocal fn, v, args, kwds
-                    rv = fn(self, val, *args, **kwds)
+                    nonlocal func, v, args, kwds
+                    rv = func(self, val, *args, **kwds)
                     return rv if fluent is True else val
                 return decorator
-            return fn(self, v, *args, **kwds)
+            return func(self, v, *args, **kwds)
         
+        wrapper._is_fluent_decorator = True
+
         return wrapper
 
     return decorator
@@ -276,6 +283,15 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
                 raise AttributeError(f'{"provides"!r} in {self}')
         return val
 
+    @provides.setter
+    def provides(self, val):
+        if self._provides is Missing:
+            self.__set_attr('_provides', val)
+        elif val is not self._provides:
+            raise AttributeError(
+                f'cannot {val=}. {self} already provides {self._provides}.')
+        self.bound or self._bind()
+
     @property
     def uses(self) -> _T_Using:
         val = self._uses
@@ -284,6 +300,11 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
             if val is Missing:
                 raise AttributeError(f'{"uses"!r} in {self}')
         return val
+    
+    @uses.setter
+    def uses(self, val):
+        self.__set_attr('_uses', val)
+        self.bound or self._bind()
     
     def _uses_fallback(self):
         return Missing
@@ -309,7 +330,10 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
                     f'cannot bind {self}. already bound to {self.container}.')
         elif self._can_bind():
             self.__set_attr('bound', True)
-            self.container.register_provider(self)
+            self._add_to_container()
+
+    def _add_to_container(self):
+        self.container.register_provider(self)
 
     def _can_bind(self):
         if self.bound:
@@ -326,22 +350,16 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
     def provide(self, provide: T_Injectable) -> Self: ...
     @_fluent_decorator()
     def provide(self, provide: T_Injectable):
-        if self._provides is Missing:
-            self.__set_attr('_provides', provide)
-        elif provide is not self._provides:
-            raise AttributeError(
-                f'cannot {provide=}. {self} already provides {self._provides}.')
-        self.bound or self._bind()
+        self.__set_attr('provides', provide)
         return self
-
+        
     @t.overload
     def using(self) -> Callable[[_T], _T]: ...
     @t.overload
     def using(self, using: t.Any) -> Self: ...
     @_fluent_decorator()
     def using(self, using):
-        self.__set_attr('_uses', using)
-        self.bound or self._bind()
+        self.__set_attr('uses', using)
         return self
     
     def compile(self, token: T_Injectable) -> Handler:
@@ -440,16 +458,16 @@ class ArgumentView:
 
         return self
 
-    def args(self, inj: 'Scope', vals: dict[str, t.Any]=frozendict()):
+    def args(self, scp: 'Scope', vals: dict[str, t.Any]=frozendict()):
         for n, v, i, d in self._args:
             if v is not _EMPTY:
                 yield v
                 continue
             elif i is not _EMPTY:
                 if d is _EMPTY:
-                    yield inj[i]
+                    yield scp[i]
                 else:
-                    yield inj.get(i, d)
+                    yield scp.get(i, d)
                 continue
             elif d is not _EMPTY:
                 yield d
@@ -461,7 +479,7 @@ class ArgumentView:
             if v is not _EMPTY:
                 yield from v
             elif i is not _EMPTY:
-                yield from inj.get(i, ())
+                yield from scp.get(i, ())
         else:
         # elif  self._kwargs:
             # yield from self.kwargs(inj, vals)
@@ -472,9 +490,9 @@ class ArgumentView:
                     continue
                 elif i is not _EMPTY:
                     if d is _EMPTY:
-                        yield inj[i]
+                        yield scp[i]
                     else:
-                        yield inj.get(i, d)
+                        yield scp.get(i, d)
                     continue
                 elif d is not _EMPTY:
                     yield d
@@ -592,8 +610,12 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
     is_singleton: bool = False
     deps: dict[str, Injectable] = _Attr(default_factory=frozendict)
 
-    def __init__(self, provide: Callable[..., T_Injectable]=None, *args, **kwargs) -> None:
-        super().__init__(provide)
+    def __init__(self, provide: Injectable=..., using: Callable[..., T_Injectable]=..., /, *args, **kwargs) -> None:
+        super().__init__(
+            Missing if provide in (None, ...) else provide,
+            Missing if using in (None, ...) else using
+        )
+            
         args and self.args(*args)
         kwargs and self.kwargs(**kwargs)
 
@@ -725,7 +747,6 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
         deps = all_deps # self.get_available_deps(sig, all_deps)
         argv = self.create_arguments_view(sig, defaults, deps)
 
-        # print(f'compile -> {func} \n ***{all_deps=}*** \n ***{deps}***')
 
         def handler(scp: 'Scope'):
             nonlocal var_cls
@@ -748,11 +769,42 @@ class Function(Factory[T_Injected]):
 
    
 
-
-
 @export()
 class Type(Factory[T_Injected]):
     ...
+
+
+
+
+
+@export()
+class InjectionProvider(Factory[T_Injected]):
+
+    @property
+    def wrapped(self):
+        return self.provides
+
+    @wraps(Factory.provide)
+    def wrap(self, wrapped: Callable[..., T_Injected] = Missing):
+        res = super().provide(wrapped)
+    
+    wrap = Factory.provide
+
+    def _bind(self):
+        return super()._bind()
+
+    def _uses_fallback(self):
+        if callable(self._provides):
+            return self._provides
+        
+        return super()._uses_fallback()
+        
+
+    def _provides_fallback(self):
+        if isinstance(self._uses, Injectable):
+            return self._uses
+        return super()._provides_fallback()
+
 
 
 @export()
@@ -794,7 +846,10 @@ class UnionProvider(Alias):
 
         def handle(scp: 'Scope'):
             nonlocal args
-            return next((v for a in args if (v := scp.vars[a])), None)
+            for a in args:
+                v = scp.vars[a]
+                if v is not None:
+                    return v
 
         handle.deps = {*args}
         return handle
@@ -924,6 +979,8 @@ class LookupProvider(Alias):
 
 
 
+
+
 def _provder_factory_method(cls: type[_T]):
     @wraps(cls)
     def wrapper(self: 'RegistrarMixin', *a, **kw) -> type[_T]:
@@ -961,4 +1018,21 @@ class RegistrarMixin(ABC, t.Generic[T_Injected]):
         factory = _provder_factory_method(Factory)
         function = _provder_factory_method(Function)
         type = _provder_factory_method(Type)
-        
+    
+    def inject(self, func: Callable[..., _T]=None, **opts):
+        def decorator(fn: Callable[..., _T]):
+            self.factory(fn)
+
+            @wraps(fn)
+            def wrapper(*a, **kw):
+                nonlocal self, fn
+                return self._context.get().make(fn, *a, **kw)
+
+            wrapper.__injection_token__ = fn
+
+            return wrapper
+
+        if func is None:
+            return decorator
+        else:
+            return decorator(func)    

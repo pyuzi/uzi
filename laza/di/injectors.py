@@ -11,7 +11,7 @@ from build import Mapping
 
 from laza.common.collections import fallback_default_dict, nonedict, orderedset, fallbackdict
 from laza.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
-from laza.common.typing import get_origin
+from laza.common.typing import get_origin, Self
 
 
 from laza.common.functools import ( 
@@ -20,7 +20,7 @@ from laza.common.functools import (
 
 
 
-from .scopes import Scope, ScopeVarDict
+from .scopes import NullScope, Scope, ScopeVarDict
 from .common import (
     Injectable, 
     T_Injectable,
@@ -44,6 +44,7 @@ _ioc_main = IocContainer(_ioc_local)
 
 
 class InjectorContext(t.Protocol[_T_Scope]):
+    
     def __init__(self, name: str, *, default: _T_Scope = ...) -> None: ...
     @property
     def name(self) -> str: ...
@@ -58,7 +59,7 @@ class InjectorContext(t.Protocol[_T_Scope]):
 
 
 @export
-class Injector(AbcIocContainer):
+class Injector(p.RegistrarMixin):
     """"""
 
     name: str
@@ -66,28 +67,28 @@ class Injector(AbcIocContainer):
     children: orderedset['Injector']
     scopes: dict[Scope, t.Union[Token, None]]
 
-    shared: bool = True
     scope_class: type[Scope] = Scope
     scope_context_class: type[InjectorContext] = ContextVar
     scopevar_dict_class: type[ScopeVarDict] = ScopeVarDict
     _checkouts: t.Final[int] 
 
+    container: IocContainer
+
     def __init__(self, 
                 name: str,
                 parent: 'Injector',
                 *requires: 'IocContainer', 
+                container: IocContainer=None,
                 children: Sequence['Injector']=None,
                 context: InjectorContext=None,
                 scope_class: type[Scope]=None,
                 context_class: type[InjectorContext] =None):
 
-        self.set_parent(parent)
-
-        super().__init__(*requires, name=name, shared=True)
-
         self.scopes = dict()
         self.children = orderedset(children or ())
         self._checkouts = 0
+
+        self.name = name
 
         if scope_class is not None:
             self.scope_class = scope_class
@@ -95,13 +96,15 @@ class Injector(AbcIocContainer):
         if context_class is not None:
             self.scope_context_class = context_class
         
+        self.container = container or IocContainer(name=self.name)
+
+        self.set_parent(parent)
+
+        requires and self.container.require(*requires)
+
         if context is not None:
             self.setup(context)
 
-        # self._context = context \
-        #     or (self.parent and self.parent._context) \
-        #     or (self.injector_context_class(f'{self.name}.injector', default=None))
-    
     @property
     def has_setup(self):
         return 
@@ -139,7 +142,6 @@ class Injector(AbcIocContainer):
         return True
 
     def setup(self, ctx: 'InjectorContext'=None):
-        self._bootstrapped or self.bootstrap()
         old = self._context 
         if old is None:
             if ctx is not None:
@@ -147,7 +149,7 @@ class Injector(AbcIocContainer):
             elif self.parent:
                 return self.parent.setup()
             else:
-                ctx = self.scope_context_class(self.name, default=None)
+                ctx = self.scope_context_class(self.name, default=NullScope())
             
             self._context = ctx
             for ls in (self.containers, self.children):
@@ -181,33 +183,41 @@ class Injector(AbcIocContainer):
             raise RuntimeError(f'too many teardowns {self!s}.')
 
         return False
-                        
+
+    def register_provider(self, provider: p.Provider) -> Self:
+        self.container.register_provider(provider)
+        return self
+
+    def inject(self, *a, **kw):
+        return self.container.inject(*a, **kw)
+
     def _create_repository(self):
-        return ChainMap(self._bindings, *(d._bindings for d in self.containers))
+        return ChainMap(*(d._bindings for d in self.containers))
 
     def _create_resolvers(self):
-       
-        get_provider: Callable[..., p.Provider] = self.repository.get
+        return ChainMap(*(d._resolvers for d in self.containers))
+        # get_provider: Callable[..., p.Provider] = self.repository.get
 
-        def fallback(key):
-            if pro := get_provider(key):
-                hand = pro.compile(key)
-                return setdefault(key, self.register_handler(key, hand))
-            elif origin := get_origin(key):
-                if pro := get_provider(origin):
-                    hand = pro.compile(key)
-                    return setdefault(key, self.register_handler(key, hand))
+        # def fallback(key):
+        #     if pro := get_provider(key):
+        #         hand = pro.compile(key)
+        #         return setdefault(key, self.register_handler(key, hand))
+        #     elif origin := get_origin(key):
+        #         if pro := get_provider(origin):
+        #             hand = pro.compile(key)
+        #             return setdefault(key, self.register_handler(key, hand))
 
-        res = fallbackdict(fallback)
-        setdefault = res.setdefault
-        return res
+        # res = fallbackdict(fallback)
+        # setdefault = res.setdefault
+        # return res
 
     def _expand_requirements(self, src: IocContainer=None, *, memo_=None):
         if memo_ is None:
            memo_ = set()
 
         if src is None:
-            src = self
+            src = self.container
+            yield self, src
 
         for d in src._requires:
             if d in memo_ or memo_.add(d):
@@ -266,15 +276,15 @@ class Injector(AbcIocContainer):
                 return None
         return this.parent.find_provider(key, stop=stop, depth=depth-1)
 
-    def register_handler(self, dep: Injectable, handler: p.Handler, deps: Sequence[Injectable]=None):
-        if deps is None:
-            deps = getattr(handler, 'deps', None) 
+    # def register_handler(self, dep: Injectable, handler: p.Handler, deps: Sequence[Injectable]=None):
+    #     if deps is None:
+    #         deps = getattr(handler, 'deps', None) 
 
-        if deps:
-            graph = self._linked_deps
-            for src in deps:
-                graph[src].add(dep)
-        return handler
+    #     if deps:
+    #         graph = self._linked_deps
+    #         for src in deps:
+    #             graph[src].add(dep)
+    #     return handler
 
     def make(self, parent: Scope=None) -> Scope:
         prt = self.parent

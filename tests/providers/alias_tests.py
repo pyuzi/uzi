@@ -17,7 +17,7 @@ parametrize = pytest.mark.parametrize
 @pytest.fixture
 def provider(injector):
     token = InjectionToken('aliased') 
-    injector.add(Value(token, f'VALUE FOR [{token=!r}]!'))
+    injector.register_provider(Value(token, f'VALUE FOR [{token=!r}]!'))
     return Alias(type, token)
 
 

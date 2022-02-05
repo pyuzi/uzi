@@ -18,24 +18,6 @@ parametrize = pytest.mark.parametrize
 class BasicScopeTests:
 
  
-    def test_basic(self):
-        con1 = IocContainer() 
-        con2 = IocContainer() 
-        con3 = IocContainer(con1, con2) 
-        con4 = IocContainer(con3)
-
-        scope1 = MainInjector(con2, con1)
-        scope2 = LocalInjector(scope1, con4)
-
-
-        print(scope2) 
-        pprint([*scope2.requires]) 
-        pprint([*scope2.repository]) 
-        pprint([*scope2.registry]) 
-
-        assert 1, '\n'
-
- 
     def test_providers(self):
         con = IocContainer() 
 
@@ -102,10 +84,10 @@ class BasicScopeTests:
 
         SharedFoo = InjectionToken('SharedFoo')
 
-        ioc.type(Foo)
-        ioc.type(SharedFoo, Foo)
-        ioc.type(Bar)
-        ioc.type(Baz)
+        ioc.type(Foo).singleton()
+        ioc.type(SharedFoo).using(Foo).singleton()
+        ioc.type(Bar).singleton()
+        ioc.type(Baz).singleton()
 
 
         @ioc.inject

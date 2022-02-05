@@ -1,5 +1,4 @@
 from abc import abstractmethod, ABCMeta
-from functools import cache, lru_cache, reduce
 from logging import getLogger
 from threading import Lock
 import sys
@@ -10,16 +9,15 @@ import typing as t
 from threading import Lock
 from collections import Counter
 
-from collections.abc import Mapping, Iterable, Hashable, Set
+from collections.abc import Mapping
 from laza.common import text
 from laza.common.collections import Arguments, frozendict
 from laza.common.imports import ImportRef
 from laza.common.proxy import unproxy
 
-from laza.common.functools import export, Missing, calling_frame
+from laza.common.functools import export, calling_frame, cache
 from laza.common.data import DataPath
 
-from laza.common.enum import IntEnum, BitSetFlag, auto
 
 
 from collections.abc import Callable
@@ -29,7 +27,7 @@ from types import FunctionType, GenericAlias, MethodType, new_class
 
 
 from .exc import InjectorKeyError
-from .typing import get_all_type_hints, get_args, get_origin, InjectableForm, get_type_parameters
+from .typing import get_all_type_hints, get_origin
 
 
 logger = getLogger(__name__)
@@ -61,19 +59,6 @@ T_Default = t.TypeVar("T_Default")
 T_Injectable = t.TypeVar('T_Injectable', bound='Injectable', covariant=True)
 
 export('T_Injected', 'T_Injectable', 'T_Default')
-
-
-@export()
-class ProviderRole(BitSetFlag):
-
-    default: 'ProviderRole'     = auto()
-    """
-    """
-    final: 'ProviderRole'       = auto()
-    override: 'ProviderRole'    = auto()
-    sealed: 'ProviderRole'      = auto()
-    alternative: 'ProviderRole' = auto()
-
 
 
 
@@ -317,196 +302,6 @@ class ResolverFunc(Callable[['Injector'], T_Injected], t.Generic[T_Injected]):
         return NotImplemented
     
     __class_getitem__ = classmethod(GenericAlias)
-
-
-
-
-
-@export()
-class KindOfProvider(IntEnum, fields='default_impl', frozen=False):
-    value: 'KindOfProvider'       = auto()
-
-    func: 'KindOfProvider'        = auto()
-    type: 'KindOfProvider'        = auto()
-    
-
-    alias: 'KindOfProvider'       = auto()
-    # variant: 'KindOfProvider'     = auto()
-    
-    meta: 'KindOfProvider'        = auto()
-    
-    factory: 'KindOfProvider'     = auto()
-    resolver: 'KindOfProvider'    = auto()
-
-    if t.TYPE_CHECKING:
-        default_impl: 'ProviderType'
-
-    def _set_default_impl(self, cls: 'ProviderType'):
-        # if self.default_impl not in {cls, None}:
-        #     raise ValueError(f'{cls}. {self}.impl already set to {self.default_impl}')
-        self.__member_data__[self.name].default_impl = cls
-        cls.kind = self
-        return cls
-
-    @classmethod
-    def _missing_(cls, val):
-        if val is None:
-            return cls.factory
-    
-
-
-
-@export()
-class ScopeVar(t.Generic[T_Injected]):
-    """Resolver t.Generic[T_InjectedObject"""
-
-    __slots__ = ()
-
-    value: T_Injected = Missing
-
-    def get(self) -> T_Injected:
-        ...
-        
-    def make(self, *a, **kw) -> T_Injected:
-        ...
-        
-    def __new__(cls, *args, **kwds):
-        if cls is ScopeVar:
-            return SimpleScopeVar(*args, **kwds)
-        else:
-            return object.__new__(cls)
-        
-
-
-
-
-@export()
-class ValueScopeVar(ScopeVar[T_Injected]):
-    """Resolver t.Generic[T_InjectedObject"""
-
-    __slots__ = 'value',
-
-    def __new__(cls, value: T_Injected):
-        self = object.__new__(cls)
-        self.value = value
-    
-        return self
-
-    def get(self) -> T_Injected:
-        return self.value
-
-    def make(self) -> T_Injected:
-        return self.value
-
-    def __repr__(self) -> str: 
-        value = self.value
-        return f'{self.__class__.__name__}({value=!r})'
-
-
-
-@export()
-class FactoryScopeVar(ScopeVar[T_Injected]):
-    """Factory InjectorVar"""
-
-    __slots__ = 'make', 'get',
-
-    def __new__(cls, make: T_Injected):
-        self = object.__new__(cls)
-        self.make = self.get = make
-        return self
-    
-    def __repr__(self) -> str: 
-        make = self.make
-        return f'{self.__class__.__name__}({make=!r})'
-
-
-
-
-@export()
-class SingletonScopeVar(ScopeVar[T_Injected]):
-    """Factory InjectorVar"""
-
-    __slots__ = 'make', 'value', 'lock',
-
-    def __new__(cls, make: T_Injected):
-        self = object.__new__(cls)
-        self.make = make
-        self.value = Missing
-        self.lock = Lock()
-        return self
-
-    def get(self) -> T_Injected:
-        if self.value is Missing:
-            with self.lock:
-                if self.value is Missing:
-                    self.value = self.make()
-        return self.value
-        
-    def __repr__(self) -> str: 
-        make, value = self.make, self.value
-        return f'{self.__class__.__name__}({value=!r}, {make=!r})'
-
-
-
-@export()
-class LruCachedScopeVar(ScopeVar[T_Injected]):
-    """Factory InjectorVar"""
-
-    __slots__ = 'make', 'get',
-
-    def __new__(cls, make: T_Injected, *, maxsize: bool=128, typed: bool=False):
-        self = object.__new__(cls)
-        self.make = self.get = lru_cache(maxsize, typed)(make)
-        return self
-    
-    def __repr__(self) -> str: 
-        make = self.make
-        return f'{self.__class__.__name__}({make=!r})'
-
-
-
-
-@export()
-class SimpleScopeVar(ScopeVar[T_Injected]):
-    """Resolver t.Generic[T_InjectedObject"""
-
-    __slots__ = 'value', 'get', 'make',
-
-    value: T_Injected
-
-    def __new__(cls, 
-                value: T_Injected = Missing, 
-                make: t.Union[Callable[..., T_Injected], None]=None, 
-                *, 
-                shared: t.Union[bool, None] = None):
-        
-        self = object.__new__(cls)
-
-        if make is not None:
-            self.make = make
-            if shared is True:
-                def get():
-                    nonlocal make, value
-                    if value is Missing:
-                        value = make()
-                    return value
-                self.get = get
-            else:
-                self.get = make
-        elif value is Missing:
-            raise TypeError(f'{cls.__name__} one of value or call must be provided.')
-        else:
-            self.make = make
-            self.get = lambda: value
-
-        self.value = value
-        return self
-
-    def __repr__(self) -> str: 
-        make, value = self.make, self.value,
-        return f'{self.__class__.__name__}({value=!r}, make={getattr(make, "__func__", make)!r})'
-
-
 
 
 

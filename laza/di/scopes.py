@@ -13,14 +13,13 @@ from laza.common.functools import Missing
 
 from .common import (
     Injectable,
-    ScopeVar,
     T_Injectable,
     T_Injected,
 )
 
 
 from .exc import InjectorKeyError
-
+from .vars import ScopeVar
 
 if t.TYPE_CHECKING:
     from .injectors import Injector
@@ -82,13 +81,6 @@ class Scope(t.Generic[T_Injectable, T_Injected]):
         self.vars = None
         self._dispatched = 0
 
-    # @property
-    # def root(self) -> "Scope":
-    #     if self.level > 0:
-    #         return self.parent.root
-    #     else:
-    #         return self
-
     @property
     def name(self) -> str:
         return self.injector.name
@@ -120,6 +112,7 @@ class Scope(t.Generic[T_Injectable, T_Injected]):
             return default
 
     def __getitem__(self, key: T_Injectable) -> T_Injected:
+        # return self.vars[key]
         res = self.vars[key]
         if res is None:
             return self[self.__missing__(key)]
@@ -217,7 +210,7 @@ class NullScope(Scope):
     def __len__(self):
         return 0
 
-    def __missing__(self, k: T_Injectable, args=None, kwds=None) -> None:
+    def __missing__(self, k: T_Injectable) -> None:
         raise InjectorKeyError(f"{k} in {self!r}")
 
     def dispatch(self, *stack: 'Scope'):

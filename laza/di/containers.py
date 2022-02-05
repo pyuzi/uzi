@@ -9,13 +9,13 @@ import typing as t
 from collections import ChainMap
 from collections.abc import Callable, Mapping, Sequence
 
-from laza.common.typing import Self
+from laza.common.typing import Self, get_origin
 from laza.common.functools import export
-from laza.common.collections import orderedset
+from laza.common.collections import orderedset, fallbackdict, fallback_default_dict, frozenorderedset
+from laza.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
 
 from laza.common.functools import cached_property, calling_frame
 
-from libs.common.laza.common.collections import frozenorderedset
 
 
 
@@ -112,6 +112,17 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
     def has_setup(self) -> bool:
         return self._context is not None
 
+    @cached_property
+    def _resolvers(self):
+        return self._create_resolvers()
+
+    @cached_property
+    def _linked_deps(self) -> dict[SafeReferenceType[T_Injectable], SafeRefSet[T_Injectable]]:
+        return SafeKeyRefDict.using(lambda: fallback_default_dict(SafeRefSet))()
+
+    def require(self, *containers: 'IocContainer') -> Self:
+        self._requires |= containers
+        return self
 
     def register_provider(self, provider: Provider) -> Self:
         return self.add(provider)
@@ -154,14 +165,37 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
      
     def _empty_bind_stack(self):
         stack = self._pending
-        for it in self._pending:
-            r  = it.bind(self)
+        while stack:
+            r = stack.pop().bind(self)
             print(f'  -{self}->{r._uses}, {r._provides}')
 
-        # while stack:
-        #     r = stack.pop().bind(self)
-        #     print(f'  -{self}->{r._uses}, {r._provides}')
+    def _create_resolvers(self):
+       
+        get_provider = self._bindings.get
 
+        def fallback(key):
+            if pro := get_provider(key):
+                hand = pro.compile(key)
+                return setdefault(key, self._register_handler(key, hand))
+            elif origin := get_origin(key):
+                if pro := get_provider(origin):
+                    hand = pro.compile(key)
+                    return setdefault(key, self._register_handler(key, hand))
+            raise KeyError(key)
+
+        res = fallbackdict(fallback)
+        setdefault = res.setdefault
+        return res
+
+    def _register_handler(self, dep: Injectable, handler, deps: Sequence[Injectable]=None):
+        if deps is None:
+            deps = getattr(handler, 'deps', None) 
+
+        if deps:
+            graph = self._linked_deps
+            for src in deps:
+                graph[src].add(dep)
+        return handler
 
     def add_dependant(self, scope: 'Injector'):
         self.dependants.add(scope)
@@ -180,24 +214,7 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
             for d in self.dependants:
                 d.flush(tag, self)
    
-    def inject(self, func: Callable[..., _T]=None, **opts):
-        def decorator(fn: Callable[..., _T]):
-            token = InjectionToken(f'{fn.__module__}.{fn.__qualname__}')
-            self.function(token).using(fn)
-
-            def wrapper(*a, **kw):
-                nonlocal self, token
-                return self._context.get().make(token, *a, **kw)
-
-            wrapper = update_wrapper(wrapper, fn)
-            wrapper.__injection_token__ = token
-
-            return wrapper
-
-        if func is None:
-            return decorator
-        else:
-            return decorator(func)    
+  
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}({self.name!r})'

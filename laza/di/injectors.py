@@ -12,7 +12,7 @@ from build import Mapping
 from laza.common.collections import fallback_default_dict, nonedict, orderedset, fallbackdict
 from laza.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
 from laza.common.typing import get_origin, Self
-
+from laza.common.proxy import proxy
 
 from laza.common.functools import ( 
     export, cached_property
@@ -73,6 +73,8 @@ class Injector(p.RegistrarMixin):
     _checkouts: t.Final[int] 
 
     container: IocContainer
+    __truectx: InjectorContext
+    _context: Scope
 
     def __init__(self, 
                 name: str,
@@ -149,7 +151,8 @@ class Injector(p.RegistrarMixin):
             elif self.parent:
                 return self.parent.setup()
             else:
-                ctx = self.scope_context_class(self.name, default=NullScope())
+                self.__truectx = self.scope_context_class(self.name, default=NullScope())
+                ctx = self.__truectx.get
             
             self._context = ctx
             for ls in (self.containers, self.children):
@@ -300,17 +303,28 @@ class Injector(p.RegistrarMixin):
         return rv
 
     def dispatch_scope(self, scope: Scope, *stack: Scope):
+        
         if scope in self.scopes:
             raise RuntimeError(f'Scope {scope} already dispated')
 
-        self.scopes[scope] = None if stack else self._context.set(scope)
+        self.scopes[scope] = None if stack else self._push_scope(scope)
         self.setup_scope(scope)
+
+    def _push_scope(self, scope: Scope):
+        while self.parent:
+            self = self.parent
+        return self.__truectx.set(scope)
+
+    def _pop_scope(self, token: Token):
+        while self.parent:
+            self = self.parent
+        return self.__truectx.reset(token)
 
     def dispose_scope(self, scope: Scope, child: Scope=None):
         self.teardown_scope(scope)
         token = self.scopes.pop(scope)
         if token is not None:
-            self._context.reset(token)
+            self._pop_scope(token)
 
     def setup_scope(self, scope: Scope):
         scope.vars = self.scopevar_dict_class(scope)

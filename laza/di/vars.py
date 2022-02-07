@@ -1,8 +1,8 @@
 from functools import lru_cache
 from logging import getLogger
+from re import S
 from threading import Lock
 import typing as t
-
 
 
 from threading import Lock
@@ -11,23 +11,167 @@ from collections.abc import Mapping
 from laza.common.collections import Arguments, frozendict
 
 from laza.common.functools import export, Missing
+from laza.common.typing import Self
 
 
 
 from collections.abc import Callable
 
-from types import GenericAlias
+from types import FunctionType, GenericAlias
 
 
 
-from .typing import get_origin
+from .exc import InjectorKeyError
 
-from .common import Injectable, T_Injected
+from .common import Injectable, T_Injected, T_Injectable
 
 logger = getLogger(__name__)
 
 
 
+_T = t.TypeVar("_T")
+
+if t.TYPE_CHECKING:
+    from .injectors import Injector
+
+
+
+
+
+
+
+
+@export()
+class ScopeVarDict(dict[T_Injectable, 'ScopeVar']):
+
+    __slots__ = "scope",
+
+    scope: "Scope"
+
+    def __init__(self, scope: "Scope"):
+        self.scope = scope
+
+    def __missing__(self, key):
+        scope = self.scope
+        res = scope.injector.resolvers[key]
+        if res is None:
+            return self.setdefault(key, scope.parent.vars[key])
+        return self.setdefault(key, res(scope))
+
+
+
+
+@export()
+class Scope(dict[T_Injectable, 'ScopeVar']):
+
+    __slots__ = (
+        "injector",
+        "parent",
+        "resolvers",
+        # "level",
+        "_dispatched",
+        "__weakref__",
+    )
+
+    injector: "Injector"
+    parent: "Scope"
+    resolvers: dict[T_Injectable, Callable[['Scope'], 'ScopeVar']]
+
+    # level: int
+
+    def __init__(self, injector: "Injector", parent: "Scope" = None) -> None:
+        self.injector = injector
+        self.parent = NullScope() if parent is None else parent
+        # self.level = 0 if parent is None else parent.level + 1
+        self.resolvers = None
+        self._dispatched = 0
+        self[injector] = self
+
+    @property
+    def name(self) -> str:
+        return self.injector.name
+
+    def dispatch(self, *stack: 'Scope'):
+        self._dispatched += 1
+        if self._dispatched == 1:
+            self.parent.dispatch(self, *stack)
+            self.injector.dispatch_scope(self, *stack)
+            return True 
+        return False
+
+    def dispose(self, *stack: 'Scope'):
+        self._dispatched -= 1
+        if self._dispatched == 0:
+            self.injector.dispose_scope(self, *stack)
+            self.parent.dispose(self, *stack)
+            return True
+        elif self._dispatched < 0:
+            raise RuntimeError(f"injector {self} already disposed.")
+        return False
+
+    def get(key, default=None):
+        try:
+            return self[key]
+        except InjectorKeyError:
+            return default
+
+    def __missing__(self, key):
+        res = self.resolvers[key]
+        if res is None:
+            return self.setdefault(key, self.parent[key])
+        return self.setdefault(key, res(self))
+
+    def __contains__(self, x) -> bool:
+        return super().__contains__(x) \
+            or (self.parent is not None and x in self.parent)
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}[{self.level}]({self.name!r})"
+
+    def __repr__(self) -> str:
+        return f"<{self!s}, {self.parent!r}>"
+
+    def __enter__(self: "Scope") -> "Scope":
+        self.dispatch()
+        return self
+
+    def __exit__(self, *exc):
+        self.dispose()
+
+    def __eq__(self, x):
+        return x is self
+    
+    def __hash__(self):
+        return id(self)
+    
+
+
+
+@export()
+class NullScope(Scope):
+    """NullInjector Object"""
+
+    __slots__ = ("name",)
+
+    injector = None
+    parent = None
+
+    def __init__(self, name=None):
+        self.resolvers = None
+        self.name = name or "null"
+
+    def __getitem__(self, k: T_Injectable) -> None:
+        raise InjectorKeyError(f"{k}")
+    __missing__ = __getitem__
+
+    def get(key, default=None):
+        return default
+
+    def dispatch(self, *stack: 'Scope'):
+        return False
+
+    def dispose(self, *stack: 'Scope'):
+        return False
 
 
 
@@ -91,7 +235,7 @@ class FactoryScopeVar(ScopeVar[T_Injected]):
 
     def __new__(cls, make: T_Injected):
         self = object.__new__(cls)
-        self.make = self.get = make
+        self.get = self.make = make
         return self
     
     def __repr__(self) -> str: 
@@ -111,7 +255,7 @@ class SingletonScopeVar(ScopeVar[T_Injected]):
         self = object.__new__(cls)
         self.make = make
         self.value = Missing
-        self.lock = Lock()
+        self.lock  = Lock()
         return self
 
     def get(self) -> T_Injected:
@@ -184,107 +328,5 @@ class _LegacyScopeVar(ScopeVar[T_Injected]):
         make, value = self.make, self.value,
         return f'{self.__class__.__name__}({value=!r}, make={getattr(make, "__func__", make)!r})'
 
-
-
-
-
-
-
-T_Depends = t.TypeVar('T_Depends', covariant=True)
-
-
-
-
-@export()
-@Injectable.register
-class Depends:
-
-    """Annotates type as a `Dependency` that can be resolved by the di.
-    
-    Example: 
-        Depends(typ, on=Injectable, at='scope_name') # type(injector[Injectable]) = typ
-
-    """
-    __slots__ = 'on', 'at', 'arguments', '_hash', '__weakref__',
-
-    on: Injectable
-    at: str
-    arguments: Arguments
-
-    def __new__(cls, 
-                tp: T_Depends=..., 
-                on: Injectable = ..., 
-                /, 
-                *args, 
-                **kwargs):
-
-        if on is ...:
-            on = tp
-            if not isinstance(tp, (type, GenericAlias, t.TypeVar)):
-                tp = ...
-                
-        arguments = Arguments(args, kwargs)
-
-        if isinstance(on, cls):
-            ann = on.replace(arguments=on.arguments.extend(arguments))
-        else:
-            ann = object.__new__(cls)
-            ann.on = on
-            ann.arguments = arguments
-        
-        if tp is ...:
-            return ann
-        elif get_origin(tp) is t.Annotated:
-            if ann == next((a for a in reversed(tp.__metadata__) if isinstance(a, cls)), None):
-                return tp
-
-        try:
-            ret = t.Annotated[tp, ann]
-        except TypeError as e:
-            raise TypeError(
-                f'{cls.__name__}(type, /, *, on: Injectable = ..., at: str =...) '
-                f'should be used with at least one type argument.'
-            ) from e
-        else:
-            return ret
-
-    @property
-    def __origin__(self):
-        return self.__class__
-
-    def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass {cls.__module__}.Depends")
-
-    def __eq__(self, x) -> bool:
-        if isinstance(x, Depends):
-            return self.on == x.on and self.at == x.at \
-                and self.arguments == x.arguments
-        return NotImplemented
-
-    def __hash__(self) -> bool:
-        try:
-            return self._hash
-        except AttributeError:
-            self._hash = hash((self.on, self.at, self.arguments))
-            return self._hash
-
-    def __repr__(self) -> bool:
-        return f'{self.__class__.__name__}(on={self.on}, at={self.at}, arguments={self.arguments!r})'
-    
-    def replace(self,
-                *, 
-                on: Injectable = ..., 
-                args: tuple=(), 
-                kwargs: Mapping[str, t.Any]=frozendict(),
-                arguments: Arguments=...) -> 'Depends':
-        
-        if arguments is ...:
-            arguments = self.arguments.replace(args, kwargs)
-
-        return self.__class__(
-            on=self.on if on is ... else on,
-            arguments=arguments
-        )
-    
 
 

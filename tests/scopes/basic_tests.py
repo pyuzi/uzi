@@ -35,10 +35,10 @@ class BasicScopeTests:
         scope = MainInjector(con)
 
         with scope.make() as inj:
-            assert isinstance(inj[Foo], Foo)
-            assert isinstance(inj.vars[Bar].get(), Bar)
-            assert isinstance(inj[Baz], Baz)
-            assert inj[Foo] is not inj[Foo]
+            assert isinstance(inj[Foo].get(), Foo)
+            assert isinstance(inj[Bar].get(), Bar)
+            assert isinstance(inj[Baz].get(), Baz)
+            assert inj[Foo].get() is not inj[Foo].get()
 
         assert 1, '\n'
  
@@ -84,10 +84,10 @@ class BasicScopeTests:
 
         SharedFoo = InjectionToken('SharedFoo')
 
-        ioc.type(Foo).singleton()
-        ioc.type(SharedFoo).using(Foo).singleton()
-        ioc.type(Bar).singleton()
-        ioc.type(Baz).singleton()
+        ioc.type(Foo)
+        ioc.type(SharedFoo).using(Foo).singleton(False)
+        ioc.type(Bar).singleton(False)
+        ioc.type(Baz).singleton(False)
 
 
         @ioc.inject
@@ -109,7 +109,7 @@ class BasicScopeTests:
         mkinject_1 = lambda: inject_1.__wrapped__(mkbaz())
         mkinject_2 = lambda: inject_2.__wrapped__(mkfoo(), mkbar(), mkbaz())
 
-        _n = int(1e5)
+        _n = int(2e5)
         _r = 3
         profile = speed_profiler(_n, labels=('PY', 'DI'), repeat=_r)
         xprofile = speed_profiler(_n, labels=('DI', 'PY'), repeat=_r)
@@ -117,11 +117,15 @@ class BasicScopeTests:
 
         with ioc.make() as inj:
 
-            infoo = lambda: inj.vars[Foo].get()
-            insharedfoo = lambda: inj[SharedFoo]
-            insharedfoo_get = lambda: inj.vars[SharedFoo].get()
-            inbar = lambda: inj.vars[Bar].get()
-            inbaz = lambda: inj.vars[Baz].get()
+            infoo = lambda: inj[Foo].get()
+            insharedfoo = lambda: inj[SharedFoo].get()
+            insharedfoo_get = lambda: inj[SharedFoo].get()
+            inbar = lambda: inj[Bar].get()
+            inbaz = lambda: inj[Baz].get()
+
+            print('')
+
+            infoo()
 
             profile(mkfoo, infoo, 'Foo')
             profile(mkbar, inbar, 'Bar')
@@ -137,12 +141,8 @@ class BasicScopeTests:
             # xprofile(inject_1, mkinject_1, inject_1.__name__)
             # xprofile(inject_2, mkinject_2, inject_2.__name__)
 
-            # print('')
+            print(*inject_2())
 
-            inj[SharedFoo]
-
-            profile = speed_profiler(_n, labels=('SHARED', 'UNIQUE'), repeat=_r)
-            profile(insharedfoo, insharedfoo_get, '')
 
             print('')
 

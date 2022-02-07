@@ -13,14 +13,15 @@ from collections.abc import  Callable, Set, Mapping
 from laza.common.typing import get_args, typed_signature, Self, get_origin
 
 
-from laza.common.functools import Missing, export, cached_property, cache
+from laza.common.functools import Missing, export, cache, cached_slot
 
 
 from laza.common.enum import BitSetFlag, auto
+from laza.common.collections import fallbackdict
 
 
 
-from .vars import ScopeVar, FactoryScopeVar, SingletonScopeVar
+from .vars import ScopeVar, FactoryScopeVar, SingletonScopeVar, ValueScopeVar, Scope
 from .common import (
     InjectedLookup,
     Injectable, Depends,
@@ -32,7 +33,6 @@ from .common import (
 if t.TYPE_CHECKING:
     from .containers import IocContainer
     from .injectors import Injector
-    from .scopes import Scope
 
 
 
@@ -127,8 +127,9 @@ class Handler(t.Protocol[T_Injected]):
 
     deps: t.Optional[Set[T_Injectable]]
 
-    def __call__(self, provider: 'Provider', scope: 'Injector', token: T_Injectable) -> ScopeVar:
+    def __call__(self, scope: 'Scope', token: T_Injectable=None) -> ScopeVar:
         ...
+
 
 
 def _is_attr(anno, val:bool=False):
@@ -166,15 +167,6 @@ class ProviderType(ABCMeta):
 
     _tp__uses: t.Final[type[_T_Using]] = None
     _tp__provides: t.Final[type[T_Injected]] = None
-
-    @classmethod
-    def __prepare__(mcls, name, bases, **kwds):
-        ns = super().__prepare__(name, bases)
-        print(f'{name=}, {ns=}, {kwds=}')
-        
-        if any(isinstance(b, ProviderType) for b in bases):
-            return ns
-        return ns
 
     def __new__(mcls, name: str, bases: tuple[type], ns: dict, **kwds):
         ann = ns.setdefault('__annotations__', {})
@@ -376,6 +368,11 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         for k, attr in self.__attr_defaults__.items():
             self.__set_attr(k, attr())
 
+    def __repr__(self):
+        using =self._uses_fallback() if self._uses is Missing else self._uses 
+        provides =self._provides_fallback() if self._provides is Missing else self._provides 
+        return f'{self.__class__.__name__}({provides=!r}, {using=!r})'
+
     t.Final
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
@@ -451,10 +448,10 @@ class ArgumentView:
         self._kwds = tuple(kwds)
         self._var_arg = var_arg
         self._var_kwd = var_kwd
-        if var_kwd:
-            self._non_kwds = frozenset(a for a, *_ in kwargs),
-        else:
-            self._non_kwds = frozenset()
+        # if var_kwd:
+        #     self._non_kwds = frozenset(a for a, *_ in kwargs),
+        # else:
+        #     self._non_kwds = frozenset()
 
         return self
 
@@ -465,21 +462,25 @@ class ArgumentView:
                 continue
             elif i is not _EMPTY:
                 if d is _EMPTY:
-                    yield scp[i]
+                    yield scp[i].get()
                 else:
-                    yield scp.get(i, d)
+                    v = scp.get(i)
+                    yield d if v is None else v.get()
                 continue
             elif d is not _EMPTY:
                 yield d
                 continue
-            return
+            else:
+                return
         
         if _var := self._var_arg:
             n, v, i = _var
             if v is not _EMPTY:
                 yield from v
             elif i is not _EMPTY:
-                yield from scp.get(i, ())
+                v = scp.get(i)
+                if v is not None:
+                    yield from v.get()
         else:
         # elif  self._kwargs:
             # yield from self.kwargs(inj, vals)
@@ -608,7 +609,11 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
 
     arguments: Arguments = _Attr(default_factory=Arguments)
     is_singleton: bool = False
+    is_partial: bool = False
+    
+    
     deps: dict[str, Injectable] = _Attr(default_factory=frozendict)
+
 
     def __init__(self, provide: Injectable=..., using: Callable[..., T_Injectable]=..., /, *args, **kwargs) -> None:
         super().__init__(
@@ -618,6 +623,11 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
             
         args and self.args(*args)
         kwargs and self.kwargs(**kwargs)
+
+    @property
+    @cache
+    def signature(self) -> Signature:
+        return self._eval_signature()
 
     def _uses_fallback(self):
         if callable(self._provides):
@@ -630,23 +640,38 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
             return self._uses
         return super()._provides_fallback()
 
+    def depends(self, **deps) -> Self:
+        self.__set_attr('deps', frozendict(deps))
+        return self
+
     def args(self, *args) -> Self:
-        return self.__set_attr('arguments', self.arguments.extend(args))
+        self.__set_attr('arguments', self.arguments.replace(args))
+        return self
 
     def kwargs(self, **kwargs) -> Self:
-        return self.__set_attr('arguments', self.arguments.extend(kwargs))
+        self.__set_attr('arguments', self.arguments.replace(kwargs=kwargs))
+        return self
+
+    def partial(self, is_partial: bool = True) -> Self:
+        self.__set_attr('is_partial', is_partial)
+        return self
 
     def singleton(self, is_singleton: bool = True) -> Self:
-        return self.__set_attr('is_singleton', is_singleton)
+        self.__set_attr('is_singleton', is_singleton)
+        return self
 
-    def get_signature(self) -> t.Union[Signature, None]:
+    def _eval_signature(self) -> Signature:
         return typed_signature(self.uses)
 
     def get_available_deps(self, sig: Signature, deps: Mapping):
         return { n: d for n, d in deps.items() if self.container.is_provided(d) }
 
     def get_explicit_deps(self, sig: Signature):
-        return  { n: d for n, d in self.deps.items() if isinstance(d, Injectable) }
+        return  { 
+            n: p.default
+            for n, p in sig.parameters.items() 
+                if isinstance(p.default, Depends)
+        } | self.deps
 
     def get_implicit_deps(self, sig: Signature):
         return  { n: p.annotation
@@ -719,12 +744,15 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
             self.eval_var_kwd_param(sig, defaults, deps)
         )
 
-    def _compile(self, ____token: T_Injectable) -> Handler:
+
+
+
+    def _old_compile(self, ____token: T_Injectable) -> Handler:
 
         func = self.uses
         shared = self.is_singleton
 
-        sig = self.get_signature()
+        sig = self._eval_signature()
 
         arguments = self.arguments
 
@@ -747,10 +775,8 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
         deps = all_deps # self.get_available_deps(sig, all_deps)
         argv = self.create_arguments_view(sig, defaults, deps)
 
-
         def handler(scp: 'Scope'):
             nonlocal var_cls
-            
             def make(*a, **kw):
                 nonlocal func, argv, scp
                 return func(*argv.args(scp, kw), *a, **argv.kwds(scp, kw))
@@ -759,6 +785,177 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
 
         handler.deps = set(all_deps.values())
         return handler
+
+    
+    def _compile(self, ____token: T_Injectable) -> Handler:
+
+        func = self.uses
+        is_singleton = self.is_singleton
+        is_partial = self.is_partial
+
+        sig = self.signature
+        injector = self.container if self.bound else {}
+ 
+        if is_singleton and is_partial:
+            raise ValueError(
+                f'`is_singleton` and `is_partial` are mutually exclusive. '
+                f'`is_singleton` == True == `is_partial` in {self}'
+            )
+
+        varcls = SingletonScopeVar if is_singleton else FactoryScopeVar
+        
+        if not (self.arguments or self.deps or sig.parameters):
+            def handler(scp):
+                nonlocal func, varcls
+                return varcls(func)
+
+            return handler
+
+        
+        pos_only_params = _pos_only_params(sig)
+        v_args_param = _var_pos_param(sig)
+        kwd_params = _kwd_params(sig)
+        v_kwd_param = _var_kwd_param(sig)
+
+
+        bound = sig.bind_partial(*self.arguments.args, **self.arguments.kwargs)
+
+        _get_empty = lambda k: _EMPTY
+
+        skip_params = {v_args_param, v_kwd_param}
+
+        values = fallbackdict(_get_empty, ( 
+            (n, v) for n, v in bound.arguments.items() 
+                if not isinstance(v, Depends) 
+                    and n not in skip_params
+        ))
+
+        bound.apply_defaults()
+        arguments = bound.arguments
+
+        arg_deps = { 
+            n: v for n, v in arguments.items() if isinstance(v, Depends)
+        }
+
+        skip_params.update(values, arg_deps)
+
+        anno_deps = { n: p.annotation
+            for n, p in sig.parameters.items() 
+                if n not in skip_params 
+                    and p.annotation is not _EMPTY 
+                        and isinstance(p.annotation, Injectable)
+        }   
+
+        deps = fallbackdict(_get_empty, anno_deps | arg_deps)
+
+        defaults = fallbackdict(_get_empty, ( 
+            (n, v) for n, v in arguments.items() if n not in skip_params
+        ))
+        
+        _vals = { n: values[n] for n in kwd_params if n in values }
+        
+        _args = []
+        for v in pos_only_params:
+            _args.append((values[v], deps[v], defaults[v]))
+
+        if v_args_param:
+            for v in arguments[v_args_param]:
+                if isinstance(v, Depends):
+                    _args.append((_EMPTY, v, _EMPTY))
+                else:
+                    _args.append((v, _EMPTY, _EMPTY))
+
+
+        _kwds = [ (n, deps[n], defaults[n]) for n in kwd_params if n in deps ]
+
+        if v_kwd_param:
+            for n, v in arguments[v_kwd_param].items():
+                if isinstance(v, Depends):
+                    _kwds.append((v, _EMPTY))
+                else: 
+                    _vals[n] = v
+
+        if _args and _kwds:
+            def handler(scp: 'Scope'):
+                nonlocal varcls, _args, _vals, _kwds
+
+                args = [ (v, scp[i], d) for v, i, d in _args ]
+                kwds = [ (n, scp[i], d) for n, i, d in _kwds ]
+
+                def make():
+                    nonlocal func, args, kwds, _vals
+                    return func(*_iargs(args), **_vals, **_ikwds(kwds))
+                return varcls(make)
+        elif _args:
+             def handler(scp: 'Scope'):
+                nonlocal varcls, _args, _vals
+                args = [ (v, scp[i], d) for v, i, d in _args ]
+
+                def make():
+                    nonlocal func, args, _vals
+                    return func(*_iargs(args), **_vals)
+                return varcls(make)
+        else:
+             def handler(scp: 'Scope'):
+                nonlocal varcls, _vals, _kwds
+
+                kwds = [ (n, scp[i], d) for n, i, d in _kwds ]
+
+                def make():
+                    nonlocal func, kwds, _vals
+                    return func(**_vals, **_ikwds(kwds))
+                return varcls(make)
+        
+
+        handler.deps = set(deps.values())
+        return handler
+
+
+
+
+def _pos_only_params(sig: Signature):
+    return [
+        n for n, p in sig.parameters.items() if p.kind is p.POSITIONAL_ONLY
+    ]
+
+def _var_pos_param(sig: Signature):
+    for n, p in sig.parameters.items():
+        if p.kind is p.VAR_POSITIONAL:
+            return n
+
+def _kwd_params(sig: Signature):
+    return [
+        n for n, p in sig.parameters.items() if p.kind in (p.KEYWORD_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
+
+
+def _var_kwd_param(sig: Signature):
+    for n, p in sig.parameters.items():
+        if p.kind is p.VAR_KEYWORD:
+            return n
+
+
+def _iargs(args: list[tuple[t.Any, ScopeVar, t.Any]]):
+    for v, i, d in args:
+        if v is _EMPTY:
+            if i is _EMPTY:
+                if d is _EMPTY:
+                    break
+                yield d
+            yield i.get()
+        yield v
+
+
+def _ikwds(kwds: list[tuple[str, ScopeVar, t.Any]]):
+    vals = {}
+    for n, i, d in kwds:
+        if i is _EMPTY:
+            if d is _EMPTY:
+                continue
+            vals[n] = d
+        vals[n] = i.get()
+    return vals
+
 
 
 
@@ -780,30 +977,25 @@ class Type(Factory[T_Injected]):
 @export()
 class InjectionProvider(Factory[T_Injected]):
 
+
     @property
     def wrapped(self):
-        return self.provides
+        return self.uses
 
-    @wraps(Factory.provide)
-    def wrap(self, wrapped: Callable[..., T_Injected] = Missing):
-        res = super().provide(wrapped)
-    
-    wrap = Factory.provide
+    @property
+    @cache
+    def wrapper(self):
+        return self._make_wrapper()
 
-    def _bind(self):
-        return super()._bind()
+    def _make_wrapper(self):
+        wrapped = self.wrapped
+        @wraps(wrapped)
+        def wrapper(*a, **kw):
+            nonlocal self, wrapped
+            return self.container._context()[wrapped].get()
 
-    def _uses_fallback(self):
-        if callable(self._provides):
-            return self._provides
-        
-        return super()._uses_fallback()
-        
-
-    def _provides_fallback(self):
-        if isinstance(self._uses, Injectable):
-            return self._uses
-        return super()._provides_fallback()
+        wrapper.__injects__ = wrapped
+        return wrapper
 
 
 
@@ -815,7 +1007,7 @@ class Alias(Provider[T_UsingAlias, T_Injected]):
 
         def handler(scope: 'Scope'):
             nonlocal real
-            return scope.vars[real]
+            return scope[real]
 
         handler.deps = {real}
         return handler
@@ -873,13 +1065,6 @@ class AnnotationProvider(UnionProvider):
 @export()
 class DependencyProvider(Alias):
 
-    # use: InitVar[_T_Using] = Depends
-
-    # def can_provide(self, scope: 'Injector', token: 'Depends') -> bool:
-    #     if token.on is ...:
-    #         return False
-    #     return scope.is_provided(token.on, start=token.at)
-
     def _compile(self, token: 'Depends') -> Handler:
 
         dep = token.on
@@ -898,52 +1083,12 @@ class DependencyProvider(Alias):
         else:
             def resolve(scp: 'Scope'):
                 nonlocal dep
-                if inner := scp.vars[dep]:
-                    return FactoryScopeVar(make=inner.make)
-
+                return scp.vars[dep]
+              
 
         resolve.deps = {dep}
         return resolve
 
-        # if at in scope.aliases:
-        #     at = None
-
-        # # if at and arguments:
-        
-        # if arguments:
-        #     def resolve(inj: 'Injector'):
-        #         nonlocal dep
-        #         return InjectorVar(make=inj.vars[dep].make(), )
-        # elif arguments is None:
-        #     def resolve(inj: 'Injector'):
-        #         nonlocal dep
-        #         return inj.vars[dep]
-        # elif at is None:
-        #     args, kwargs = arguments.args, arguments.kwargs
-        #     def resolve(inj: 'Injector'):
-        #         nonlocal dep
-        #         if inner := inj.vars[dep]:
-        #             def make(*a, **kw):
-        #                 nonlocal inner, args, kwargs
-        #                 return inner.make(*args, *a, **dict(kwargs, **kw))
-
-        #             return InjectorVar(make=make)
-        # else:
-        #     at = scope.ioc.scopekey(at)
-        #     args, kwargs = arguments.args, arguments.kwargs
-        #     def resolve(inj: 'Injector'):
-        #         nonlocal at, dep
-        #         inj = inj[at]
-        #         if inner := inj.vars[dep]:
-        #             def make(*a, **kw):
-        #                 nonlocal inner, args, kwargs
-        #                 return inner.make(*args, *a, **dict(kwargs, **kw))
-
-        #             return InjectorVar(make=make)
-
-        # # return Handler(resolve, {dep})
-        # resolve.deps = {dep}
-        # return resolve
 
 
 
@@ -951,9 +1096,6 @@ class DependencyProvider(Alias):
 
 @export()
 class LookupProvider(Alias):
-
-    # def can_provide(self, scope: 'Injector', token: 'InjectedLookup') -> bool:
-    #     return scope.is_provided(token.depends)
 
     def _compile(self, token: 'InjectedLookup') -> Handler:
 
@@ -1021,16 +1163,9 @@ class RegistrarMixin(ABC, t.Generic[T_Injected]):
     
     def inject(self, func: Callable[..., _T]=None, **opts):
         def decorator(fn: Callable[..., _T]):
-            self.factory(fn)
-
-            @wraps(fn)
-            def wrapper(*a, **kw):
-                nonlocal self, fn
-                return self._context.get().make(fn, *a, **kw)
-
-            wrapper.__injection_token__ = fn
-
-            return wrapper
+            pro = InjectionProvider(fn)
+            self.register_provider(pro)
+            return pro.wrapper
 
         if func is None:
             return decorator

@@ -147,7 +147,7 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
         print(f'{self}.bootstrap()')
 
         self._bootstrapped = True
-        self._empty_bind_stack()
+        self._pop_pending()
         return self
 
     def _init_bindings(self):
@@ -163,11 +163,11 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
     def _init_dependants(self):
         self.dependants = orderedset()
      
-    def _empty_bind_stack(self):
+    def _pop_pending(self):
         stack = self._pending
         while stack:
             r = stack.pop().bind(self)
-            print(f'  -{self}->{r._uses}, {r._provides}')
+            print(f'  - {self}.bind() -> {r}')
 
     def _create_resolvers(self):
        

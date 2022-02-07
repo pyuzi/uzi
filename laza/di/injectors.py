@@ -20,7 +20,7 @@ from laza.common.functools import (
 
 
 
-from .scopes import NullScope, Scope, ScopeVarDict
+from .vars import NullScope, Scope, ScopeVarDict
 from .common import (
     Injectable, 
     T_Injectable,
@@ -198,21 +198,7 @@ class Injector(p.RegistrarMixin):
         return ChainMap(*(d._bindings for d in self.containers))
 
     def _create_resolvers(self):
-        return ChainMap(*(d._resolvers for d in self.containers))
-        # get_provider: Callable[..., p.Provider] = self.repository.get
-
-        # def fallback(key):
-        #     if pro := get_provider(key):
-        #         hand = pro.compile(key)
-        #         return setdefault(key, self.register_handler(key, hand))
-        #     elif origin := get_origin(key):
-        #         if pro := get_provider(origin):
-        #             hand = pro.compile(key)
-        #             return setdefault(key, self.register_handler(key, hand))
-
-        # res = fallbackdict(fallback)
-        # setdefault = res.setdefault
-        # return res
+        return ChainMap(*(d._resolvers for d in self.containers), fallbackdict(None))
 
     def _expand_requirements(self, src: IocContainer=None, *, memo_=None):
         if memo_ is None:
@@ -237,9 +223,6 @@ class Injector(p.RegistrarMixin):
             if not(d.shared and d in parent) and (yv := d.add_dependant(self))
         )
     
-    def _init_dependants(self):
-        pass
-
     def is_provided(self, 
                     obj: Injectable,
                     *, 
@@ -327,10 +310,10 @@ class Injector(p.RegistrarMixin):
             self._pop_scope(token)
 
     def setup_scope(self, scope: Scope):
-        scope.vars = self.scopevar_dict_class(scope)
+        scope.resolvers = self.resolvers
 
     def teardown_scope(self, scope: Scope):
-        scope.vars = None
+        scope.resolvers = None
 
     def add_dependant(self, scope: 'Injector'):
         if not isinstance(scope, Injector):

@@ -408,7 +408,6 @@ class Depends:
 
 
 
-
 @export()
 class InjectedProperty(t.Generic[T_Injected]):
     

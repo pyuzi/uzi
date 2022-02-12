@@ -20,7 +20,7 @@ from laza.common.functools import (
 
 
 
-from .vars import NullScope, Scope, ScopeVarDict
+from .vars import NullScope, Scope
 from .common import (
     Injectable, 
     T_Injectable,
@@ -69,7 +69,6 @@ class Injector(p.RegistrarMixin):
 
     scope_class: type[Scope] = Scope
     scope_context_class: type[InjectorContext] = ContextVar
-    scopevar_dict_class: type[ScopeVarDict] = ScopeVarDict
     _checkouts: t.Final[int] 
 
     container: IocContainer
@@ -116,12 +115,12 @@ class Injector(p.RegistrarMixin):
         return orderedset(self._create_containers())
     
     @cached_property
-    def repository(self) -> Mapping[T_Injectable, p.Provider]:
-        return self._create_repository()
+    def _registry(self) -> Mapping[T_Injectable, p.Provider]:
+        return self._create_registry()
     
     @cached_property
-    def resolvers(self):
-        return self._create_resolvers()
+    def _bindings(self):
+        return self._create_bindings()
 
     @cached_property
     def _linked_deps(self) -> dict[SafeReferenceType[T_Injectable], SafeRefSet[T_Injectable]]:
@@ -191,14 +190,8 @@ class Injector(p.RegistrarMixin):
         self.container.register_provider(provider)
         return self
 
-    def inject(self, *a, **kw):
-        return self.container.inject(*a, **kw)
-
-    def _create_repository(self):
-        return ChainMap(*(d._bindings for d in self.containers))
-
-    def _create_resolvers(self):
-        return ChainMap(*(d._resolvers for d in self.containers), fallbackdict(None))
+    def _create_registry(self):
+        return ChainMap(*(d._registry for d in self.containers))
 
     def _expand_requirements(self, src: IocContainer=None, *, memo_=None):
         if memo_ is None:
@@ -217,7 +210,6 @@ class Injector(p.RegistrarMixin):
 
     def _create_containers(self):
         parent = self.parent or ()
-
         return orderedset(
             yv for s, d in self._expand_requirements()
             if not(d.shared and d in parent) and (yv := d.add_dependant(self))
@@ -310,10 +302,10 @@ class Injector(p.RegistrarMixin):
             self._pop_scope(token)
 
     def setup_scope(self, scope: Scope):
-        scope.resolvers = self.resolvers
+        scope.bindings = self._bindings
 
     def teardown_scope(self, scope: Scope):
-        scope.resolvers = None
+        scope.bindings = None
 
     def add_dependant(self, scope: 'Injector'):
         if not isinstance(scope, Injector):
@@ -347,7 +339,7 @@ class Injector(p.RegistrarMixin):
             for dep in linked:
                 self.flush(dep, skip_=skip_)
 
-        self.resolvers.pop(key, None)
+        self._bindings.pop(key, None)
                     
         for d in self.children: 
             d.flush(key, source or self, _skip=skip_)
@@ -361,7 +353,8 @@ class Injector(p.RegistrarMixin):
             return x is self \
                 or x in (self.parent or ())
         else:
-            return super().__contains__(x)
+            return x in self._registry\
+                or x in (self.parent or ())
     
     def __del__(self):
         self.teardown()
@@ -375,6 +368,30 @@ class Injector(p.RegistrarMixin):
         containers = [*self.containers]
         return f'{self.__class__.__name__}({self.name!r}, {containers=!r}, {parent=!r})'
 
+    def _create_bindings(self):
+       
+        get_provider = self._registry.get
+
+        def fallback(key):
+            if pro := get_provider(key):
+                return setdefault(key, pro.bind(self, key))
+            elif origin := get_origin(key):
+                if pro := get_provider(origin):
+                    return setdefault(key, pro.bind(self, key))
+
+        res = fallbackdict(fallback)
+        setdefault = res.setdefault
+        return res
+
+    # def _register_handler(self, dep: Injectable, handler, deps: Sequence[Injectable]=None):
+    #     if deps is None:
+    #         deps = getattr(handler, 'deps', None) 
+
+    #     if deps:
+    #         graph = self._linked_deps
+    #         for src in deps:
+    #             graph[src].add(dep)
+    #     return handler
 
 
 

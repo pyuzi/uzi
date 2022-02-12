@@ -42,50 +42,28 @@ if t.TYPE_CHECKING:
 
 
 @export()
-class ScopeVarDict(dict[T_Injectable, 'ScopeVar']):
-
-    __slots__ = "scope",
-
-    scope: "Scope"
-
-    def __init__(self, scope: "Scope"):
-        self.scope = scope
-
-    def __missing__(self, key):
-        scope = self.scope
-        res = scope.injector.resolvers[key]
-        if res is None:
-            return self.setdefault(key, scope.parent.vars[key])
-        return self.setdefault(key, res(scope))
-
-
-
-
-@export()
 class Scope(dict[T_Injectable, 'ScopeVar']):
 
     __slots__ = (
         "injector",
         "parent",
-        "resolvers",
-        # "level",
+        "bindings",
         "_dispatched",
         "__weakref__",
     )
 
     injector: "Injector"
     parent: "Scope"
-    resolvers: dict[T_Injectable, Callable[['Scope'], 'ScopeVar']]
+    bindings: dict[T_Injectable, Callable[['Scope'], 'ScopeVar']]
 
     # level: int
 
     def __init__(self, injector: "Injector", parent: "Scope" = None) -> None:
         self.injector = injector
         self.parent = NullScope() if parent is None else parent
-        # self.level = 0 if parent is None else parent.level + 1
-        self.resolvers = None
+        self.bindings = None
         self._dispatched = 0
-        self[injector] = self
+        self[injector] = ValueScopeVar(self)
 
     @property
     def name(self) -> str:
@@ -109,24 +87,24 @@ class Scope(dict[T_Injectable, 'ScopeVar']):
             raise RuntimeError(f"injector {self} already disposed.")
         return False
 
-    def get(key, default=None):
+    def get(self, key, default=None):
         try:
             return self[key]
         except InjectorKeyError:
             return default
 
     def __missing__(self, key):
-        res = self.resolvers[key]
+        res = self.bindings[key]
         if res is None:
             return self.setdefault(key, self.parent[key])
-        return self.setdefault(key, res(self))
+        return self.setdefault(key, res(self, key))
 
     def __contains__(self, x) -> bool:
         return super().__contains__(x) \
             or (self.parent is not None and x in self.parent)
 
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}[{self.level}]({self.name!r})"
+        return f"{self.__class__.__name__}({self.name!r})"
 
     def __repr__(self) -> str:
         return f"<{self!s}, {self.parent!r}>"
@@ -157,11 +135,13 @@ class NullScope(Scope):
     parent = None
 
     def __init__(self, name=None):
-        self.resolvers = None
+        self.bindings = None
         self.name = name or "null"
 
     def __getitem__(self, k: T_Injectable) -> None:
-        raise InjectorKeyError(f"{k}")
+        # raise InjectorKeyError(f"{k}")
+        return None
+
     __missing__ = __getitem__
 
     def get(key, default=None):
@@ -199,8 +179,8 @@ class ScopeVar(t.Generic[T_Injected]):
         else:
             return object.__new__(cls)
         
-
-
+    def __call__(self):
+        return self.get()
 
 
 @export()
@@ -218,9 +198,6 @@ class ValueScopeVar(ScopeVar[T_Injected]):
     def get(self) -> T_Injected:
         return self.value
 
-    def make(self) -> T_Injected:
-        return self.value
-
     def __repr__(self) -> str: 
         value = self.value
         return f'{self.__class__.__name__}({value=!r})'
@@ -234,9 +211,10 @@ class FactoryScopeVar(ScopeVar[T_Injected]):
     __slots__ = 'make', 'get',
 
     def __new__(cls, make: T_Injected):
-        self = object.__new__(cls)
-        self.get = self.make = make
-        return self
+        return make
+        # self = object.__new__(cls)
+        # self.get = self.make = make
+        # return self
     
     def __repr__(self) -> str: 
         make = self.make
@@ -252,11 +230,21 @@ class SingletonScopeVar(ScopeVar[T_Injected]):
     __slots__ = 'make', 'value', 'lock',
 
     def __new__(cls, make: T_Injected):
-        self = object.__new__(cls)
-        self.make = make
-        self.value = Missing
-        self.lock  = Lock()
-        return self
+        # self = object.__new__(cls)
+        # self.make = make
+        # self.value = Missing
+        # self.lock = Lock()
+
+        lock = Lock()
+        value = Missing
+        def get() -> T_Injected:
+            nonlocal lock, make, value
+            if value is Missing:
+                with lock:
+                    if value is Missing:
+                        value = make()
+            return value
+        return get
 
     def get(self) -> T_Injected:
         if self.value is Missing:

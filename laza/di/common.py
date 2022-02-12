@@ -1,9 +1,9 @@
 from abc import abstractmethod, ABCMeta
+from inspect import Parameter
 from logging import getLogger
 from threading import Lock
 import sys
 import typing as t
-
 
 
 from threading import Lock
@@ -15,7 +15,7 @@ from laza.common.collections import Arguments, frozendict
 from laza.common.imports import ImportRef
 from laza.common.proxy import unproxy
 
-from laza.common.functools import export, calling_frame, cache
+from laza.common.functools import export, calling_frame, cache, Missing
 from laza.common.data import DataPath
 
 
@@ -24,26 +24,12 @@ from collections.abc import Callable
 
 from types import FunctionType, GenericAlias, MethodType, new_class
 
+from pyparsing import empty
+
 
 
 from .exc import InjectorKeyError
 from .typing import get_all_type_hints, get_origin
-
-
-logger = getLogger(__name__)
-
-
-
-
-__uid_map = Counter()
-__uid_lock = Lock()
-
-@export()
-def unique_id(ns=None):
-    global __uid_map, __uid_lock
-    with __uid_lock:
-        __uid_map[ns] += 1
-        return __uid_map[ns]
 
 
 
@@ -60,6 +46,28 @@ T_Injectable = t.TypeVar('T_Injectable', bound='Injectable', covariant=True)
 
 export('T_Injected', 'T_Injectable', 'T_Default')
 
+logger = getLogger(__name__)
+
+
+
+@export()
+def isinjectable(obj):
+    return isinstance(obj, Injectable)
+
+
+
+
+
+
+__uid_map = Counter()
+__uid_lock = Lock()
+
+@export()
+def unique_id(ns=None):
+    global __uid_map, __uid_lock
+    with __uid_lock:
+        __uid_map[ns] += 1
+        return __uid_map[ns]
 
 
 
@@ -329,16 +337,16 @@ class Depends:
     arguments: Arguments
 
     def __new__(cls, 
-                tp: T_Depends=..., 
                 on: Injectable = ..., 
+                tp: T_Depends=..., 
                 /, 
                 *args, 
                 **kwargs):
 
-        if on is ...:
-            on = tp
-            if not isinstance(tp, (type, GenericAlias, t.TypeVar)):
-                tp = ...
+        # if on is ...:
+        #     on = tp
+        #     if not isinstance(tp, (type, GenericAlias, t.TypeVar)):
+        #         tp = ...
                 
         arguments = Arguments(args, kwargs)
 
@@ -374,8 +382,10 @@ class Depends:
 
     def __eq__(self, x) -> bool:
         if isinstance(x, Depends):
-            return self.on == x.on and self.at == x.at \
-                and self.arguments == x.arguments
+            return self.on == x.on 
+            # and self.at == x.at \
+            #     and self.arguments == x.arguments
+        
         return NotImplemented
 
     def __hash__(self) -> bool:
@@ -405,6 +415,62 @@ class Depends:
     
 
 
+
+
+
+@export()
+@Injectable.register
+class Dep(t.Generic[T_Injectable]):
+
+    """A `Dependency` dependency marker.
+    """
+    __slots__ = '__dependency__', '__scope__', '__default__', '_hash', '__weakref__',
+
+    __dependency__: T_Injectable
+    __scope__: t.Union['IocContainer', 'Injector']
+    __default__: t.Any
+
+    def __new__(cls, 
+                dependency: Injectable, *,
+                default=Parameter.empty,
+                scope: t.Union['IocContainer', 'Injector']=None):
+        self = object.__new__(cls)
+        self.__dependency__ = dependency
+        self.__default__ = default
+        self.__scope__ = scope
+        return self
+        
+    @property
+    def __origin__(self):
+        return self.__class__
+
+    def __init_subclass__(cls, *args, **kwargs):
+        raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__name__}")
+
+    def __eq__(self, x) -> bool:
+        if isinstance(x, self.__class__):
+            return self.__dependency__ == x.__dependency__ \
+                and self.__scope__ == x.__scope__\
+                and self.__default__ == x.__default__
+        elif self.__scope__ is None and self.__default__ is Parameter.empty:
+            return self.__dependency__ == x
+
+    def __hash__(self):
+        try:
+            return self._hash
+        except AttributeError:
+            if self.__scope__ is None and self.__default__ is Parameter.empty:
+                self._hash = hash(self.__dependency__)
+            else:
+                self._hash = hash((self.__dependency__, self.__scope__, self.__default__))
+            return self._hash
+     
+    def __repr__(self) -> bool:
+        dependency = self.__dependency__
+        scope = self.__scope__ or '...'
+        default = '...' if self.__default__ is Parameter.empty else self.__default__
+        return f'{self.__class__.__name__}({dependency=}, {default=}, {scope=})'
+    
 
 
 

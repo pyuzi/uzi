@@ -1,4 +1,5 @@
 from pprint import pprint
+from time import time
 import pytest
 
 from laza.di.containers import IocContainer
@@ -35,10 +36,10 @@ class BasicScopeTests:
         scope = MainInjector(con)
 
         with scope.make() as inj:
-            assert isinstance(inj[Foo].get(), Foo)
-            assert isinstance(inj[Bar].get(), Bar)
-            assert isinstance(inj[Baz].get(), Baz)
-            assert inj[Foo].get() is not inj[Foo].get()
+            assert isinstance(inj[Foo](), Foo)
+            assert isinstance(inj[Bar](), Bar)
+            assert isinstance(inj[Baz](), Baz)
+            assert inj[Foo]() is not inj[Foo]()
 
         assert 1, '\n'
  
@@ -82,16 +83,16 @@ class BasicScopeTests:
     def test_perfomance(self, speed_profiler):
         ioc = MainInjector() 
 
-        SharedFoo = InjectionToken('SharedFoo')
-
-        ioc.type(Foo)
-        ioc.type(SharedFoo).using(Foo).singleton(False)
-        ioc.type(Bar).singleton(False)
-        ioc.type(Baz).singleton(False)
+        ioc.type(Foo)#.singleton()
+        ioc.type(Bar).singleton()
+        ioc.type(Baz).singleton()
+        ioc.type(FooBar)#.singleton()
+        ioc.type(FooBarBaz)#.singleton()
+        ioc.type(Service)#.singleton()
 
 
         @ioc.inject
-        def inject_1(baz: Baz):
+        def inject_1(baz: Baz, /):
             assert isinstance(baz, Baz)
             return baz
 
@@ -102,41 +103,57 @@ class BasicScopeTests:
             assert isinstance(baz, Baz)
             return foo, bar, baz
 
+        @ioc.inject
+        def inject_3(foobar: FooBar, foobarbaz: FooBarBaz, /, service: Service):
+            assert isinstance(foobar, FooBar)
+            assert isinstance(foobarbaz, FooBarBaz)
+            assert isinstance(service, Service)
+            return foobar, foobarbaz, service
+        _tap = lambda x=True: x and None
         mkfoo = lambda: Foo()
         mkbar = lambda: Bar(mkfoo())
         mkbaz = lambda: Baz(mkbar())
+        mkfoobar = lambda: FooBar(mkfoo(), mkbar())
+        mkfoobarbaz = lambda: FooBarBaz(mkfoo(), mkbar(), mkbaz())
+        mkservice = lambda: Service(mkfoo(), mkbar(), mkbaz(), mkfoobar(), mkfoobarbaz())
 
         mkinject_1 = lambda: inject_1.__wrapped__(mkbaz())
         mkinject_2 = lambda: inject_2.__wrapped__(mkfoo(), mkbar(), mkbaz())
+        mkinject_3 = lambda: inject_3.__wrapped__(mkfoobar(), mkfoobarbaz(), mkservice())
 
-        _n = int(2e5)
-        _r = 3
+        _n = int(2.5e2)
+        _r = 4
         profile = speed_profiler(_n, labels=('PY', 'DI'), repeat=_r)
         xprofile = speed_profiler(_n, labels=('DI', 'PY'), repeat=_r)
 
-
+        t = time()
         with ioc.make() as inj:
 
-            infoo = lambda: inj[Foo].get()
-            insharedfoo = lambda: inj[SharedFoo].get()
-            insharedfoo_get = lambda: inj[SharedFoo].get()
-            inbar = lambda: inj[Bar].get()
-            inbaz = lambda: inj[Baz].get()
+            infoo = lambda: inj[Foo]()
+            inbar = lambda: inj[Bar]()
+            inbaz = lambda: inj[Baz]()
+            infoobar = lambda: inj[FooBar]()
+            infoobarbaz = lambda: inj[FooBarBaz]()
+            inservice = lambda: inj[Service]()
 
             print('')
 
-            infoo()
+            infoo(), inbar(), inbaz(), infoobar(), infoobarbaz(), inservice()
+            # assert 0
 
-            profile(mkfoo, infoo, 'Foo')
-            profile(mkbar, inbar, 'Bar')
-            profile(mkbaz, inbaz, 'Baz')
+            profile(mkfoo, inj[Foo], 'Foo')
+            profile(mkbar, inj[Bar], 'Bar')
+            profile(mkbaz, inj[Baz], 'Baz')
 
-            print('')
+            profile(mkfoobar, inj[FooBar], 'FooBar')
+            profile(mkfoobarbaz, inj[FooBarBaz], 'FooBarBaz')
+
+
+            profile(mkservice, inj[Service], 'Service')
 
             profile(mkinject_1, inject_1, inject_1.__name__)
             profile(mkinject_2, inject_2, inject_2.__name__)
-
-            print('')
+            profile(mkinject_3, inject_3, inject_3.__name__)
 
             # xprofile(inject_1, mkinject_1, inject_1.__name__)
             # xprofile(inject_2, mkinject_2, inject_2.__name__)
@@ -144,7 +161,7 @@ class BasicScopeTests:
             print(*inject_2())
 
 
-            print('')
+            print(f'TOTAL TIME: {round(time()-t, 4):,} secs')
 
         assert 0, '\n'
  
@@ -152,25 +169,47 @@ class BasicScopeTests:
 
 
 class Foo:
-    ...
+     def __init__(self) -> None:
+        pass
+
     
 class Bar:
     
-    def __init__(self, foo: Foo) -> None:
-        self.foo = foo
+    def __init__(self, foo: Foo, /) -> None:
+        assert isinstance(foo, Foo)
 
      
 class Baz:
     
-    def __init__(self, bar: Bar) -> None:
-        self.bar = bar
+    def __init__(self, bar: Bar, /) -> None:
+        assert isinstance(bar, Bar)
 
 
  
-class FooBar(Foo, Bar):
-    ...
-     
-
-class FooBarBaz(FooBar, Baz):
-    ...
+class FooBar:
     
+    def __init__(self, foo: Foo, bar: Bar, /) -> None:
+        assert isinstance(foo, Foo)
+        assert isinstance(bar, Bar)
+
+
+
+class FooBarBaz:
+    
+    def __init__(self, foo: Foo, bar: Bar, baz: Baz, /) -> None:
+        assert isinstance(foo, Foo)
+        assert isinstance(bar, Bar)
+        assert isinstance(baz, Baz)
+    
+
+
+
+class Service:
+    
+    def __init__(self, foo: Foo, bar: Bar, baz: Baz, /, foobar: FooBar, foobarbaz: FooBarBaz) -> None:
+        assert isinstance(foo, Foo)
+        assert isinstance(bar, Bar)
+        assert isinstance(baz, Baz)
+        assert isinstance(foobar, FooBar)
+        assert isinstance(foobarbaz, FooBarBaz)
+

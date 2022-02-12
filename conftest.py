@@ -66,7 +66,7 @@ def speed_profiler(ops_per_sec):
                     f'{round(tt2, dec):,} secs'.ljust(12) + f' avg {round(t2, dec):,} secs'.ljust(16) \
                         + f'{round(res2, dec):,} ops/sec'.ljust(16+dec)
 
-            print(f' - {title or f"{lbl1}-vs-{lbl2}"}[{r:,}x{n:,}={r * n:,}ops] {d}\n   - {lbl1}={a!s}\n   - {lbl2}={b!s}')
+            print(f' - {title or f"{lbl1}-vs-{lbl2}"}[{r:,}x{n:,}={r * n:,}ops] {d}\n   - {lbl1}={a!s}\n   - {lbl2}={b!s}', '\n')
         return profiler
 
     return make

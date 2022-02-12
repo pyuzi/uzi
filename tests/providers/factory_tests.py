@@ -31,24 +31,11 @@ class FactoryProviderTests(ProviderTestCase):
     
     cls = Factory
 
-    def test_provides_value(self, provider: Factory, injector, scope):
-        assert provider.compile(type)(scope).get() == 'value'
-
     def test_singleton(self, provider: Factory):
         rv = provider.singleton()
         assert rv is provider
         assert provider.is_singleton
         assert not provider.singleton(False).is_singleton
-        
-    def test_depends(self, provider: Factory):
-        deps = dict(foo=Foo, bar=Bar)
-        rv = provider.depends(**deps)
-        assert rv is provider
-        assert provider.deps == deps
-
-        deps = dict(bar='bar', baz=Baz)
-        provider.depends(**deps)
-        assert provider.deps == deps
 
     def test_args_kwargs(self, provider: Factory):
         args = 1,2,3
@@ -72,44 +59,39 @@ class FactoryProviderTests(ProviderTestCase):
         assert provider.arguments.args == args
         assert provider.arguments.kwargs == kwd
 
-    def _test_with_args(self, injector, scope):
+    def test_with_args(self, injector, scope):
         _default = object()
         
-        def func(a: Foo, b: Bar, c=_default):
-            assert (a, b, c) == args
+        def func(a: Foo, b: Bar, c=_default, /):
+            assert (a, b, c) == args[:3]
         
         provider = Factory(func)
 
-        args = 'aaa', 123
+        args = 'aaa', 123, 'xyz'
         provider.args(*args)
-        provider.compile(func)(scope).get()
+        provider.bind(injector, func)(scope, func)()
+
+        args = 'aaa', 123, _default
+        provider.args(*args[:-1])
+        provider.bind(injector, func)(scope, func)()
         
-    def _test_profile(self, injector, scope):
+    def test_with_kwargs(self, injector, scope):
+        _default = object()
         
-        def mk():
-            return Factory(Foo, FooBar) \
-                .args(object(), object(), object())\
-                .kwargs(a=object(), b=object(), c=object())
-
-
-        @profile
-        def func(n_=10000):
-            rv = [mk() for _ in range(n_)]
-            cp = copy(rv)
-
-            return rv, cp
-
-        func()
-
-
-
-        assert 0
-    
+        def func(*, a: Foo, b: Bar, c=_default):
+            assert dict(a=a, b=b, c=c) == {'c': _default } | kwargs
         
-    
+        provider = Factory(func)
 
+        kwargs = dict(a='aaa', b=123, c='xyz')
+        provider.kwargs(**kwargs)
+        provider.bind(injector, func)(scope, func)()
 
-
+        kwargs = dict(a='BAR', b='BOO')
+        provider.kwargs(**kwargs)
+        provider.bind(injector, func)(scope, func)()
+ 
+ 
 class Foo:
     def __init__(self) -> None:
         pass

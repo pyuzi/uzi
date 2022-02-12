@@ -47,7 +47,7 @@ class ScopeVarDict(dict[T_Injectable, ScopeVar]):
 
     def __missing__(self, key):
         scope = self.scope
-        res = scope.injector.resolvers[key]
+        res = scope.injector._bindings[key]
         if res is None:
             return self.setdefault(key, scope.parent.vars[key])
         return self.setdefault(key, res(scope))

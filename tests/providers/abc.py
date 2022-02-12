@@ -24,10 +24,9 @@ class ProviderTestCase:
 
     def test_basic(self, provider: Provider, injector, scope):
         assert isinstance(provider, self.cls)
-        hand = provider.compile(type)
+        hand = provider.bind(injector, provider.provides)
         assert callable(hand)
-        # assert isinstance(getattr(hand, 'deps', set()), Set)
-        assert isinstance(hand(scope), self.var_class) or not self.strict_injectorvar
+        assert callable(hand(scope, provider.provides))
         
         
     

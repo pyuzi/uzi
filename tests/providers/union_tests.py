@@ -4,8 +4,8 @@ import typing as t
 
 
 
-from laza.di.providers import Value as Provider
-
+from laza.di.providers import UnionProvider as Provider
+ 
 
 from .abc import ProviderTestCase
 
@@ -22,12 +22,12 @@ def provider():
 
 
 
-class ValueProviderTests(ProviderTestCase):
+class UnionProviderTests__(ProviderTestCase):
     
     cls = Provider
 
     def test_provides_value(self, provider: Provider, injector, scope):
-        assert provider.bind(injector, type)(scope, type)() is provider.uses
+        assert provider.bind(injector, type)(scope)() is provider.uses
         
         
     

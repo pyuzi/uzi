@@ -25,6 +25,12 @@ def provider():
     return Factory(lambda: 'value')
 
 
+@pytest.fixture
+def provided():
+    return lambda: 'value'
+
+
+
 
 
 class FactoryProviderTests(ProviderTestCase):
@@ -59,7 +65,7 @@ class FactoryProviderTests(ProviderTestCase):
         assert provider.arguments.args == args
         assert provider.arguments.kwargs == kwd
 
-    def test_with_args(self, injector, scope):
+    def test_with_args(self, injector, injectorcontext):
         _default = object()
         
         def func(a: Foo, b: Bar, c=_default, /):
@@ -69,13 +75,13 @@ class FactoryProviderTests(ProviderTestCase):
 
         args = 'aaa', 123, 'xyz'
         provider.args(*args)
-        provider.bind(injector, func)(scope, func)()
+        provider.bind(injector, func)(injectorcontext, func)()
 
         args = 'aaa', 123, _default
         provider.args(*args[:-1])
-        provider.bind(injector, func)(scope, func)()
+        provider.bind(injector, func)(injectorcontext, func)()
         
-    def test_with_kwargs(self, injector, scope):
+    def test_with_kwargs(self, injector, injectorcontext):
         _default = object()
         
         def func(*, a: Foo, b: Bar, c=_default):
@@ -85,11 +91,11 @@ class FactoryProviderTests(ProviderTestCase):
 
         kwargs = dict(a='aaa', b=123, c='xyz')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(scope, func)()
+        provider.bind(injector, func)(injectorcontext, func)()
 
         kwargs = dict(a='BAR', b='BOO')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(scope, func)()
+        provider.bind(injector, func)(injectorcontext, func)()
  
  
 class Foo:

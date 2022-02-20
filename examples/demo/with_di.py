@@ -3,11 +3,11 @@ import os
 
 from after import ApiClient, Service
 
-from laza.di.injectors import MainInjector
+from laza.di.injectors import Injector
 from laza.di.common import Depends
 
 
-ioc = MainInjector()
+ioc = Injector()
 
 ioc.type(ApiClient)\
     .singleton()\

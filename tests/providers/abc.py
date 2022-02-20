@@ -6,7 +6,6 @@ from collections.abc import Set
 
 
 from laza.di.providers import Provider
-from laza.di.scopes import ScopeVar
 
 
 
@@ -16,17 +15,22 @@ parametrize = pytest.mark.parametrize
 
 
 
+
 class ProviderTestCase:
 
     cls: t.ClassVar[type[Provider]] = Provider
     strict_injectorvar = True
-    var_class = ScopeVar,
 
-    def test_basic(self, provider: Provider, injector, scope):
+
+    def test_basic(self, provider: Provider, injector, injectorcontext, provided):
         assert isinstance(provider, self.cls)
-        hand = provider.bind(injector, provider.provides)
-        assert callable(hand)
-        assert callable(hand(scope, provider.provides))
+        bound = provider.bind(injector)
+        assert callable(bound)
+        func = bound(injectorcontext)
+        assert callable(func)
+        val = func()
+        exp = provided()
+        assert val == exp
         
         
     

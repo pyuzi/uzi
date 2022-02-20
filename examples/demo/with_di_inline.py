@@ -1,11 +1,11 @@
 import os
 
-from laza.di.injectors import MainInjector
+from laza.di.injectors import Injector
 from laza.di.common import Depends as Dep
 
 
 
-ioc = MainInjector()
+ioc = Injector()
 
 
 @ioc.type(shared=True)\

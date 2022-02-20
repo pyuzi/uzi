@@ -7,6 +7,30 @@ from timeit import repeat
 from statistics import median, median_high, mean
 
 
+from laza.di.injectors import Injector
+from laza.di.containers import IocContainer
+
+
+@pytest.fixture()
+def ioc():
+    return IocContainer()
+
+
+
+
+@pytest.fixture()
+def injector():
+    return Injector()
+
+
+
+@pytest.fixture()
+def injectorcontext(injector: Injector):
+    with injector.make() as scp:
+        yield scp
+
+
+
 
 
 @pytest.fixture(scope='session')

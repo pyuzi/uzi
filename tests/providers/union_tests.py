@@ -5,6 +5,8 @@ import typing as t
 
 
 from laza.di.providers import UnionProvider as Provider
+
+from laza.di.injectors import Injector
  
 
 from .abc import ProviderTestCase
@@ -17,18 +19,21 @@ parametrize = pytest.mark.parametrize
 _T = t.TypeVar('_T')
 
 @pytest.fixture
-def provider():
-    return Provider(_T, object())
+def provider(injector: Injector):
+    injector.value(_T, f'VALUE FOR [{_T!r}]!')
+    return Provider(t.Union[_T, int])
 
 
 
-class UnionProviderTests__(ProviderTestCase):
+
+@pytest.fixture
+def provided(injectorcontext):
+    return injectorcontext[_T]
+
+
+
+class UnionProviderTests(ProviderTestCase):
     
     cls = Provider
 
-    def test_provides_value(self, provider: Provider, injector, scope):
-        assert provider.bind(injector, type)(scope)() is provider.uses
-        
-        
-    
 

@@ -6,7 +6,9 @@ import time
 
 from dependency_injector import providers, containers, wiring
 
-from laza.di.injectors import MainInjector
+from laza.di.injectors import Injector
+
+
 
 
 N = int(1e6)
@@ -46,7 +48,7 @@ class Test(object):
 
 
 
-ioc = MainInjector()
+ioc = Injector()
 
 ioc.type(A)
 ioc.type(B).singleton()

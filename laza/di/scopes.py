@@ -19,11 +19,11 @@ from .common import (
 
 
 from .exc import InjectorKeyError
-from .vars import ScopeVar
+from .injectors import ScopeVar
 
 if t.TYPE_CHECKING:
     from .injectors import Injector
-    from .containers import AbcIocContainer
+    from .containers import IocContainer
 
 
 export(Injectable)

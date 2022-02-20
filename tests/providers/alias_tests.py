@@ -6,6 +6,7 @@ import time
 
 from laza.di.providers import Alias as Provider
 from laza.di.common import InjectionToken
+from laza.di.injectors import Injector
 
 from .abc import ProviderTestCase
 
@@ -15,10 +16,17 @@ parametrize = pytest.mark.parametrize
 
 token = InjectionToken('aliased') 
 
+
 @pytest.fixture
-def provider(injector, scope):
-    scope[token] = lambda: f'VALUE FOR [{token=!r}]!'
+def provider(injector:Injector, injectorcontext):
+    injector.value(token, f'VALUE FOR [{token=!r}]!')
     return Provider(type, token)
+
+
+
+@pytest.fixture
+def provided(provider:Provider, injectorcontext):
+    return injectorcontext[provider.uses]
 
 
 
@@ -27,7 +35,3 @@ class AliasProviderTests(ProviderTestCase):
 
     cls = Provider
 
-    def test_provides_value(self, provider: Provider, injector, scope):
-        assert provider.bind(injector, provider.provides)(scope, provider.provides) is scope[provider.uses]
-        
-        

@@ -4,13 +4,12 @@ import pytest
 
 from laza.di.containers import IocContainer
 from laza.di.common import InjectionToken
-from laza.di.injectors import MainInjector, LocalInjector
+from laza.di.injectors import Injector
 
 
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
-
 
 
 
@@ -31,15 +30,13 @@ class BasicScopeTests:
         con.type(FooBar, FooBar)
         con.type(FooBarBaz, FooBarBaz)
 
+        inj = Injector().require(con)
 
-
-        scope = MainInjector(con)
-
-        with scope.make() as inj:
-            assert isinstance(inj[Foo](), Foo)
-            assert isinstance(inj[Bar](), Bar)
-            assert isinstance(inj[Baz](), Baz)
-            assert inj[Foo]() is not inj[Foo]()
+        with inj.make() as ctx:
+            assert isinstance(ctx[Foo](), Foo)
+            assert isinstance(ctx[Bar](), Bar)
+            assert isinstance(ctx[Baz](), Baz)
+            assert ctx[Foo]() is not ctx[Foo]()
 
         assert 1, '\n'
  
@@ -70,9 +67,9 @@ class BasicScopeTests:
             return baz, foo
 
 
-        scope1 = MainInjector(con3)
-        scope2 = LocalInjector(scope1)
-        scope3 = LocalInjector(scope2, con4)
+        scope1 = Injector(con3)
+        scope2 = Injector(scope1)
+        scope3 = Injector(scope2, con4)
 
         with scope2.make() as inj_:
             with scope3.make(inj_) as inj:
@@ -81,7 +78,7 @@ class BasicScopeTests:
         assert 1, '\n'
  
     def test_perfomance(self, speed_profiler):
-        ioc = MainInjector() 
+        ioc = Injector() 
 
         ioc.type(Foo)#.singleton()
         ioc.type(Bar).singleton()
@@ -127,29 +124,29 @@ class BasicScopeTests:
         xprofile = speed_profiler(_n, labels=('DI', 'PY'), repeat=_r)
 
         t = time()
-        with ioc.make() as inj:
-
-            infoo = lambda: inj[Foo]()
-            inbar = lambda: inj[Bar]()
-            inbaz = lambda: inj[Baz]()
-            infoobar = lambda: inj[FooBar]()
-            infoobarbaz = lambda: inj[FooBarBaz]()
-            inservice = lambda: inj[Service]()
+        with ioc.make() as ctx:
+            
+            infoo = lambda: ctx[Foo]()
+            inbar = lambda: ctx[Bar]()
+            inbaz = lambda: ctx[Baz]()
+            infoobar = lambda: ctx[FooBar]()
+            infoobarbaz = lambda: ctx[FooBarBaz]()
+            inservice = lambda: ctx[Service]()
 
             print('')
 
             infoo(), inbar(), inbaz(), infoobar(), infoobarbaz(), inservice()
             # assert 0
 
-            profile(mkfoo, inj[Foo], 'Foo')
-            profile(mkbar, inj[Bar], 'Bar')
-            profile(mkbaz, inj[Baz], 'Baz')
+            profile(mkfoo, ctx[Foo], 'Foo')
+            profile(mkbar, ctx[Bar], 'Bar')
+            profile(mkbaz, ctx[Baz], 'Baz')
 
-            profile(mkfoobar, inj[FooBar], 'FooBar')
-            profile(mkfoobarbaz, inj[FooBarBaz], 'FooBarBaz')
+            profile(mkfoobar, ctx[FooBar], 'FooBar')
+            profile(mkfoobarbaz, ctx[FooBarBaz], 'FooBarBaz')
 
 
-            profile(mkservice, inj[Service], 'Service')
+            profile(mkservice, ctx[Service], 'Service')
 
             profile(mkinject_1, inject_1, inject_1.__name__)
             profile(mkinject_2, inject_2, inject_2.__name__)

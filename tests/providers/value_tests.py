@@ -21,14 +21,16 @@ def provider():
     return Provider(_T, object())
 
 
+@pytest.fixture
+def provided(provider: Provider):
+    return lambda: provider.uses
+
+
 
 class ValueProviderTests(ProviderTestCase):
     
     cls = Provider
 
-    def test_provides_value(self, provider: Provider, injector, scope):
-        assert provider.bind(injector, type)(scope, type)() is provider.uses
-        
-        
+
     
 

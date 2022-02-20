@@ -1,34 +1,33 @@
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from contextvars import ContextVar
 from functools import update_wrapper
 from logging import getLogger
 import os
-from types import FunctionType, GenericAlias, MappingProxyType
+from threading import Lock
+from time import monotonic_ns
 import typing as t
 
-from collections import ChainMap
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Iterable, Callable
 
-from laza.common.typing import Self, get_origin
+from laza.common.typing import Self
 from laza.common.functools import export
-from laza.common.collections import orderedset, fallbackdict, fallback_default_dict, frozenorderedset
-from laza.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
+from laza.common.collections import orderedset, multidict
 
-from laza.common.functools import cached_property, calling_frame
+
+from laza.common.functools import calling_frame
+
+from libs.di.laza.di.functools import Bootable
 
 
 
 
 from .common import (
     Injectable,
-    InjectionToken,
-    T_Injectable,
     T_Injected,
-    unique_id
 )
-from .exc import DuplicateProviderError
 
 from .providers import Provider, RegistrarMixin, T_UsingAny
+
 
 if t.TYPE_CHECKING:
     from .injectors import Injector, InjectorContext
@@ -40,129 +39,102 @@ _T = t.TypeVar('_T')
 
 
 
-
-
 @export()
 @Injectable.register
-class AbcIocContainer(RegistrarMixin[T_Injected]):
+class IocContainer(Bootable, RegistrarMixin[T_Injected]):
 
+    
     name: str
-    dependants: orderedset['Injector']
-    shared: bool = True
+    _bound: orderedset['Injector']
+    is_singleton: bool = True
     _default_requires: t.ClassVar[orderedset['IocContainer']] = ()
 
+    _bound: orderedset['Injector']
     _requires: orderedset['IocContainer']
     _registry: dict[Injectable, Provider[T_UsingAny, T_Injected]]
-    _bootstrapped: bool = False
-    _pending: list[Provider]
+    # is_bootstrapped: bool = False
 
-    def __init_subclass__(cls, **kwds) -> None:
-        if '_default_requires' in cls.__dict__:
-            cls._default_requires = orderedset(
-                i or () for b in cls.__mro__ 
-                    if issubclass(b, cls) 
-                        for i in b._default_requires
-            )
-        return super().__init_subclass__(**kwds)
+    _context = None
 
     def __init__(self, 
-                *requires: 'IocContainer',
                 name: str=None,
-                shared: bool=None):
-
-        if shared is not None:
-            self.shared = shared
-
-        self._pending = []
+                requires: Iterable['IocContainer'] = (),
+                singleton: bool=None):
+        super().__init__()
+        
+        if not name:
+            fr = calling_frame(chain=True)
+            name = name = fr.get('__name__') or fr.get('__package__') or '<anonymous>'
+         
+        self.is_singleton = not singleton is False
         self.name = name
-        self._bootstrapped = False
-        self._init_registry()
-        self._init_requires()
-        self._init_dependants()
-        self._requires.update(requires, self._default_requires)
+        
+        self._bound = orderedset()
+        self._registry = multidict()
+        self._requires = orderedset()
+        requires and self.require(*requires)
 
-    @property
-    def bootstrapped(self):
-        return self._bootstrapped
-
-    def requires(self):
-        return frozenorderedset(self._requires)
-
-    @property
-    @abstractmethod
-    def _context(self) -> 'InjectorContext':
-        ...
-
-    @property
-    def has_setup(self) -> bool:
-        return self._context is not None
-
-    def require(self, *containers: 'IocContainer') -> Self:
-        self._requires |= containers
+    def require(self, *containers: 'IocContainer', replace: bool=False) -> Self:
+        if replace:
+            self._requires = orderedset(containers)    
+        else:
+            self._requires |= containers
         return self
 
     def register_provider(self, provider: Provider) -> Self:
-        if self._bootstrapped is not True:
-            self._pending.append(provider)
-            return self
-
-        provider = provider.setup(self)
-        if provider:
-            inital = self._registry.setdefault(provider.provides, provider)
-            if inital is not provider:
-                raise DuplicateProviderError(f'{provider!r} and {inital=!r}')
-        
-        return self
-    
-    def bootstrap(self):
-        if self._bootstrapped:
-            raise RuntimeError(f'{self} already bootstrapped')
-        
-        print(f'{self}.bootstrap()')
-
-        self._bootstrapped = True
-        self._pop_pending()
+        if self.is_booted:
+            provider.set_container(self)
+        else:
+            self.on_boot(lambda s: provider.set_container(s))    
         return self
 
-    def _init_registry(self):
-        self._registry = dict()
+    def add_to_registry(self, tag: Injectable, provider: Provider):
+        self.flush(tag)
+        self._registry[tag] = provider
+        logger.debug(f'{self}.add_to_registry({tag}, {provider=!s})')
 
-    def _init_requires(self):
-        self._requires = orderedset()
-     
-    def _init_dependants(self):
-        self.dependants = orderedset()
-     
-    def _pop_pending(self):
-        while self._pending:
-            self.register_provider(self._pending.pop())
+    def bind(self, injector: 'Injector', source: 'IocContainer'=None):
+        if not self.is_bound(injector):
 
-    def add_dependant(self, scope: 'Injector'):
-        self.dependants.add(scope)
-        return self
+            self.boot()
 
-    @abstractmethod
-    def setup(self, ctx: 'InjectorContext') -> 'AbcIocContainer':
-        ...
-        
-    @abstractmethod
-    def teardown(self) -> t.NoReturn:
-        ...
+            self._bound.add(injector)
+
+            logger.debug(f'{self}.bound({injector=}, {source=})')
+
+            return self._ibind(injector)
+
+    def _ibind(self, injector: 'Injector'):
+        yield self
+        yield from self._bind_required(injector)
+
+    def _bind_required(self, injector: 'Injector'):
+        for c in reversed(self._requires):
+            yield from c.bind(injector, self)
+
+    def is_bound(self, inj: 'Injector'=None):
+        if inj is None:
+            return not not self._bound
+        elif inj in self._bound:
+            return True
+        elif self.is_singleton:
+            for b in self._bound:
+                if inj in {*b.parents()}:
+                    return True
+        return False
 
     def flush(self, tag, source=None):
         if source is None:
-            for d in self.dependants:
-                d.flush(tag, self)
+            bound = self._bound
+            for inj in bound:
+                if not any(p in bound for p in inj.parents()):
+                    inj.flush(tag, self)
    
-    def __str__(self) -> str:
-        return f'{self.__class__.__name__}({self.name!r})'
-
     def __repr__(self) -> str:
-        requires = [*self._requires]
-        return f'{self.__class__.__name__}({self.name!r}, {requires=!r})'
+        return f'{self.__class__.__name__}({self.name!r}, #{self.bootid})'
    
-    def __contains__(self, x):
-        return x in self._registry
+    # def __contains__(self, x):
+    #     return x in self._registry
 
     def __getitem__(self, key: Injectable):
         try:
@@ -173,56 +145,26 @@ class AbcIocContainer(RegistrarMixin[T_Injected]):
 
 
 
+
 @export()
-class IocContainer(AbcIocContainer):
-
-    shared: bool = True
-    _context: 'InjectorContext' = None
-
-    def __init__(self, 
-                *requires: 'IocContainer',
-                name: str=None,
-                shared: bool=None):
-
-        if not name:
-            name = calling_frame(1, globals=True)['__package__']
-            name = f'{name}[{unique_id(name)}]'
-            
-        super().__init__(*requires, name=name, shared=shared)
+class InjectorContainer(IocContainer):
     
-    # @cached_property
-    # def repository(self):
-    #     return self._create_repository()
+    _injector: 'Injector'
 
-    def is_provided(self, key) -> bool:
-        return key in self
+    def __init__(self, injector: 'Injector'):
+        super().__init__(injector.name, singleton=True)
+        self._injector = injector
     
-    def setup(self, ctx: 'InjectorContext') -> 'IocContainer':
-        old = self._context
-        if old is None:
-            self._context = ctx
-                
-        elif ctx is not old:
-            raise RuntimeError(
-                f'InjectorContext conflict in {self}: {old=} -vs- new={ctx}'
-            )
-        self._bootstrapped or self.bootstrap()
-        return self
-        
-    def teardown(self, ctx: 'InjectorContext') -> 'IocContainer':
-        old = self._context
-        if old is ctx:
-            self._context = None
+    def bind(self, injector: 'Injector'=None, source: 'IocContainer'=None):
+        if injector is None:
+            injector = self._injector
 
-    # def _create_repository(self):
-    #     return ChainMap({}, *(d.repository for d in self._requires))
-    
-    # def __contains__(self, x):
-    #     if isinstance(x, IocContainer):
-    #         return x is self \
-    #             or x in self._requires \
-    #             or any(x in d for d in self._requires)
-    #     else:
-    #         return x in self.repository
-      
-      
+        if not source is None:
+            raise TypeError(f'{self} cannot be required in other containers.')
+        elif not self._injector is injector:
+            raise TypeError(f'{self} already belongs to {self._injector}')
+        return super().bind(injector)
+     
+    # def _ibind(self, injector: 'Injector'):
+    #     yield from self._bind_required(injector)
+    #     yield self

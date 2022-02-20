@@ -4,12 +4,11 @@ import sys
 import typing as t 
 import logging
 from weakref import finalize, ref
-from collections import ChainMap
 from collections.abc import Mapping, Callable, Sequence, Generator
 from build import Mapping
 
 
-from laza.common.collections import fallback_default_dict, nonedict, orderedset, fallbackdict
+from laza.common.collections import MultiChainMap, fallback_default_dict, nonedict, orderedset, fallbackdict
 from laza.common.saferef import SafeReferenceType, SafeRefSet, SafeKeyRefDict
 from laza.common.typing import get_origin, Self
 from laza.common.proxy import proxy
@@ -18,253 +17,239 @@ from laza.common.functools import (
     export, cached_property
 )
 
+from laza.common.functools import calling_frame
+
+from libs.di.laza.di.exc import DuplicateProviderError
 
 
-from .vars import NullScope, Scope
+
 from .common import (
+    InjectionMarker,
     Injectable, 
     T_Injectable,
+    T_Injected,
 )
 
 from . import providers as p
-from .containers import IocContainer, AbcIocContainer
-
+from .containers import InjectorContainer, IocContainer
+from .context import InjectorContext, context_manager
+from .functools import Bootable
 
 logger = logging.getLogger(__name__)
 
 _D = t.TypeVar("_D")
-_T_Scope = t.TypeVar('_T_Scope', bound=Scope)
 
 
-_ioc_local = IocContainer(shared=False)
-_ioc_main = IocContainer(_ioc_local)
+TContextBinding =  Callable[['InjectorContext', t.Optional[Injectable]], Callable[..., T_Injected]]
 
 
 
 
 
-class InjectorContext(t.Protocol[_T_Scope]):
-    
-    def __init__(self, name: str, *, default: _T_Scope = ...) -> None: ...
-    @property
-    def name(self) -> str: ...
-    @t.overload
-    def get(self) -> _T_Scope: ...
-    @t.overload
-    def get(self, default: t.Union[_T_Scope, _D]) -> t.Union[_T_Scope, _D]: ...
-    def set(self, value: _T_Scope) -> Token[_T_Scope]: ...
-    def reset(self, token: Token[_T_Scope]) -> None: ...
-   
-   
+class BindingsDict(dict[Injectable, TContextBinding]):
+
+    __slots__ = 'injector',
+
+    injector: 'Injector'
+
+    def __init__(self, injector: 'Injector'):
+        self.injector = injector
+
+    def __missing__(self, key):
+        inj = self.injector
+        provider = inj.get_provider(key)
+        if not provider is None:
+            return self.setdefault(key, provider.bind(inj, key))
+        
+
+
 
 
 @export
-class Injector(p.RegistrarMixin):
+class Injector(Bootable, p.RegistrarMixin):
     """"""
+
+    # _lock: Lock = None
+    # bootid: int = None
+    # booted: bool = None
+    # _onboot_callbacks: list[t.Union['Bootable', Callable]] = None
+
 
     name: str
     parent: 'Injector'
     children: orderedset['Injector']
-    scopes: dict[Scope, t.Union[Token, None]]
+    
+    _bindings: 'BindingsDict'
+    _live_contexts: dict['InjectorContext', t.Union[Token, None]]
 
-    scope_class: type[Scope] = Scope
-    scope_context_class: type[InjectorContext] = ContextVar
-    _checkouts: t.Final[int] 
+    _injector_context_class: type[InjectorContext] = InjectorContext
 
-    container: IocContainer
-    __truectx: InjectorContext
-    _context: Scope
+    container: InjectorContainer
+    containers: orderedset[IocContainer]
+    _container_class: type[InjectorContainer] = InjectorContainer
 
-    def __init__(self, 
-                name: str,
-                parent: 'Injector',
-                *requires: 'IocContainer', 
-                container: IocContainer=None,
-                children: Sequence['Injector']=None,
-                context: InjectorContext=None,
-                scope_class: type[Scope]=None,
-                context_class: type[InjectorContext] =None):
+    def __init__(self, parent: 'Injector'=None, *, name: str=None):
+        super().__init__()
 
-        self.scopes = dict()
-        self.children = orderedset(children or ())
-        self._checkouts = 0
+        if  name is None:
+            cf = calling_frame()
+            self.name = cf.get('__name__') or cf.get('__package__') or '<anonymous>'
+        else:
+            self.name = name
 
-        self.name = name
+        self.parent = None
 
-        if scope_class is not None:
-            self.scope_class = scope_class
-  
-        if context_class is not None:
-            self.scope_context_class = context_class
         
-        self.container = container or IocContainer(name=self.name)
+        self._live_contexts = dict()
+        self.children = orderedset()
+        # self._checkouts = 0
+        # self.current_context = None 
 
-        self.set_parent(parent)
+        self.container = self._container_class(self)
 
-        requires and self.container.require(*requires)
+        self._bindings = BindingsDict(self)
 
-        if context is not None:
-            self.setup(context)
+        if not parent is None:
+            self.set_parent(parent)
 
-    @property
-    def has_setup(self):
-        return 
 
     @cached_property
-    def containers(self) -> orderedset[IocContainer]:
-        return orderedset(self._create_containers())
-    
-    @cached_property
-    def _registry(self) -> Mapping[T_Injectable, p.Provider]:
+    def _registry(self) -> MultiChainMap[T_Injectable, p.Provider]:
         return self._create_registry()
-    
-    @cached_property
-    def _bindings(self):
-        return self._create_bindings()
 
     @cached_property
     def _linked_deps(self) -> dict[SafeReferenceType[T_Injectable], SafeRefSet[T_Injectable]]:
         return SafeKeyRefDict.using(lambda: fallback_default_dict(SafeRefSet))()
 
-    def set_parent(self, parent: 'Injector'=None):
-        if hasattr(self, 'parent'):
-            raise AttributeError(f'{self.__class__.__name__}.parent already set.')
+    def _boot(self):
+        self._setup_default_providers()
+        self._setup_containers()
 
-        parent and parent.add_child(self)
+    def set_parent(self, parent: 'Injector'):
+        if not self.parent is None:
+            if self.parent is parent:
+                return self
+            raise TypeError(f'{self} already has parent: {self.parent}.')
+
         self.parent = parent
+        parent.add_child(self)
 
-        return self
+        return self    
     
     def add_child(self, child: 'Injector'):
-        if child in self.children or self.children.add(child):
-            return False
-        elif self.has_setup:
-            child.setup(self._context)
-        return True
+        if child in self.children:
+            raise TypeError(f'{self} already has child: {child}.')
 
-    def setup(self, ctx: 'InjectorContext'=None):
-        old = self._context 
-        if old is None:
-            if ctx is not None:
-                pass
-            elif self.parent:
-                return self.parent.setup()
-            else:
-                self.__truectx = self.scope_context_class(self.name, default=NullScope())
-                ctx = self.__truectx.get
-            
-            self._context = ctx
-            for ls in (self.containers, self.children):
-                for c in ls:
-                    c.setup(ctx)
-        elif old is (ctx or old):
-            raise RuntimeError(f'{self!s} already setup')
+        self.children.add(child)
+        return self
 
-        self._checkouts += 1
-        return self._checkouts == 1
-
-    def teardown(self, ctx=None) -> t.NoReturn:
-
-        if self._checkouts == 1:
-            self._checkouts -= 1
-            old = self._context
-            if ctx is None:
-                ctx = old
-            elif old is not ctx:
-                raise RuntimeError(f'invalid teardown context in {self!s}.')
-
-            if old is not None:
-                self._context = None
-                for ls in (self.containers, self.children):
-                    for c in ls:
-                        c.teardown(ctx)
-                return True
-        elif self._checkouts > 1:
-            self._checkouts -= 1
-        elif self._checkouts < 0:
-            raise RuntimeError(f'too many teardowns {self!s}.')
-
-        return False
+    def parents(self):
+        parent = self.parent
+        while not parent is None:
+            yield parent
+            parent = parent.parent
 
     def register_provider(self, provider: p.Provider) -> Self:
         self.container.register_provider(provider)
         return self
 
-    def _create_registry(self):
-        return ChainMap(*(d._registry for d in self.containers))
+    def require(self, *containers) -> Self:
+        self.container.require(*containers)
+        return self
 
-    def _expand_requirements(self, src: IocContainer=None, *, memo_=None):
-        if memo_ is None:
-           memo_ = set()
+    def is_provided(self, obj: Injectable, *, only_self=False, strict=True) -> bool:
+        if not (isinstance(obj, p.Provider) or obj in self._bindings):
+            provider = self.get_provider(obj, strict=strict)
+            if provider is None:
+                if not only_self and self.parent:
+                    return self.parent.is_provided(obj, strict=strict)
+                return False
+        return True
 
-        if src is None:
-            src = self.container
-            yield self, src
-
-        for d in src._requires:
-            if d in memo_ or memo_.add(d):
-                continue
-
-            yield from t.cast(Sequence[tuple[IocContainer, IocContainer]], self._expand_requirements(d, memo_=memo_))
-            yield src, d
-
-    def _create_containers(self):
-        parent = self.parent or ()
-        return orderedset(
-            yv for s, d in self._expand_requirements()
-            if not(d.shared and d in parent) and (yv := d.add_dependant(self))
-        )
-    
-    def is_provided(self, 
-                    obj: Injectable,
-                    *, 
-                    start: IocContainer=..., 
-                    stop: IocContainer=..., 
-                    depth: int=sys.maxsize):
-        return self.find_provider(obj, start=start, stop=stop, depth=depth) is not None
-
-    def find_provider(self, 
-                    key: Injectable, 
-                    *,
-                    start: IocContainer=..., 
-                    stop: IocContainer=..., 
-                    depth: int=sys.maxsize) -> t.Union[p.Provider, None]:
-
-        this = self
-
-        if start and start is not ...:
-            if start not in this:
-                return None
-
-            while not (start is this or start in this._requires):
-                if this.parent is None:
-                    return None
-                this = this.parent 
+    def _get_provider(self, obj: Injectable, default=None, *, all=False, strict=True):
+        rv = self._registry.get(obj)
+        if rv is None:
+            if isinstance(obj, p.Provider):
+                rv = obj
+            elif isinstance(obj, InjectionMarker):
+                rv = self._registry.get(obj.__dependency__)
+            else:
+                origin = get_origin(obj)
+                if origin is None:
+                    return default
+                rv = self._registry.get(origin)
+            if rv is None:
+                return default
         
-        if res := this[key]:
-            return res
-        elif res := this[get_origin(key)]:
-            if res.can_provide(this, key):
-                return res
+        if strict is False or rv.can_bind(self, obj):
+            return rv
+
+        return default
+
+    def get_provider(self, obj: Injectable, default=None, *, strict=True):
         
-        if not(depth > 0 and this.parent):
-            return None
-        elif stop and stop is not ...:
-            if stop is this or stop in this._requires:
-                return None
-        return this.parent.find_provider(key, stop=stop, depth=depth-1)
+        key = obj
+        if isinstance(obj, InjectionMarker):
+            key = obj.__dependency__
 
-    # def register_handler(self, dep: Injectable, handler: p.Handler, deps: Sequence[Injectable]=None):
-    #     if deps is None:
-    #         deps = getattr(handler, 'deps', None) 
+        if isinstance(key, p.Provider):
+            if strict is False or key.can_bind(self, obj):
+                return key
+            return default
+       
+        plist = self._registry.get_all(obj)
+        if plist is None:
+            origin = get_origin(obj)
+            if origin is None:
+                return default
 
-    #     if deps:
-    #         graph = self._linked_deps
-    #         for src in deps:
-    #             graph[src].add(dep)
-    #     return handler
+            plist = self._registry.get_all(origin)
+            if plist is None:
+                return default
 
-    def make(self, parent: Scope=None) -> Scope:
+        stack = [v for v in reversed(plist) if strict is False or v.can_bind(self, obj)]
+        stack = [v for v in stack if not v.is_default] or stack
+
+        if stack:
+            top, *extra = stack
+            if extra:
+                top = top.substitute(*extra)
+            return top            
+
+        return default
+
+    def iter_providers(self, obj: Injectable, default=None, *, strict=True):
+        key = obj
+        plist = self._registry.get_all(key)
+        if not plist:
+            if isinstance(obj, InjectionMarker):
+                key = self._registry.get(obj.__dependency__)
+            
+            logger.debug(f'{self}.iter_providers({obj}): {self._registry.count(key)}')
+
+            if pp := next(it, None):
+                for p in it:
+                    yield p
+
+        # if rv is None:
+        #     if isinstance(obj, p.Provider):
+        #         rv = obj
+        #     elif isinstance(obj, DependencyMarker):
+        #         rv = self._registry.get(obj.__injection_marker__)
+        #     else:
+        #         origin = get_origin(obj)
+        #         if origin is None:
+        #             return default
+        #         rv = self._registry.get(origin)
+        #     if rv is None:
+        #         return default
+        
+        # if strict is False or rv.can_bind(self, obj):
+        #     return rv
+
+        # return default
+
+    def make(self, parent: InjectorContext=None) -> InjectorContext:
         prt = self.parent
         if (parent and parent.injector) != prt:
             if prt and (not parent or parent.injector in prt):
@@ -274,90 +259,74 @@ class Injector(p.RegistrarMixin):
                     f'Error creating Injector. Invalid parent injector {parent=} '
                     f'from {parent.injector=}. Expected {prt!r}.'
                 )
-        rv = self.scope_class(self, parent)
+
+        self.boot()
+        rv = self._injector_context_class(self, parent)
         return rv
 
-    def dispatch_scope(self, scope: Scope, *stack: Scope):
-        
-        if scope in self.scopes:
-            raise RuntimeError(f'Scope {scope} already dispated')
+    def _push(self, ctx: InjectorContext, head: InjectorContext=None):
+        if ctx in self._live_contexts:
+            raise RuntimeError(f'{ctx} already pushed.')
 
-        self.scopes[scope] = None if stack else self._push_scope(scope)
-        self.setup_scope(scope)
+        if head is None:
+            self._live_contexts[ctx] = context_manager.set(ctx)
+        else:
+            self._live_contexts[ctx] = None
 
-    def _push_scope(self, scope: Scope):
-        while self.parent:
-            self = self.parent
-        return self.__truectx.set(scope)
-
-    def _pop_scope(self, token: Token):
-        while self.parent:
-            self = self.parent
-        return self.__truectx.reset(token)
-
-    def dispose_scope(self, scope: Scope, child: Scope=None):
-        self.teardown_scope(scope)
-        token = self.scopes.pop(scope)
+    def _pop(self, ctx: InjectorContext):
+        token = self._live_contexts.pop(ctx)
         if token is not None:
-            self._pop_scope(token)
-
-    def setup_scope(self, scope: Scope):
-        scope.bindings = self._bindings
-
-    def teardown_scope(self, scope: Scope):
-        scope.bindings = None
-
-    def add_dependant(self, scope: 'Injector'):
-        if not isinstance(scope, Injector):
-            raise TypeError(
-                f'{scope.__class__.__qualname__} cannot be a '
-                f'{self.__class__.__name__} dependant.'
-            )
-        if scope._context not in (self._context, None):
-            raise ValueError(
-                f'InjectorContext conflict in {self} '
-                f'{self._context=} and {scope._context}'
-            )
-
-        self.dependants.add(scope)
-
+            context_manager.reset(token)
 
     def flush(self, key: Injectable, source=None, *, skip_: orderedset=None):
-        sk = self, key
+        # sk = self, key
 
-        if skip_ is None: 
-            skip_ = orderedset()
-        elif sk in skip_:
-            return
+        # if skip_ is None: 
+        #     skip_ = orderedset()
+        # elif sk in skip_:
+        #     return
 
-        skip_.add(sk)
+        # skip_.add(sk)
         
-        for scope in self.scopes:
-            del scope.vars[key]
+        # for scope in self._live_contexts:
+        #     del scope.vars[key]
         
-        if linked := self._linked_deps.pop(key, None):
-            for dep in linked:
-                self.flush(dep, skip_=skip_)
+        # if linked := self._linked_deps.pop(key, None):
+        #     for dep in linked:
+        #         self.flush(dep, skip_=skip_)
 
-        self._bindings.pop(key, None)
+        # self._bindings.pop(key, None)
                     
         for d in self.children: 
             d.flush(key, source or self, _skip=skip_)
 
-    def __contains__(self, x):
-        if isinstance(x, IocContainer):
-            return x in self._requires \
-                or any(x in d for d in self._requires) \
-                or x.shared and x in (self.parent or ())
-        elif isinstance(x, Injector):
-            return x is self \
-                or x in (self.parent or ())
-        else:
-            return x in self._registry\
-                or x in (self.parent or ())
+    def _create_registry(self):
+        return MultiChainMap(*(d._registry for d in reversed(self.containers)))
     
-    def __del__(self):
-        self.teardown()
+    def _setup_containers(self):
+        self.containers = orderedset(self.container.bind())
+
+    def _setup_default_providers(self):
+        self.register_provider(p.UnionProvider())
+        self.register_provider(p.AnnotatedProvider())
+        self.register_provider(p.InjectProvider())
+   
+    # def __contains__(self, x):
+    #     if self.booted is True:
+    #         if isinstance(x, IocContainer):
+    #             return x in self.containers \
+    #                 or x.is_singleton and x in (self.parent or ())
+    #         elif isinstance(x, Injector):
+    #             return x is self
+    #         # else:
+    #         #     return x in self._registry\
+    #         #         or x in (self.parent or ())
+    #     elif isinstance(x, IocContainer):
+    #         return x in self._requires \
+    #             or any(x in d for d in self._requires) \
+    #             or x.is_singleton and x in (self.parent or ())
+    #     else:
+    #         return x == self
        
     def __str__(self) -> str:
         parent = self.parent
@@ -365,81 +334,7 @@ class Injector(p.RegistrarMixin):
 
     def __repr__(self) -> str:
         parent = self.parent
-        containers = [*self.containers]
+        containers = [*getattr(self, 'containers', ())]
         return f'{self.__class__.__name__}({self.name!r}, {containers=!r}, {parent=!r})'
 
-    def _create_bindings(self):
-       
-        get_provider = self._registry.get
-
-        def fallback(key):
-            if pro := get_provider(key):
-                return setdefault(key, pro.bind(self, key))
-            elif origin := get_origin(key):
-                if pro := get_provider(origin):
-                    return setdefault(key, pro.bind(self, key))
-
-        res = fallbackdict(fallback)
-        setdefault = res.setdefault
-        return res
-
-    # def _register_handler(self, dep: Injectable, handler, deps: Sequence[Injectable]=None):
-    #     if deps is None:
-    #         deps = getattr(handler, 'deps', None) 
-
-    #     if deps:
-    #         graph = self._linked_deps
-    #         for src in deps:
-    #             graph[src].add(dep)
-    #     return handler
-
-
-
-
-@export
-class MainInjector(Injector):
-    
-    _context = None
-    _default_requires = _ioc_main,
-
-    def __init__(self, 
-                *requires: 'IocContainer', 
-                name: str='main',
-                context: InjectorContext=None,
-                scope_class: type[Scope]=None,
-                context_class: type[InjectorContext] =None):
-        super().__init__(
-                name, None, 
-                *requires, 
-                context=context,
-                scope_class=scope_class, 
-                context_class=context_class,
-            )
-    
-    def dispatch_scope(self, scope: Scope, *stack: Scope):
-        self.setup()
-        super().dispatch_scope(scope, *stack)
-
-    def dispose_scope(self, scope: Scope, *stack: Scope):
-        super().dispose_scope(scope, *stack)
-        self.teardown()
-
-
-
-@export
-class LocalInjector(Injector):
-    
-    _context = None
-    _default_requires = _ioc_local,
-    
-    def __init__(self, 
-                parent: 'Injector',
-                *requires: 'IocContainer', 
-                name: str='local',
-                scope_class: type[Scope]=None):
-
-        super().__init__(
-                name, parent, 
-                *requires, 
-                scope_class=scope_class
-            )
+   

@@ -1,25 +1,27 @@
+from abc import ABCMeta, abstractmethod
 from functools import wraps
+from logging import getLogger
+from time import monotonic_ns
 
 import typing as t
-from threading import Lock
-from inspect import Signature, Parameter, signature as get_sig
+from threading import Lock, RLock
+from inspect import Signature, Parameter
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Hashable
 
-from laza.common.collections import Arguments
-from laza.common.functools import export, Missing
-from laza.common.typing import Self
+from laza.common.collections import Arguments, orderedset
+from laza.common.functools import export, Missing, uniqueid
+from laza.common.typing import Self, typed_signature
 
 
-from .vars import Scope
-
-from .common import Dep, T_Injectable, T_Injected, Depends, isinjectable
+from .common import InjectionMarker, Injectable, T_Injectable, T_Injected
 
 if t.TYPE_CHECKING:
     from .providers import Provider
-    from .injectors import Injector
+    from .injectors import Injector, InjectorContext
 
 
+logger = getLogger(__name__)
 
 _POSITIONAL_ONLY = Parameter.POSITIONAL_ONLY
 _VAR_POSITIONAL = Parameter.VAR_POSITIONAL
@@ -31,9 +33,8 @@ _KEYWORD_KINDS = frozenset([Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_O
 
 _EMPTY = Parameter.empty
 
+_T = t.TypeVar('_T')
 
-def is_dependency_marker(v):
-    return isinstance(v, Depends)
 
 
 
@@ -52,20 +53,20 @@ def singleton_decorator(func):
 
 
 
-class ParamResolver:
+class ParamResolver(t.Generic[_T]):
 
     __slots__ = (
-        'annotation', 'value', 'dependency', 'default', 'has_value', '_default_value',
+        'annotation', 'value', 'dependency', 'default', 'has_value', 'has_default',
     )
     annotation: t.Any
-    value: t.Any
+    value: _T
     default: t.Any
-    dependency: t.Any
+    dependency: Injectable
 
     def __new__(cls: type[Self], value: t.Any=_EMPTY, default=_EMPTY, annotation=_EMPTY) -> Self:
-        if isinstance(value, Dep):
+        if isinstance(value, InjectionMarker):
             dependency = value
-        elif isinstance(default, Dep):
+        elif isinstance(default, InjectionMarker):
             dependency = default
         else:
             dependency = annotation
@@ -76,47 +77,28 @@ class ParamResolver:
         self.value = value
         self.default = default
         
-        self.has_value = not(value is _EMPTY or isinstance(value, Dep))
+        self.has_value = not (value is _EMPTY or isinstance(value, InjectionMarker))
+        self.has_default = not (default is _EMPTY or isinstance(default, InjectionMarker))
 
         return self
     
-    @property
-    def has_default(self) -> bool:
-        return not self.default_value is _EMPTY
-      
-    @property
-    def default_value(self):
-        try:
-            return self._default_value
-        except AttributeError:
-            val = self.value
-            if isinstance(val, Dep) and not val.__default__ is _EMPTY:
-                self._default_value = val.__default__
-            else:
-                val = self.default
-                if isinstance(val, Dep):
-                    self._default_value = val.__default__
-                else:
-                    self._default_value = val
-            return self._default_value
-
     def bind(self, injector: 'Injector'):
         if not self.has_value:
-            if not self.dependency is _EMPTY:
-                if self.dependency in injector:
-                    return self.dependency
-                elif isinstance(self.dependency, Dep) and not (self.has_value or self.has_default):
-                    raise TypeError(f'unresolvable dependency `{self.dependency}` in {self}.')
+            dep = self.dependency
+            if not dep is _EMPTY and injector.is_provided(dep):
+                return dep
+            elif not self.has_default:
+                raise TypeError(f'unresolvable dependency `{self.dependency}` in {self}.')
         
-    def resolve(self, ctx: 'Scope'):
+    def resolve(self, ctx: 'InjectorContext'):
         if self.has_value:
             return self.value, _EMPTY, _EMPTY
         elif self.dependency is _EMPTY:
-            return _EMPTY, _EMPTY, self.default_value
-        elif self.default_value is _EMPTY:
-            return _EMPTY, ctx[self.dependency], _EMPTY
+            return _EMPTY, _EMPTY, self.default if self.has_default else _EMPTY
+        elif self.has_default:
+            return _EMPTY, ctx.get(self.dependency, _EMPTY), self.default
         else:
-            return _EMPTY, ctx.get(self.dependency, _EMPTY), self.default_value
+            return _EMPTY, ctx[self.dependency], _EMPTY
    
     def __repr__(self) -> str:
         value, annotation, default  = ('...' if x is _EMPTY else x for x in (self.value, self.annotation, self.default))
@@ -146,13 +128,13 @@ class FactoryResolver:
                 decorators: Iterable[Callable[[Callable], Callable]]=(),
                 signature: Signature=None):
         self.factory = factory
-        self.signature = signature or get_sig(factory)
+        self.signature = signature or typed_signature(factory)
         self.decorators = list(decorators or ())
         self.arguments = self.parse_arguments(arguments)
     
-    def __call__(self,  injector: 'Injector'=None, provided: T_Injectable=None) -> Callable:
+    def __call__(self,  injector: 'Injector'=None, provides: T_Injectable=None) -> Callable:
         _args, _kwds, _vals, deps = self.evaluate(injector)
-        return self.make_resolver(self.factory, _args, _kwds, _vals), deps
+        return self.make_resolver(provides, self.factory, _args, _kwds, _vals), deps
 
     def parse_arguments(self, arguments: Arguments=None):
         if arguments:
@@ -205,14 +187,14 @@ class FactoryResolver:
 
         return args, kwds, vals, deps
     
-    def iresolve_args(self, args: Iterable[ParamResolver], ctx: 'Scope'):
+    def iresolve_args(self, args: Iterable[ParamResolver], ctx: 'InjectorContext'):
         for r in args:
             v, f, d = r.resolve(ctx)
             if _EMPTY is v is d is f:
                 break
             yield v, f, d
 
-    def iresolve_kwds(self, kwds: Iterable[tuple[str, ParamResolver]], ctx: 'Scope'):
+    def iresolve_kwds(self, kwds: Iterable[tuple[str, ParamResolver]], ctx: 'InjectorContext'):
         for n, r in kwds:
             v, f, d = r.resolve(ctx)
             if f is _EMPTY:
@@ -247,39 +229,39 @@ class FactoryResolver:
             
         return vals
 
-    def make_resolver(self, func, _args, _kwds, _vals):
+    def make_resolver(self, provides, func, _args, _kwds, _vals):
         if not self.signature.parameters:
-            return self.make_plain_resolver(func)
+            return self.make_plain_resolver(provides, func)
         elif not _args:
-            return self.make_kwds_resolver(func, _kwds, _vals)
+            return self.make_kwds_resolver(provides, func, _kwds, _vals)
         elif not _kwds:
-            return self.make_args_resolver(func, _args, _vals)
+            return self.make_args_resolver(provides, func, _args, _vals)
         else:
-            return self.make_args_kwds_resolver(func, _args, _kwds, _vals)
+            return self.make_args_kwds_resolver(provides, func, _args, _kwds, _vals)
     
-    def make_plain_resolver(self, func):
-        def resolve(ctx: "Scope", token):
+    def make_plain_resolver(self, provides, func):
+        def resolve(ctx: "InjectorContext", dep=provides):
                 nonlocal func
                 return self._decorate(self.plain_wrap_func(func))
         return resolve
           
-    def make_args_resolver(self, func, _args, vals):
-        def resolve(ctx: "Scope", token):
+    def make_args_resolver(self, provides, func, _args, vals):
+        def resolve(ctx: "InjectorContext", dep=provides):
                 nonlocal _args, vals, self
                 args = [*self.iresolve_args(_args, ctx)]
                 return self._decorate(self.arg_wrap_func(func, args, vals))
         return resolve
                  
-    def make_kwds_resolver(self, func, _kwds, vals):
-        def resolve(ctx: "Scope", token):
+    def make_kwds_resolver(self, provides, func, _kwds, vals):
+        def resolve(ctx: "InjectorContext", dep=provides):
                 nonlocal vals, _kwds, self
                 kwds = [*self.iresolve_kwds(_kwds, ctx)]
                 return self._decorate(self.kwd_wrap_func(func, kwds, vals))
 
         return resolve
 
-    def make_args_kwds_resolver(self, func, _args, _kwds, vals):
-        def resolve(ctx: "Scope", token):
+    def make_args_kwds_resolver(self, provides, func, _args, _kwds, vals):
+        def resolve(ctx: "InjectorContext", dep=provides):
                 nonlocal _args, vals, _kwds, self
                 args = [*self.iresolve_args(_args, ctx)]
                 kwds = [*self.iresolve_kwds(_kwds, ctx)]
@@ -336,3 +318,73 @@ class PartialFactoryResolver(FactoryResolver):
             return lambda *a, **kw: func(*self._iargs(args), *a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
         else:
             return lambda *a, **kw: func(*self._iargs(args), *a, **kw, **self._ikwds(kwds, skip=kw))
+
+
+
+_T_Bid = t.TypeVar('_T_Bid', int, float)
+
+
+class Bootable(metaclass=ABCMeta):
+    """base class for Bootable objects.
+    """
+
+    __slots__ = ()
+
+    _lock: Lock 
+    bootid: int 
+    is_booted: bool
+    _onboot_callbacks: dict[t.Any, Callable[[Self], t.NoReturn]]
+
+    def __init__(self) -> None:
+        object.__setattr__(self, '_lock', Lock())
+        object.__setattr__(self, 'bootid', None)
+        object.__setattr__(self, 'is_booted', False)
+        object.__setattr__(self, '_onboot_callbacks', dict())
+
+    def boot(self) -> Self:
+        if self.is_booted is False and self._can_boot():
+            with self._lock:
+                if self.is_booted is False and self._can_boot():
+                    logger.debug(f'BOOTING:{self}')
+                    self._boot(), self._onboot()
+                    logger.debug(f'BOOTED:{self}')
+        return self
+
+    def _boot(self):
+        ...
+
+    def _onboot(self):
+        if self.is_booted is True:
+            raise RuntimeError(f'{self} already bootstrapped.')
+        object.__setattr__(self, 'bootid', self._generate_next_bootid())
+        self._flush_onboot_callbacks()
+        object.__delattr__(self, '_onboot_callbacks')
+        object.__setattr__(self, 'is_booted', True)
+
+    @t.overload
+    def on_boot(self, callback: Callable[[Self], t.NoReturn]) -> Self: ...
+    @t.overload
+    def on_boot(self, key: Hashable, callback: Callable[[Self], t.NoReturn]) -> Self: ...
+    def on_boot(self, key: Hashable, callback: Callable[[Self], t.Any]=None) -> Self:
+        if callback is None: 
+            callback = key
+
+        if self.is_booted is False:
+            self._onboot_callbacks[key] = callback
+        else:
+            callback(self)
+                
+        return self
+
+    def _can_boot(self) -> bool:
+        return True
+
+    def _flush_onboot_callbacks(self) -> Self:
+        if not self.is_booted:
+            while self._onboot_callbacks:
+                self._onboot_callbacks.popitem()[1](self)
+            
+    @classmethod
+    def _generate_next_bootid(cls):
+        return uniqueid[cls]()
+

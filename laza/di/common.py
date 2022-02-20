@@ -1,5 +1,4 @@
 from abc import abstractmethod, ABCMeta
-from inspect import Parameter
 from logging import getLogger
 from threading import Lock
 import sys
@@ -10,6 +9,7 @@ from threading import Lock
 from collections import Counter
 
 from collections.abc import Mapping
+from typing_extensions import Self
 from laza.common import text
 from laza.common.collections import Arguments, frozendict
 from laza.common.imports import ImportRef
@@ -34,7 +34,9 @@ from .typing import get_all_type_hints, get_origin
 
 
 if t.TYPE_CHECKING:
-    from . import Provider, Injector, IocContainer
+    from .providers import Provider
+    from .injectors import Injector
+    from .containers import IocContainer
     ProviderType = type[Provider]
 
 
@@ -49,7 +51,6 @@ export('T_Injected', 'T_Injectable', 'T_Default')
 logger = getLogger(__name__)
 
 
-
 @export()
 def isinjectable(obj):
     return isinstance(obj, Injectable)
@@ -59,15 +60,16 @@ def isinjectable(obj):
 
 
 
-__uid_map = Counter()
-__uid_lock = Lock()
+# __uid_map = Counter()
+# __uid_lock = Lock()
 
-@export()
-def unique_id(ns=None):
-    global __uid_map, __uid_lock
-    with __uid_lock:
-        __uid_map[ns] += 1
-        return __uid_map[ns]
+# @export()
+# def unique_id(ns=None, fmt: str=None):
+#     global __uid_map, __uid_lock
+#     with __uid_lock:
+#         __uid_map[ns] += 1
+#         id = __uid_map[ns]
+#         return fmt.format(id) if fmt else id 
 
 
 
@@ -417,60 +419,128 @@ class Depends:
 
 
 
+    
 
 @export()
 @Injectable.register
-class Dep(t.Generic[T_Injectable]):
+class InjectionMarker(t.Generic[T_Injectable], metaclass=ABCMeta):
 
-    """A `Dependency` dependency marker.
-    """
-    __slots__ = '__dependency__', '__scope__', '__default__', '_hash', '__weakref__',
+    __slots__ = '__injects__',  '__metadata__', '_hash',
 
-    __dependency__: T_Injectable
-    __scope__: t.Union['IocContainer', 'Injector']
-    __default__: t.Any
+    __injects__: T_Injectable
+    __metadata__: frozendict
 
-    def __new__(cls, 
-                dependency: Injectable, *,
-                default=Parameter.empty,
-                scope: t.Union['IocContainer', 'Injector']=None):
+    @property 
+    @abstractmethod
+    def __dependency__(self) -> T_Injectable: 
+        ...
+
+    def __new__(cls: type[Self], inject: T_Injectable, metadata: dict=(), /):
+        if not isinjectable(inject):
+            raise TypeError(
+                f'`dependency` must be an Injectable not '
+                f'`{inject.__class__.__name__}`'
+            )
+
         self = object.__new__(cls)
-        self.__dependency__ = dependency
-        self.__default__ = default
-        self.__scope__ = scope
+        self.__injects__ = inject
+        self.__metadata__ = frozendict(metadata)
         return self
+    
+    _create = classmethod(__new__)
+    
+    def _clone(self, metadata: dict=(), /, **extra_metadata):
+        metadata = frozendict(metadata or self.__metadata__, **extra_metadata)
+        return self._create(self.__injects__, metadata)
+    
+    def __getitem__(self: Self, type_: type[T_Injected]):
+        """Annotate given type with this marker.
         
-    @property
-    def __origin__(self):
-        return self.__class__
+        Calling `marker[T]` is the same as `Annotated[type_, marker]`
+        """
+        if type_.__class__ is tuple:
+            type_ = t.Annotated[type_] # type: ignore
+        
+        return t.Annotated[type_, self] 
 
-    def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__name__}")
-
+    def __reduce__(self):
+        return self._create, (self.__injects__, self.__metadata__)
+    
     def __eq__(self, x) -> bool:
-        if isinstance(x, self.__class__):
-            return self.__dependency__ == x.__dependency__ \
-                and self.__scope__ == x.__scope__\
-                and self.__default__ == x.__default__
-        elif self.__scope__ is None and self.__default__ is Parameter.empty:
-            return self.__dependency__ == x
-
+        if not isinstance(x, self.__class__):
+            return not self.__metadata__ and x == self.__injects__
+        return self.__injects__ == x.__injects__\
+            and self.__metadata__ == x.__metadata__
+        
     def __hash__(self):
         try:
             return self._hash
         except AttributeError:
-            if self.__scope__ is None and self.__default__ is Parameter.empty:
-                self._hash = hash(self.__dependency__)
+            if self.__metadata__:
+                self._hash = hash((self.__injects__, self.__metadata__))
             else:
-                self._hash = hash((self.__dependency__, self.__scope__, self.__default__))
+                self._hash = hash(self.__injects__)
             return self._hash
-     
+           
+    def __setattr__(self, name: str, value) -> None:
+        if hasattr(self, '_hash'):
+            getattr(self, name)
+            raise AttributeError(f'cannot set readonly attribute {name!r}')
+
+        return super().__setattr__(name, value)    
+
+
+
+
+_T_Dot = t.Literal['.', '..', '...', '....']
+
+
+@export()
+class Inject(InjectionMarker[T_Injectable]):
+
+    """Marks an injectable as a `dependency` to be injected.
+    """
+    __slots__ = ()
+
+    def __new__(cls, 
+                inject: T_Injectable, *,
+                scope: t.Union['Injector', _T_Dot]=Missing,
+                default=Missing):
+        metadata = {}
+        scope is Missing or metadata.update(scope=scope)
+        default is Missing or metadata.update(default=default)
+        return super().__new__(cls, inject, metadata)
+
+    @property
+    def __dependency__(self):
+        return self.__class__ if self.__metadata__ else self.__injects__
+
+    @property
+    def __default__(self):
+        return self.__metadata__.get('default')
+
+    @property
+    def __scope__(self):
+        return self.__metadata__.get('scope')
+
+    @property
+    def is_optional(self):
+        return 'default' in self.__metadata__
+
+    def optional(self, default=None):
+        return self._clone(default=default)
+
+    def scope(self, scope=None):
+        return self._clone(scope=scope)
+
+    def __init_subclass__(cls, *args, **kwargs):
+        raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__name__}")
+
     def __repr__(self) -> bool:
-        dependency = self.__dependency__
-        scope = self.__scope__ or '...'
-        default = '...' if self.__default__ is Parameter.empty else self.__default__
+        dependency = self.__injects__
+        scope = self.__scope__ # or ... #'...'
+        default = self.__default__ # '...' if self.__default__ is Parameter.empty else self.__default__
         return f'{self.__class__.__name__}({dependency=}, {default=}, {scope=})'
-    
 
 
 

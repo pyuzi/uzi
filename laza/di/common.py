@@ -36,7 +36,7 @@ from .typing import get_all_type_hints, get_origin
 if t.TYPE_CHECKING:
     from .providers import Provider
     from .injectors import Injector
-    from .containers import IocContainer
+    from .containers import Container
     ProviderType = type[Provider]
 
 
@@ -549,7 +549,7 @@ class InjectedProperty(t.Generic[T_Injected]):
     
     __slots__ = 'depends', 'ioc', '__name__', 'default', '__weakref__'
 
-    _ioc: 'IocContainer'
+    _ioc: 'Container'
     default: T_Default
     depends: Depends
     __name__: str
@@ -561,7 +561,7 @@ class InjectedProperty(t.Generic[T_Injected]):
                 args: tuple=(),
                 kwargs: Mapping=frozendict(),
                 arguments: Arguments=...,
-                ioc: t.Union['IocContainer', None]=None) -> T_Injected:
+                ioc: t.Union['Container', None]=None) -> T_Injected:
 
         self.default = default
         self.ioc = unproxy(ioc)

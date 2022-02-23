@@ -8,19 +8,28 @@ from statistics import median, median_high, mean
 
 
 from laza.di.injectors import Injector
-from laza.di.containers import IocContainer
+from laza.di.containers import Container
+
+
+
+class TestContainer(Container):
+    ...
+
 
 
 @pytest.fixture()
-def ioc():
-    return IocContainer()
+def container():
+    return TestContainer()
 
 
+
+class TestInjector(Injector):
+    ...
 
 
 @pytest.fixture()
 def injector():
-    return Injector()
+    return TestInjector()
 
 
 

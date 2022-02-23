@@ -5,7 +5,7 @@ import pytest
 
 
 
-from laza.di.containers import IocContainer
+from laza.di.containers import Container
 from laza.di.injectors import Injector
 from laza.common.functools import uniqueid
 
@@ -28,7 +28,7 @@ _Tx = t.TypeVar('_Tx')
 
 class ContainerTestCase:
 
-    cls: t.ClassVar[type[IocContainer]] = IocContainer
+    cls: t.ClassVar[type[Container]] = Container
 
     @pytest.fixture
     def make(self):
@@ -40,7 +40,7 @@ class ContainerTestCase:
         #     injector.value(t_, f'{uniqueid[t_]()}.00-injector-{injector.name}')
         return injector
 
-    def test_multi_providers(self, make: type[IocContainer], injector: Injector):
+    def test_multi_providers(self, make: type[Container], injector: Injector):
         container = make()
         for _ in range(1,4):
             container = make(name=f'container[{_}]')

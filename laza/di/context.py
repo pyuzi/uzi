@@ -1,111 +1,146 @@
+from functools import wraps
+import logging
+import typing as t
 from abc import ABCMeta, abstractmethod
 from collections import deque
+from collections.abc import Callable
 from contextvars import ContextVar, Token
 from threading import Lock
-import typing as t 
-import logging
-from collections.abc import Callable
+from typing_extensions import Self
 
+from laza.common.collections import orderedset, frozendict
+from laza.common.functools import calling_frame, export
 
-
-from laza.common.functools import export, calling_frame
-from laza.common.collections import orderedset
-
-
-
-from .common import (
-    Injectable, 
-    T_Injectable,
-    T_Injected,
-)
-
+from .common import Injectable, T_Injectable, T_Injected
 
 if t.TYPE_CHECKING:
-    from .injectors import Injector
+    from .injectors import Injector, BindingsDict
+    from .providers import Provider
 
 
 logger = logging.getLogger(__name__)
 
 
 
-TContextBinding =  Callable[['InjectorContext', t.Optional[Injectable]], Callable[..., T_Injected]]
+TContextBinding = Callable[
+    ["InjectorContext", t.Optional[Injectable]], Callable[..., T_Injected]
+]
 
 
 
-def current_context(default):
-    pass
 
+def context_partial(provider: Injectable):
 
-
-class BindingsDict(dict[Injectable, TContextBinding]):
-
-    __slots__ = 'injector',
-
-    injector: 'Injector'
-
-    def __init__(self, injector: 'Injector'):
-        self.injector = injector
-
-    def __missing__(self, key):
-        inj = self.injector
-        provider = inj.get_provider(key)
-        if not provider is None:
-            return self.setdefault(key, provider.bind(inj, key))
+    def wrapper(*a, **kw):
+        nonlocal provider
+        return  __ctxvar.get()[provider](*a, **kw)
         
+    return wrapper
+    
 
 
+def _InjectorContext__set(context: 'InjectorContext'):
+    return __ctxvar.set(context)
+
+
+def _InjectorContext__reset(token):
+    __ctxvar.reset(token)
+
+
+
+def _InjectorContext__get() -> 'InjectorContext':
+    return __ctxvar.get()
+
+
+def _current_context() -> 'InjectorContext':
+    return __ctxvar.get()
+
+
+def run_forever(injector: 'Injector'):
+    injector.create_context(__ctxvar.get()).__enter__()
+  
+
+def run(injector: 'Injector', func, /, *args, **kwargs):
+    with InjectorContext(injector, __ctxvar.get()) as ctx:
+        return ctx[func](*args, **kwargs)
+  
 
 @export()
 class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 
     __slots__ = (
-        "injector",
-        "parent",
-        "_bindings",
-        "_dispatched",
-        "__weakref__",
+        '__injector',
+        '__parent',
+        '__token',
+        '__bindings',
+        '__depth',
     )
 
-    injector: "Injector"
-    parent: "InjectorContext"
-    _bindings: BindingsDict[T_Injected]
-    # manager: 'ContextManager'
+    __token: Token
+    __injector: "Injector"
+    __parent: Self
+    __bindings: "BindingsDict"
+    __depth: int
 
-    def __init__(self, injector: "Injector", parent: "InjectorContext" = None) -> None:
-        self.injector = injector
-        self.parent = NullInjectorContext() if parent is None else parent
-        # self.bindings = None
-        self._dispatched = 0
-        self[injector] = lambda: self
+    def __init__(self, injector: "Injector", parent: "InjectorContext"):
+        self.__injector = injector
+        self.__parent = parent
+        self.__depth = 0
 
     @property
     def name(self) -> str:
-        return self.injector.name
+        return self.__injector.name
 
-    def _dispatch(self, head: 'InjectorContext'=None):
-        self._dispatched += 1
-        if self._dispatched == 1:
-            self.parent._dispatch(head or self)
-            self.injector._push(self, head)
+    @property
+    def injector(self):
+        return self.__injector
 
-            self._bindings = self.injector._bindings
-            return True 
-        elif head is None:
-            raise RuntimeError(f'{self} already dispatched.')
-        return False
+    def __enter__(self, top: Self=None):
+        if self.__depth == 0:
+            self.__depth += 1
 
-    def _dispose(self, head: 'InjectorContext'=None):
-        self._dispatched -= 1
-        if self._dispatched == 0:
-            self.parent._dispose(head or self)
-            self.injector._pop(self)
-            del self._bindings
-            return True
-        elif self._dispatched < 0:
+            # parent: Self
+            # pinjector: 'Injector'
+            # injector: 'Injector' = self.__injector
+            # if pinjector := injector.parent:
+            #     parent = __get() # type: ignore
+            #     if not parent.injector is pinjector:
+            #         pass
+            #     parent: Self = token.old_value 
+            #     if parent.injector is injector:
+            #         self = parent
+            #     elif pinjector := injector.parent:
+            #             if not pinjector is parent.injector:
+            #                 parent = self.__class__(pinjector)
+
+            #                 p = pinjector.create_context(parent)
+
+                
+            token = __set(self) if top is None else None # type: ignore
+            
+            self.__token = token
+            self.__parent.__enter__(top or self)
+            self.__bindings = self.__injector._bindings
+        elif top is None:
+            raise RuntimeError(f"{self} already dispatched.")
+        else:
+            self.__depth += 1
+        return self
+
+    def __exit__(self, *err):
+        if self.__depth == 1:
+            self.__depth -= 1
+            self.__token = self.__token and __reset(self.__token) # type: ignore
+            self.__bindings = dict.clear(self)
+            self.__parent.__exit__(err)
+        elif self.__depth < 0:
             raise RuntimeError(f"{self} already disposed.")
-        elif head is None:
-            raise RuntimeError(f"{self} has {self._dispatched} pending nested dispatches.")
-        return False
+        elif top is None:
+            raise RuntimeError(
+                f"{self} has {self.__depth} pending nested dispatches."
+            )
+        else:
+            self.__depth -= 1
 
     def get(self, key, default=None):
         rv = self[key]
@@ -114,159 +149,63 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         return rv
 
     def __missing__(self, key):
-        res = self._bindings[key]
+        res = self.__bindings[key]
         if res is None:
-            return self.setdefault(key, self.parent[key])
-        return self.setdefault(key, res(self, key))
+            return dict.setdefault(self, key, self.__parent[key])
+        return dict.setdefault(self, key, res(self, key))
 
     def __contains__(self, x) -> bool:
-        return super().__contains__(x) or x in (self.parent or ())
+        return dict.__contains__(self, x) or x in self.__parent
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.name!r})"
 
     def __repr__(self) -> str:
-        return f"<{self!s}, {self.parent!r}>"
+        return f"<{self!s}, {self.__parent!r}>"
 
-    def __enter__(self: "InjectorContext") -> "InjectorContext":
-        self._dispatch()
-        return self
+    # def __enter__(self: "InjectorContext") -> "InjectorContext":
+    #     return self.__enter__()
 
-    def __exit__(self, *exc):
-        self._dispose()
+    # def __exit__(self, *exc):
+    #     self.__exit__()
 
     def __eq__(self, x):
         return x is self
-    
+
     def __ne__(self, x):
         return not self.__eq__(x)
-    
+
     def __hash__(self):
         return id(self)
     
+    def not_mutable(self, *a, **kw):
+        raise TypeError(f'immutable type: {self} ')
 
-
+    __delitem__ = __setitem__ = setdefault = \
+        pop = popitem = update = clear = \
+        copy = __copy__ = __reduce__ = __deepcopy__ = not_mutable
+    del not_mutable
+   
 
 @export()
 class NullInjectorContext(InjectorContext):
     """NullInjector Object"""
 
-    __slots__ = ("name",)
+    __slots__ = ()
 
-    injector = None
-    parent = None
+    name: t.Final = None
+    injector = parent = None
 
-    def __init__(self, name=None):
-        self._bindings = None
-        self.name = name or "null"
-
-    def __getitem__(self, k: T_Injectable) -> None:
-        return None
-
-    def __contains__(self, x) -> bool: 
-        return False
-
-    __missing__ = __getitem__
-
-    def get(key, default=None):
-        return default
-
-    def _dispatch(self, head: 'InjectorContext'):
-        return False
-
-    def _dispose(self, head: 'InjectorContext'):
-        return False
-
-
-
-
-
-_T_Ctx = t.TypeVar('_T_Ctx', bound=InjectorContext, covariant=True)
-_T_Src = t.TypeVar('_T_Src', bound=ContextVar[InjectorContext])
-
-
-class ContextManager(t.Generic[_T_Ctx, _T_Src], metaclass=ABCMeta):
-
-    __slots__ = '__name__', '_index',
-
-    __stack: t.Final[deque['ContextManager[_T_Ctx, _T_Src]']] = deque([None])
-    __lock: t.Final = Lock()
+    def noop(slef, *a, **kw): 
+        ...
+    __init__ = __getitem__ = __missing__ = __contains__ = __enter__ = __exit__ = noop
+    del noop
     
 
-    def __new__(cls, *a, **kw):
-        self = object.__new__(cls)
-        self.__name__ = f"{calling_frame(globals=True)['__package__']}"
-        return self
-           
-    def __init__(self, name=None) -> None:
-        if not name is None:
-            self.__name__ = name
-    
-    @property
-    @abstractmethod
-    def src(self) -> _T_Src:
-        ...
-
-    @abstractmethod
-    def __call__(self) -> _T_Ctx:
-        ...
-
-    @abstractmethod
-    def get(self, *default) -> _T_Ctx:
-        ...
-
-    @abstractmethod
-    def set(self, obj: _T_Ctx) -> Token[_T_Ctx]:
-        ...
-
-    @abstractmethod
-    def reset(self, obj: Token[_T_Ctx]):
-        ...
-
-    # def push(self, injector: 'Injector'):
-    #     src = self._src
-    #     ctx = src.get()
-    #     if  injector in ctx:
-    #         return 
-        
-    #     return
-
-    # def pop(self):
-    #     return
-        
-    def __repr__(self) -> str:
-        return f'{self.__class__.__name__}(src={self.src!r})'
 
 
-
-
-
-class ContextVarManager(ContextManager[_T_Ctx, ContextVar[_T_Ctx]]):
-
-    __slots__ = 'src', '__call__',
-
-    src: ContextVar[_T_Ctx]
-
-    def __init__(self, name=None, *, default=NullInjectorContext()) -> None:
-        super().__init__(name)
-        self.src = src = ContextVar(f'{self.__name__}.InjectorContext', default=default)
-        self.__call__ = lambda: src.get()
-
-    def get(self, *default):
-        return self.src.get(*default)
-
-    def set(self, obj: _T_Ctx):
-        return self.src.set(obj)
-
-    def reset(self, obj: Token[_T_Ctx]):
-        return self.src.reset(obj)
-
-
-
-if t.TYPE_CHECKING:
-    def context_manager() -> _T_Ctx:
-        ...
-
-
-context_manager: t.Final = ContextVarManager(f'{__package__}.__main__')
+__ctxvar: ContextVar['InjectorContext'] = ContextVar(
+    f'{__package__}.InjectorContext', 
+    default=NullInjectorContext()
+)
 

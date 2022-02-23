@@ -23,7 +23,7 @@ from .injectors import ScopeVar
 
 if t.TYPE_CHECKING:
     from .injectors import Injector
-    from .containers import IocContainer
+    from .containers import Container
 
 
 export(Injectable)

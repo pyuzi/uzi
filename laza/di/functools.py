@@ -10,8 +10,11 @@ from inspect import Signature, Parameter
 from collections.abc import Callable, Iterable, Hashable
 
 from laza.common.collections import Arguments, orderedset
-from laza.common.functools import export, Missing, uniqueid
+from laza.common.functools import export, Missing, uniqueid, cache
 from laza.common.typing import Self, typed_signature
+from laza.common.promises import Promise
+
+from laza.common.abc import abstractclass
 
 
 from .common import InjectionMarker, Injectable, T_Injectable, T_Injected
@@ -319,72 +322,4 @@ class PartialFactoryResolver(FactoryResolver):
         else:
             return lambda *a, **kw: func(*self._iargs(args), *a, **kw, **self._ikwds(kwds, skip=kw))
 
-
-
-_T_Bid = t.TypeVar('_T_Bid', int, float)
-
-
-class Bootable(metaclass=ABCMeta):
-    """base class for Bootable objects.
-    """
-
-    __slots__ = ()
-
-    _lock: Lock 
-    bootid: int 
-    is_booted: bool
-    _onboot_callbacks: dict[t.Any, Callable[[Self], t.NoReturn]]
-
-    def __init__(self) -> None:
-        object.__setattr__(self, '_lock', Lock())
-        object.__setattr__(self, 'bootid', None)
-        object.__setattr__(self, 'is_booted', False)
-        object.__setattr__(self, '_onboot_callbacks', dict())
-
-    def boot(self) -> Self:
-        if self.is_booted is False and self._can_boot():
-            with self._lock:
-                if self.is_booted is False and self._can_boot():
-                    logger.debug(f'BOOTING:{self}')
-                    self._boot(), self._onboot()
-                    logger.debug(f'BOOTED:{self}')
-        return self
-
-    def _boot(self):
-        ...
-
-    def _onboot(self):
-        if self.is_booted is True:
-            raise RuntimeError(f'{self} already bootstrapped.')
-        object.__setattr__(self, 'bootid', self._generate_next_bootid())
-        self._flush_onboot_callbacks()
-        object.__delattr__(self, '_onboot_callbacks')
-        object.__setattr__(self, 'is_booted', True)
-
-    @t.overload
-    def on_boot(self, callback: Callable[[Self], t.NoReturn]) -> Self: ...
-    @t.overload
-    def on_boot(self, key: Hashable, callback: Callable[[Self], t.NoReturn]) -> Self: ...
-    def on_boot(self, key: Hashable, callback: Callable[[Self], t.Any]=None) -> Self:
-        if callback is None: 
-            callback = key
-
-        if self.is_booted is False:
-            self._onboot_callbacks[key] = callback
-        else:
-            callback(self)
-                
-        return self
-
-    def _can_boot(self) -> bool:
-        return True
-
-    def _flush_onboot_callbacks(self) -> Self:
-        if not self.is_booted:
-            while self._onboot_callbacks:
-                self._onboot_callbacks.popitem()[1](self)
-            
-    @classmethod
-    def _generate_next_bootid(cls):
-        return uniqueid[cls]()
 

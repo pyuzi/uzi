@@ -1,6 +1,6 @@
 # from __future__ import annotations
 from email.policy import default
-from functools import lru_cache, wraps
+from functools import lru_cache, update_wrapper, wraps
 from inspect import ismemberdescriptor, signature
 from logging import getLogger
 from operator import is_
@@ -19,9 +19,12 @@ from laza.common.typing import get_args, UnionType, Self, get_origin
 from laza.common.functools import Missing, export, cache
 
 
+from laza.common.abc import abstractclass
 from laza.common.enum import BitSetFlag, auto
 
-from libs.di.laza.di.exc import DuplicateProviderError
+from libs.common.laza.common.promises import Promise
+
+from .exc import DuplicateProviderError
 
 
 from .common import (
@@ -33,12 +36,12 @@ from .common import (
     T_Injectable,
     isinjectable,
 )
-from .functools import Bootable, FactoryResolver, PartialFactoryResolver, singleton_decorator
-from .context import context_manager
+from .functools import FactoryResolver, PartialFactoryResolver, singleton_decorator
+from .context import context_partial
 
 
 if t.TYPE_CHECKING:
-    from .containers import IocContainer
+    from .containers import Container
     from .injectors import Injector, InjectorContext, TContextBinding
 
 
@@ -67,31 +70,31 @@ T_UsingAny = t.Union[T_UsingCallable, T_UsingAlias, T_UsingValue]
 def _fluent_decorator(default=Missing, *, fluent: bool = False):
     def decorator(func: _T_Fn) -> _T_Fn:
 
-        if t.TYPE_CHECKING:
+        # if t.TYPE_CHECKING:
 
-            @t.overload
-            def wrapper(self, v, *a, **kwds) -> Self:
-                ...
+        #     @t.overload
+        #     def wrapper(self, v, *a, **kwds) -> Self:
+        #         ...
 
-            @t.overload
-            def wrapper(self, **kwds) -> Callable[[_T], _T]:
-                ...
+        #     @t.overload
+        #     def wrapper(self, **kwds) -> Callable[[_T], _T]:
+        #         ...
 
-            if fluent is True:
+        #     if fluent is True:
 
-                @wraps(func)
-                def wrapper(
-                    self, v=default, /, *args, **kwds
-                ) -> t.Union[_T, Callable[..., _T]]:
-                    ...
+        #         @wraps(func)
+        #         def wrapper(
+        #             self, v=default, /, *args, **kwds
+        #         ) -> t.Union[_T, Callable[..., _T]]:
+        #             ...
 
-            else:
+        #     else:
 
-                @wraps(func)
-                def wrapper(
-                    self, v: _T = default, /, *args, **kwds
-                ) -> t.Union[_T, Callable[..., _T]]:
-                    ...
+        #         @wraps(func)
+        #         def wrapper(
+        #             self, v: _T = default, /, *args, **kwds
+        #         ) -> t.Union[_T, Callable[..., _T]]:
+        #             ...
 
         fn = func
         while hasattr(fn, "_is_fluent_decorator"):
@@ -184,13 +187,14 @@ class ProviderType(ABCMeta):
         if attrset not in ns:
             ns[attrset] = Provider.__setattr__
 
-        slots = tuple(
-            n
-            for n, a in ann.items()
-            if (get_origin(a) or a) not in (t.ClassVar, n in ns or t.Final)
+
+        slots = ns.get('__slots__', ()) 
+        slots = slots + tuple(
+            n for n, a in ann.items()
+            if not n in slots and (get_origin(a) or a) not in (t.ClassVar, n in ns or t.Final)
         )
 
-        ns.setdefault("__slots__", slots)
+        ns["__slots__"] = slots
         ns["__attr_defaults__"] = None
 
         defaults = ChainMap(
@@ -211,14 +215,14 @@ class ProviderType(ABCMeta):
 
 @export()
 @InjectionMarker.register
-class Provider(Bootable, t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
+class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     __attr_defaults__: t.Final[dict[str, _Attr]] = ...
 
     _is_registered: bool = False
 
-    container: "IocContainer" = None
-    """The IocContainer where this provider is setup.
+    container: "Container" = None
+    """The Container where this provider is setup.
     """
 
     is_default: bool = False
@@ -291,7 +295,7 @@ class Provider(Bootable, t.Generic[_T_Using, T_Injected], metaclass=ProviderType
     def _provides_fallback(self):
         return Missing
 
-    def set_container(self, container: "IocContainer") -> Self:
+    def set_container(self, container: "Container") -> Self:
         if not (self.container or container) is container:
             raise RuntimeError(
                 f"container for `{self}` already set to `{self.container}`."
@@ -448,6 +452,17 @@ class Value(Provider[T_UsingValue, T_Injected]):
 
 
 @export()
+class InjecorContextProvider(Provider[T_UsingValue, "Injector"]):
+    """Provides given value as it is."""
+    _uses = None
+
+    def _bind(self, injector: "Injector", dep: T_Injectable):
+        return lambda ctx, key=dep: lambda: ctx, None
+
+
+
+
+@export()
 class Alias(Provider[T_UsingAlias, T_Injected]):
 
 
@@ -532,15 +547,15 @@ class InjectProvider(Provider[Inject, T_Injected]):
     def _provides_fallback(self):
         return Inject
 
-    # def _can_bind(self, injector: "Injector", obj: Inject) -> bool:
-    #     if obj.__scope__ is None or obj.__scope__ in injector:
-    #         if obj.is_optional:
-    #             return not isinstance(obj.__default__, DependencyMarker)\
-    #                 or injector.is_provided(obj.__dependency__) \
-    #                 or injector.is_provided(obj.__default__)
-    #         else:
-    #             return injector.is_provided(obj.__dependency__)
-    #     return False
+    def _can_bind(self, injector: "Injector", obj: Inject) -> bool:
+        if obj.__scope__ is None or obj.__scope__ in injector:
+            if obj.is_optional:
+                return not isinstance(obj.__default__, DependencyMarker)\
+                    or injector.is_provided(obj.__dependency__) \
+                    or injector.is_provided(obj.__default__)
+            else:
+                return injector.is_provided(obj.__dependency__)
+        return False
 
     def _bind(self, injector: "Injector", obj: Inject):
 
@@ -587,7 +602,7 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
 
     arguments: Arguments = _Attr(default_factory=Arguments)
     is_singleton: bool = False
-    is_partial: bool = False
+    # is_partial: bool = False
 
     decorators: list[Callable[[Callable], Callable]] = _Attr(default_factory=list)
 
@@ -653,38 +668,8 @@ class Type(Factory[T_Injected]):
 @export()
 class PartialFactory(Factory[T_Injected]):
 
-    is_partial: bool = True
-
-    _wrapper: Callable
-
     _resolver_class: t.ClassVar[type[PartialFactoryResolver]] = PartialFactoryResolver
 
-    @property
-    def wrapped(self):
-        return self.uses
-
-    @property
-    @cache
-    def wrapper(self):
-        try:
-            return self._wrapper
-        except AttributeError:
-            self.__set_attr("_wrapper", self._make_wrapper())
-            return self._wrapper
-
-    def _make_wrapper(self):
-        wrapped = self.wrapped
-
-        @wraps(wrapped)
-        def wrapper(*a, **kw):
-            nonlocal self, wrapped
-            fn = context_manager()[wrapped]
-            return fn(*a, **kw)
-
-            # return self.container._context()[wrapped](*a, **kw)
-
-        wrapper.__injects__ = wrapped
-        return wrapper
     
     
 
@@ -736,13 +721,8 @@ class RegistrarMixin(ABC, t.Generic[T_Injected]):
         function = _provder_factory_method(Function)
         type = _provder_factory_method(Type)
 
-    def inject(self, func: Callable[..., _T] = None, **opts):
-        def decorator(fn: Callable[..., _T]):
-            pro = PartialFactory(fn)
-            self.register_provider(pro)
-            return pro.wrapper
-
-        if func is None:
-            return decorator
-        else:
-            return decorator(func)
+    def inject(self, func: _T_Fn) -> _T_Fn:
+        provider = PartialFactory(func)
+        self.register_provider(provider)
+        return update_wrapper(context_partial(provider), func)
+       

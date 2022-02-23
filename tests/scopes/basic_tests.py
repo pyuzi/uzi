@@ -2,10 +2,9 @@ from pprint import pprint
 from time import time
 import pytest
 
-from laza.di.containers import IocContainer
+from laza.di.containers import Container
 from laza.di.common import InjectionToken
-from laza.di.injectors import Injector
-
+from laza.di.injectors import Injector, inject
 
 
 xfail = pytest.mark.xfail
@@ -18,19 +17,19 @@ parametrize = pytest.mark.parametrize
 class BasicScopeTests:
 
  
-    def test_providers(self):
-        con = IocContainer() 
+    def test_providers(self, container):
+        container = container
 
-        con.type(Foo)
+        container.type(Foo)
         # con1[Foo] = p.Type(Foo)
 
-        con.type(Bar)
-        con.type(Baz)
+        container.type(Bar)
+        container.type(Baz)
 
-        con.type(FooBar, FooBar)
-        con.type(FooBarBaz, FooBarBaz)
+        container.type(FooBar, FooBar)
+        container.type(FooBarBaz, FooBarBaz)
 
-        inj = Injector().require(con)
+        inj = Injector().require(container)
 
         with inj.make() as ctx:
             assert isinstance(ctx[Foo](), Foo)
@@ -41,17 +40,17 @@ class BasicScopeTests:
         assert 1, '\n'
  
     def _test_inject(self):
-        con1 = IocContainer() 
+        con1 = Container() 
 
         con1.type(Foo)
         # con1[Foo] = p.Type(Foo)
 
         con1.type(Bar)
          
-        con2 = IocContainer(shared=False) 
+        con2 = Container(shared=False) 
         con2.type(Baz)
 
-        con3 = IocContainer(con1, con2) 
+        con3 = Container(con1, con2) 
 
         @con3.inject
         def inject_con4(baz: Baz, foo: Foo):
@@ -60,7 +59,7 @@ class BasicScopeTests:
         con3.type(FooBar, FooBar)
         con3.type(FooBarBaz, FooBarBaz)
 
-        con4 = IocContainer(con2)
+        con4 = Container(con2)
 
         @con4.inject
         def inject_con4(baz: Baz, foo: Foo):
@@ -88,19 +87,19 @@ class BasicScopeTests:
         ioc.type(Service)#.singleton()
 
 
-        @ioc.inject
+        @inject
         def inject_1(baz: Baz, /):
             assert isinstance(baz, Baz)
             return baz
 
-        @ioc.inject
+        @inject
         def inject_2(foo: Foo, bar: Bar, baz: Baz):
             assert isinstance(foo, Foo)
             assert isinstance(bar, Bar)
             assert isinstance(baz, Baz)
             return foo, bar, baz
 
-        @ioc.inject
+        @inject
         def inject_3(foobar: FooBar, foobarbaz: FooBarBaz, /, service: Service):
             assert isinstance(foobar, FooBar)
             assert isinstance(foobarbaz, FooBarBaz)

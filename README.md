@@ -5,9 +5,9 @@ A super fast dependency injection library for python.
 
 ```python
 
-from laza.di import IocContainer
+from laza.di import Container
 
-ioc = IocContainer()
+ioc = Container()
 
 
 @ioc.injectable()

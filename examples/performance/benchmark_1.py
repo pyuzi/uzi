@@ -6,12 +6,12 @@ import time
 
 from dependency_injector import providers, containers, wiring
 
-from laza.di.injectors import Injector
+from laza.di.injectors import Injector, inject
 
 
 
 
-N = int(1e6)
+N = int(.25e6)
 
 res: dict[str, tuple[float, float]] = {}
 
@@ -55,7 +55,7 @@ ioc.type(B).singleton()
 ioc.type(C).singleton()
 ioc.type(Test)#.singleton()
 
-@ioc.inject
+@inject
 def _inj(test: Test, b: B, c: C):
     assert isinstance(test, Test)
     # assert isinstance(a, A)
@@ -83,10 +83,10 @@ res['py'] = took, N*(1/took)
 
 with ioc.make() as inj:
     start = time.time()
-    v = inj[Test]
+    # v = inj[Test]
     for _ in range(1, N):
-        v()
-        # inj[Test]()
+        # v()
+        inj[Test]()
 
     finish = time.time()
 
@@ -94,6 +94,15 @@ with ioc.make() as inj:
 took = finish - start
 res['ioc'] = took, N*(1/took)
 
+start = time.time()
+for _ in range(1, N):
+    with ioc.make() as inj:
+        inj[Test]()
+
+finish = time.time()
+
+took = finish - start
+res['iocx'] = took, N*(1/took)
 
 
 

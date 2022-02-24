@@ -394,7 +394,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     # @t.Final
     def __setattr__(self, name, value, *, force=False):
-        if self.__boot.done():
+        if force is False and self.__boot.done():
             raise AttributeError(f"{self.__class__.__name__}.{name} is not writable")
         object.__setattr__(self, name, value)
 

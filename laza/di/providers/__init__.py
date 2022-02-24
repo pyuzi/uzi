@@ -528,7 +528,8 @@ class InjectProvider(Provider[Inject, T_Injected]):
         return Inject
 
     def _can_bind(self, injector: "Injector", obj: Inject) -> bool:
-        return obj.__scope__ is None or injector.is_scope(obj.__scope__)
+        return isinstance(obj, Inject) and obj.__scope__ is None \
+            or injector.is_scope(obj.__scope__)
 
     def _bind(self, injector: "Injector", obj: Inject):
 

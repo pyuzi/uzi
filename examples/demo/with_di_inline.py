@@ -8,7 +8,7 @@ from laza.di.common import Depends as Dep
 ioc = Injector()
 
 
-@ioc.type(shared=True)\
+@ioc.factory(shared=True)\
     .args(1,2,3)\
     .kwargs(api_key='KEY')\
     .singleton()\

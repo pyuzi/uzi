@@ -9,13 +9,13 @@ from laza.di.common import Depends
 
 ioc = Injector()
 
-ioc.type(ApiClient)\
+ioc.factory(ApiClient)\
     .singleton()\
     .args(
         Depends(on=os.getenv, args=('API_KEY',)), 
         Depends(on=os.getenv, args=('TIMEOUT',))
     )
-ioc.type(Service)
+ioc.factory(Service)
 
 
 @ioc.inject

@@ -1,26 +1,22 @@
-from abc import abstractmethod
-from contextvars import ContextVar, Token
 from functools import update_wrapper
 import sys
 import typing as t 
 import logging
 from weakref import finalize, ref
-from collections.abc import Mapping, Callable, Sequence, Generator
-from build import Mapping
+from collections.abc import Callable
 
 
-from laza.common.collections import MultiChainMap, fallback_default_dict, nonedict, orderedset, fallbackdict
+from laza.common.collections import MultiChainMap, frozenorderedset, orderedset, frozendict
 from laza.common.typing import get_origin, Self
-from laza.common.proxy import proxy
 
 from laza.common.functools import ( 
     export
 )
 
 from laza.common.functools import calling_frame, uniqueid
-from laza.common.abc import abstractclass
 
 from laza.common.promises import Promise
+
 
 
 
@@ -30,21 +26,22 @@ from .common import (
     Injectable, 
     T_Injectable,
     T_Injected,
+    isinjectable,
 )
 
 from .containers import InjectorContainer, Container
-from .context import InjectorContext, context_partial, _current_context
+from .context import InjectorContext, context_partial, wire
 from .providers import (
-    Provider, UnionProvider, AnnotatedProvider, 
-    InjectProvider, RegistrarMixin, PartialFactory
+    Alias, Provider, UnionProvider, AnnotatedProvider, 
+    InjectProvider, PartialFactory, InjecorContextProvider
 )
+from .providers.tools import BindingsMap, ProviderResolver, ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
 _T_Fn = t.TypeVar('_T_Fn', bound=Callable)
 
 
-TContextBinding =  Callable[['InjectorContext', t.Optional[Injectable]], Callable[..., T_Injected]]
 
 
 def inject(func: _T_Fn, /, *, provider: 'Provider'=None) -> _T_Fn:
@@ -59,232 +56,157 @@ def inject(func: _T_Fn, /, *, provider: 'Provider'=None) -> _T_Fn:
 
 
 
-class BindingsDict(dict[Injectable, TContextBinding]):
-
-    __slots__ = 'injector',
-
-    injector: 'Injector'
-
-    def __init__(self, injector: 'Injector'):
-        self.injector = injector
-
-    def __missing__(self, key):
-        inj = self.injector
-        provider = inj.get_provider(key)
-        if not provider is None:
-            return self.setdefault(key, provider.bind(inj, key))
-        
-
-
-
-
 @export
-@abstractclass
-class BaseInjector(RegistrarMixin):
+class Injector(ProviderRegistry):
     """"""
 
     __slots__ = (
-        'name', 'parent', 'children', '_bindings', 'container', 
-        'containers', '_onboot', '_registry'
+        '__name', '__parent', '__bindings', '__container', 
+        '__containers', '__boot', '__registry', '__resolver',
+        '__bootstrapped', '__autoloads',
     )
 
-    _onboot: Promise
+    __boot: Promise
 
-    name: str
-    parent: 'BaseInjector'
-    children: orderedset['BaseInjector']
+    __name: str
+    __parent: Self
     
-    _bindings: 'BindingsDict'
-    _providers: dict[Injectable, Provider]
+    __bindings: BindingsMap
+    __resolver: ProviderResolver
+    __registry: MultiChainMap[Injectable, Provider]
 
-    _InjectorContext: type[InjectorContext] = InjectorContext
+    __container: InjectorContainer
+    __containers: orderedset[Container]
 
-    container: InjectorContainer
-    containers: orderedset[Container]
-    _InjectorContainer: type[InjectorContainer] = InjectorContainer
-
+    _context_class: type[InjectorContext] = InjectorContext
+    _container_class: type[InjectorContainer] = InjectorContainer
+    _resolver_class: type[ProviderResolver] = ProviderResolver
 
     def __init__(self, parent: 'Injector'=None, *, name: str=None):
-
         if  name is None:
             cf = calling_frame()
-            self.name = cf.get('__name__') or cf.get('__package__') or '<anonymous>'
+            self.__name = cf.get('__name__') or cf.get('__package__') or '<anonymous>'
         else:
-            self.name = name
+            self.__name = name
 
-        self.parent = None
-        self._onboot = Promise()
-        self.children = orderedset()
-        self.container = self._InjectorContainer(self)
-        self._bindings = BindingsDict(self)
-        parent is None or self.set_parent(parent)
+        self.__parent = parent
+        self.__bootstrapped = False
+        self.__boot = Promise().then(lambda: self.__bootstrap())
 
-    def boot(self) -> Self:
-        if self._onboot.is_pending:
-            logger.debug(f'BOOTING:{self} => {self._onboot}')
-            self._do_boot() 
-            logger.debug(f'BOOTED:{self}  => {self._onboot}')
+        self.__container = self._container_class(self)
+        self.__registry = MultiChainMap()
+        self.__resolver = self._resolver_class(self, self.__registry)
+        self.__bindings = BindingsMap(self, self.__resolver)
+
+    @property
+    def name(self):
+        return self.__name
+
+    @property
+    def parent(self):
+        return self.__parent
+
+    @property
+    def bindings(self):
+        return self.__bindings
+
+    @property
+    def container(self):
+        return self.__container
+
+    @property
+    def containers(self):
+        return self.__containers
+
+    def onboot(self, callback: t.Union[Promise, Callable, None]=None):
+        self.__boot.then(callback)
+
+    def bootstrap(self) -> Self:
+        self.__boot.settle()
         return self
-
-    def _do_boot(self):
-        logger.debug(f'{self.__class__.__name__}._booted(START) --> {self}')
-        self._setup_containers()
-        self._setup_default_providers()
-        
-        self._onboot.fulfil(uniqueid[Container])
-        
-        self._boot_containers()
-        self._setup_registry()
-
-        logger.debug(f'{self.__class__.__name__}._booted({" <=|=> ".join(map(repr, [*self.containers]))})')
 
     def set_parent(self, parent: 'Injector'):
-        if not self.parent is None:
-            if self.parent is parent:
+        if not self.__parent is None:
+            if self.__parent is parent:
                 return self
-            raise TypeError(f'{self} already has parent: {self.parent}.')
+            raise TypeError(f'{self} already has parent: {self.__parent}.')
+        elif self.__boot.done():
+            raise TypeError(f'{self} already bootstrapped.')
 
-        self.parent = parent
-        parent.add_child(self)
-
+        self.__parent = parent
         return self    
-    
-    def add_child(self, child: 'Injector'):
-        if child in self.children:
-            raise TypeError(f'{self} already has child: {child}.')
-
-        self.children.add(child)
-        return self
 
     def parents(self):
-        parent = self.parent
+        parent = self.__parent
         while not parent is None:
             yield parent
             parent = parent.parent
 
-    def register_provider(self, provider: Provider) -> Self:
-        self.container.register_provider(provider)
+    def register(self, provider: Provider) -> Self:
+        self.__container.register(provider)
         return self
 
     def require(self, *containers) -> Self:
-        self.container.require(*containers)
+        self.__container.include(*containers)
         return self
 
     def has_scope(self, scope: t.Union['Injector', Container, None]):
-        return self.is_scope(scope) or self.parent.has_scope(scope)
+        return self.is_scope(scope) or self.__parent.has_scope(scope)
 
     def is_scope(self, scope: t.Union['Injector', Container, None]):
-        return scope is None or scope is self or scope in self.containers
+        return scope is None or scope is self or scope in self.__containers
 
-    def is_provided(self, obj: Injectable, *, onlyself=False, check=True) -> bool:
-        if not (isinstance(obj, Provider) or obj in self._bindings):
-            provider = self.get_provider(obj, check=check)
-            if provider is None:
-                if not onlyself and self.parent:
-                    return self.parent.is_provided(obj, check=check)
+    def is_provided(self, obj: Injectable, *, onlyself=False) -> bool:
+        if not (isinstance(obj, InjectionMarker) or obj in self.__bindings):
+            if isinjectable(obj):
+                provider =  self.__resolver.resolve(obj)
+                if provider is None:
+                    if not onlyself and self.__parent:
+                        return self.__parent.is_provided(obj)
+                    return False
+            else:
                 return False
         return True
 
-    def get_provider(self, obj: Injectable, default=None, *, check=True):
-        key = obj
-        if isinstance(obj, InjectionMarker):
-            key = obj.__dependency__
-
-        if isinstance(key, Provider):
-            if check is False or key.can_bind(self, obj):
-                return key
-            return default
-
-        plist = self._registry.get_all(obj)
-        if plist is None:
-            origin = get_origin(obj)
-            if origin is None:
-                return default
-
-            plist = self._registry.get_all(origin)
-            if plist is None:
-                return default
-
-        return self._reduce_providers(obj, plist, default, check=check)
-
-    def _reduce_providers(self, obj: Injectable, plist: Sequence[Provider], default=None, *, check=True):
-        stack = [v for v in reversed(plist) if check is False or v.can_bind(self, obj)]
-        stack = [v for v in stack if not v.is_default] or stack
-
-        if stack:
-            top, *extra = stack
-            if extra:
-                top = top.substitute(*extra)
-            return top            
-
-        return default
-
-    def create_context(self, top: InjectorContext=None) -> InjectorContext:
-        if top is None:
-            top = _current_context()
-
-        if parent := self.parent:
+    def create_context(self, top: InjectorContext) -> InjectorContext:
+        if parent := self.__parent:
             if not top.injector is parent:
                 top = parent.create_context(top)
-        self.boot()
-        return self._InjectorContext(self, top)
 
-    make = create_context
+        self.__boot.settle()
+        ctx = self._context_class(self, top)
+        if auto := self.__autoloads:
+            for d in auto:
+                if fn := ctx[d]:
+                    fn()
+        return ctx
 
-    def _setup_registry(self, *v):
-        self._registry = MultiChainMap(*(d._registry for d in reversed(self.containers)))
-    
-    def _setup_containers(self, *v):
-        logger.debug(f'{self.__class__.__name__}._setup_containers(START) --> {self}')
-        self.containers = orderedset(self.container.bind())
+    def __bootstrap(self):
+        if self.__bootstrapped is False:
+            self.__bootstrapped = True
+            logger.debug(f'BOOTSTRAP: {self}')
+            comp = dict(self.__container.bind())
+            self.__containers = frozenorderedset(comp.keys())
+            self.__registry.maps = [frozendict(), *reversed(comp.values())]
+            self._register_default_providers()
+            self.onboot(lambda: self._collect_autoloaded())
 
-    def _boot_containers(self, *v):
-        for c in self.containers:
-            c.boot()
+    def _register_default_providers(self):
+        self.register(UnionProvider().final())
+        self.register(AnnotatedProvider().final())
+        self.register(InjectProvider().final())
+        for container in self.containers:
+            self.register(Alias(container, self).final())
 
-    def _setup_default_providers(self):
-        self.register_provider(UnionProvider().final())
-        self.register_provider(AnnotatedProvider().final())
-        self.register_provider(InjectProvider().final())
-   
-    # def __contains__(self, x):
-    #     if self.booted is True:
-    #         if isinstance(x, Container):
-    #             return x in self.containers \
-    #                 or x.is_singleton and x in (self.parent or ())
-    #         elif isinstance(x, Injector):
-    #             return x is self
-    #         # else:
-    #         #     return x in self._registry\
-    #         #         or x in (self.parent or ())
-    #     elif isinstance(x, Container):
-    #         return x in self._requires \
-    #             or any(x in d for d in self._requires) \
-    #             or x.is_singleton and x in (self.parent or ())
-    #     else:
-    #         return x == self
-       
-    def __str__(self) -> str:
-        parent = self.parent
-        return f'{self.__class__.__name__}({self.name!r}, {parent=!s})'
+    def _collect_autoloaded(self):
+        self.__autoloads = frozenset(
+            a for c in self.__containers 
+                for a in c.autoloads 
+                    if (p := self.__resolver.resolve(a)) and p.autoloaded
+        )
 
     def __repr__(self) -> str:
-        parent = self.parent
-        containers = [*getattr(self, 'containers', ())]
-        return f'{self.__class__.__name__}({self.name!r}, {containers=!r}, {parent=!r})'
+        parent = self.__parent
+        return f'{self.__class__.__name__}({self.__name!r}, {parent=!s})'
 
-
-
-@export
-class Injector(BaseInjector):
-    
-    __slots__ = ()
-
-
-
-@export
-class NoopInjector(BaseInjector):
-    
-    __slots__ = ()
-
-    # def has
+  

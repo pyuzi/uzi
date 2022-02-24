@@ -39,8 +39,8 @@ def provider():
 
 
 @pytest.fixture
-def provided(injector: Injector):
-    return lambda: injector.get_provider(_Ta).uses
+def provided(injectorcontext: Injector):
+    return lambda: injectorcontext[_Ta]() # injector.resolver[_Ta].uses
 
 
 

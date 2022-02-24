@@ -3,8 +3,7 @@ from time import time
 import pytest
 
 from laza.di.containers import Container
-from laza.di.common import InjectionToken
-from laza.di.injectors import Injector, inject
+from laza.di.injectors import Injector, inject, wire
 
 
 xfail = pytest.mark.xfail
@@ -20,18 +19,18 @@ class BasicScopeTests:
     def test_providers(self, container):
         container = container
 
-        container.type(Foo)
+        container.factory(Foo)
         # con1[Foo] = p.Type(Foo)
 
-        container.type(Bar)
-        container.type(Baz)
+        container.factory(Bar)
+        container.factory(Baz)
 
-        container.type(FooBar, FooBar)
-        container.type(FooBarBaz, FooBarBaz)
+        container.factory(FooBar, FooBar)
+        container.factory(FooBarBaz, FooBarBaz)
 
         inj = Injector().require(container)
 
-        with inj.make() as ctx:
+        with wire(inj) as ctx:
             assert isinstance(ctx[Foo](), Foo)
             assert isinstance(ctx[Bar](), Bar)
             assert isinstance(ctx[Baz](), Baz)
@@ -39,52 +38,15 @@ class BasicScopeTests:
 
         assert 1, '\n'
  
-    def _test_inject(self):
-        con1 = Container() 
-
-        con1.type(Foo)
-        # con1[Foo] = p.Type(Foo)
-
-        con1.type(Bar)
-         
-        con2 = Container(shared=False) 
-        con2.type(Baz)
-
-        con3 = Container(con1, con2) 
-
-        @con3.inject
-        def inject_con4(baz: Baz, foo: Foo):
-            return baz, foo
-
-        con3.type(FooBar, FooBar)
-        con3.type(FooBarBaz, FooBarBaz)
-
-        con4 = Container(con2)
-
-        @con4.inject
-        def inject_con4(baz: Baz, foo: Foo):
-            return baz, foo
-
-
-        scope1 = Injector(con3)
-        scope2 = Injector(scope1)
-        scope3 = Injector(scope2, con4)
-
-        with scope2.make() as inj_:
-            with scope3.make(inj_) as inj:
-                assert all(isinstance(o, c) for o,c in zip(inject_con4(), (Baz, Foo)))
-               
-        assert 1, '\n'
- 
     def test_perfomance(self, speed_profiler):
         ioc = Injector() 
 
-        ioc.type(Foo)#.singleton()
-        ioc.type(Bar).singleton()
-        ioc.type(Baz).singleton()
-        ioc.type(FooBar)#.singleton()
-        ioc.type(FooBarBaz)#.singleton()
-        ioc.type(Service)#.singleton()
+        ioc.factory(Foo)#.singleton()
+        ioc.factory(Bar).singleton()
+        ioc.factory(Baz).singleton()
+        ioc.factory(FooBar)#.singleton()
+        ioc.factory(FooBarBaz)#.singleton()
+        ioc.factory(Service)#.singleton()
 
 
         @inject
@@ -123,7 +85,7 @@ class BasicScopeTests:
         xprofile = speed_profiler(_n, labels=('DI', 'PY'), repeat=_r)
 
         t = time()
-        with ioc.make() as ctx:
+        with wire(ioc) as ctx:
             
             infoo = lambda: ctx[Foo]()
             inbar = lambda: ctx[Bar]()

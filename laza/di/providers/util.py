@@ -1,27 +1,21 @@
-from abc import ABCMeta, abstractmethod
-from functools import wraps
 from logging import getLogger
-from time import monotonic_ns
 
 import typing as t
-from threading import Lock, RLock
+from threading import Lock
 from inspect import Signature, Parameter
 
-from collections.abc import Callable, Iterable, Hashable
+from collections.abc import Callable, Iterable
 
-from laza.common.collections import Arguments, orderedset
-from laza.common.functools import export, Missing, uniqueid, cache
+from laza.common.collections import Arguments
+from laza.common.functools import export, Missing
 from laza.common.typing import Self, typed_signature
-from laza.common.promises import Promise
-
-from laza.common.abc import abstractclass
 
 
-from .common import InjectionMarker, Injectable, T_Injectable, T_Injected
+
+from ..common import InjectionMarker, Injectable, T_Injectable, T_Injected
 
 if t.TYPE_CHECKING:
-    from .providers import Provider
-    from .injectors import Injector, InjectorContext
+    from ..injectors import Injector, InjectorContext
 
 
 logger = getLogger(__name__)

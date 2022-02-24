@@ -7,6 +7,7 @@ import time
 from dependency_injector import providers, containers, wiring
 
 from laza.di.injectors import Injector, inject
+from laza.di.context import wire
 
 
 
@@ -50,10 +51,10 @@ class Test(object):
 
 ioc = Injector()
 
-ioc.type(A)
-ioc.type(B).singleton()
-ioc.type(C).singleton()
-ioc.type(Test)#.singleton()
+ioc.factory(A)
+ioc.factory(B)#.singleton()
+ioc.factory(C)#.singleton()
+ioc.factory(Test)#.singleton()
 
 @inject
 def _inj(test: Test, b: B, c: C):
@@ -63,7 +64,7 @@ def _inj(test: Test, b: B, c: C):
     assert isinstance(c, C)
 
 
-with ioc.make():
+with wire(ioc):
     print('')
 
 # Testing simple analog
@@ -81,7 +82,7 @@ took = finish - start
 res['py'] = took, N*(1/took)
 
 
-with ioc.make() as inj:
+with wire(ioc) as inj:
     start = time.time()
     # v = inj[Test]
     for _ in range(1, N):
@@ -96,7 +97,7 @@ res['ioc'] = took, N*(1/took)
 
 start = time.time()
 for _ in range(1, N):
-    with ioc.make() as inj:
+    with wire(ioc) as inj:
         inj[Test]()
 
 finish = time.time()
@@ -106,7 +107,7 @@ res['iocx'] = took, N*(1/took)
 
 
 
-with ioc.make() as inj:
+with wire(ioc) as inj:
     start = time.time()
     _b = B(A())
     for _ in range(1, N):
@@ -123,8 +124,8 @@ res['inj'] = took, N*(1/took)
 test_factory_provider = providers.Factory(
     Test,
     providers.Factory(A),
-    b=providers.Singleton(B, providers.Factory(A)),
-    c=providers.Singleton(C, providers.Factory(A), providers.Singleton(B, providers.Factory(A))),
+    b=providers.Factory(B, providers.Factory(A)),
+    c=providers.Factory(C, providers.Factory(A), providers.Factory(B, providers.Factory(A))),
 )
 
 
@@ -142,8 +143,8 @@ res['di'] = took, N*(1/took)
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
-    b = providers.Singleton(B, a)
-    c = providers.Singleton(C, a, b)
+    b = providers.Factory(B, a)
+    c = providers.Factory(C, a, b)
     test = providers.Factory(
         Test,
         a=a,

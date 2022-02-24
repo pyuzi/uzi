@@ -1,21 +1,15 @@
-from functools import wraps
 import logging
 import typing as t
-from abc import ABCMeta, abstractmethod
-from collections import deque
 from collections.abc import Callable
 from contextvars import ContextVar, Token
-from threading import Lock
 from typing_extensions import Self
 
-from laza.common.collections import orderedset, frozendict
-from laza.common.functools import calling_frame, export
+from laza.common.functools import export
 
 from .common import Injectable, T_Injectable, T_Injected
 
 if t.TYPE_CHECKING:
-    from .injectors import Injector, BindingsDict
-    from .providers import Provider
+    from .injectors import Injector, BindingsMap
 
 
 logger = logging.getLogger(__name__)
@@ -38,31 +32,18 @@ def context_partial(provider: Injectable):
     return wrapper
     
 
-
-def _InjectorContext__set(context: 'InjectorContext'):
-    return __ctxvar.set(context)
-
-
-def _InjectorContext__reset(token):
-    __ctxvar.reset(token)
-
-
-
-def _InjectorContext__get() -> 'InjectorContext':
-    return __ctxvar.get()
-
-
-def _current_context() -> 'InjectorContext':
-    return __ctxvar.get()
-
-
 def run_forever(injector: 'Injector'):
-    injector.create_context(__ctxvar.get()).__enter__()
+    InjectorContext(__ctxvar.get()).__enter__()
   
 
 def run(injector: 'Injector', func, /, *args, **kwargs):
     with InjectorContext(injector, __ctxvar.get()) as ctx:
         return ctx[func](*args, **kwargs)
+  
+
+def wire(injector: 'Injector'):
+    return ContextManager(injector, __ctxvar)
+  
   
 
 @export()
@@ -71,21 +52,20 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     __slots__ = (
         '__injector',
         '__parent',
-        '__token',
+        # '__token',
         '__bindings',
-        '__depth',
+        # '__depth',
     )
 
-    __token: Token
     __injector: "Injector"
     __parent: Self
-    __bindings: "BindingsDict"
-    __depth: int
+    __bindings: "BindingsMap"
 
     def __init__(self, injector: "Injector", parent: "InjectorContext"):
         self.__injector = injector
         self.__parent = parent
-        self.__depth = 0
+        self.__bindings = injector.bindings
+        dict.__setitem__(self, injector, lambda: self)
 
     @property
     def name(self) -> str:
@@ -95,52 +75,11 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     def injector(self):
         return self.__injector
 
-    def __enter__(self, top: Self=None):
-        if self.__depth == 0:
-            self.__depth += 1
-
-            # parent: Self
-            # pinjector: 'Injector'
-            # injector: 'Injector' = self.__injector
-            # if pinjector := injector.parent:
-            #     parent = __get() # type: ignore
-            #     if not parent.injector is pinjector:
-            #         pass
-            #     parent: Self = token.old_value 
-            #     if parent.injector is injector:
-            #         self = parent
-            #     elif pinjector := injector.parent:
-            #             if not pinjector is parent.injector:
-            #                 parent = self.__class__(pinjector)
-
-            #                 p = pinjector.create_context(parent)
-
-                
-            token = __set(self) if top is None else None # type: ignore
-            
-            self.__token = token
-            self.__parent.__enter__(top or self)
-            self.__bindings = self.__injector._bindings
-        elif top is None:
-            raise RuntimeError(f"{self} already dispatched.")
-        else:
-            self.__depth += 1
-        return self
-
-    def __exit__(self, *err):
-        if self.__depth == 1:
-            self.__depth -= 1
-            self.__token = self.__token and __reset(self.__token) # type: ignore
+    def _reset(self, to: Self):
+        if not to is self:
             self.__bindings = dict.clear(self)
-            self.__parent.__exit__(err)
-        elif self.__depth < 0:
-            raise RuntimeError(f"{self} already disposed.")
-        elif top is None:
-            raise RuntimeError(
-                f"{self} has {self.__depth} pending nested dispatches."
-            )
-        else:
-            self.__depth -= 1
+            logger.debug(f'{self}.reset({to=})')
+            self.__parent._reset(to)
 
     def get(self, key, default=None):
         rv = self[key]
@@ -163,12 +102,6 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     def __repr__(self) -> str:
         return f"<{self!s}, {self.__parent!r}>"
 
-    # def __enter__(self: "InjectorContext") -> "InjectorContext":
-    #     return self.__enter__()
-
-    # def __exit__(self, *exc):
-    #     self.__exit__()
-
     def __eq__(self, x):
         return x is self
 
@@ -187,6 +120,7 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     del not_mutable
    
 
+
 @export()
 class NullInjectorContext(InjectorContext):
     """NullInjector Object"""
@@ -198,7 +132,7 @@ class NullInjectorContext(InjectorContext):
 
     def noop(slef, *a, **kw): 
         ...
-    __init__ = __getitem__ = __missing__ = __contains__ = __enter__ = __exit__ = noop
+    __init__ = __getitem__ = __missing__ = __contains__ = _reset = noop
     del noop
     
 
@@ -208,4 +142,46 @@ __ctxvar: ContextVar['InjectorContext'] = ContextVar(
     f'{__package__}.InjectorContext', 
     default=NullInjectorContext()
 )
+
+
+
+
+
+class ContextManager:
+
+    __slots__ = '__injector', '__token', '__context', '__var'
+
+    __injector: 'Injector'
+    __token: Token
+    __context: InjectorContext
+    __var: ContextVar[InjectorContext]
+
+    def __new__(cls, injector: 'Injector', var: ContextVar[InjectorContext]):
+        self = object.__new__(cls)
+        self.__var = var
+        self.__injector = injector
+        return self
+
+    def __enter__(self):
+        try:
+            self.__context
+        except AttributeError:
+            cur = self.__var.get()
+            if self.__injector in cur:
+                self.__context = cur
+                self.__token = None
+            else:
+                self.__context = self.__injector.create_context(cur)
+                self.__token = self.__var.set(self.__context)
+            return self.__context
+        else:
+            raise RuntimeError(f'{self.__context} already active.')
+
+    def __exit__(self, *e):
+        if not self.__token is None:
+            old = self.__token.old_value
+            self.__token = self.__var.reset(self.__token)
+            self.__context._reset(old)
+            del self.__context
+
 

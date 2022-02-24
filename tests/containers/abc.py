@@ -40,7 +40,7 @@ class ContainerTestCase:
         #     injector.value(t_, f'{uniqueid[t_]()}.00-injector-{injector.name}')
         return injector
 
-    def test_multi_providers(self, make: type[Container], injector: Injector):
+    def _test_multi_providers(self, make: type[Container], injector: Injector):
         container = make()
         for _ in range(1,4):
             container = make(name=f'container[{_}]')
@@ -63,13 +63,13 @@ class ContainerTestCase:
         for t_ in (_Ta, _Tb, _Tc):
             injector.value(t_, f'{uniqueid[t_]()}.00-injector-{injector.name}').default()
 
-        injector.boot()
+        injector._boot()
         for t_ in (_T, _Ta, _Tb, _Tc):
             print(
                 f' - {t_!r}', 
-                *(f'   - {p!r}' for p in injector._registry.iall(t_)), 
+                *(f'   - {p!r}' for p in injector.registry.iall(t_)), 
                 '='*80,
-                f'  {injector.get_provider(t_)!r}',
+                f'  {injector.resolver.resolve(t_)!r}',
                 '='*80,
                 sep="\n  ")
 

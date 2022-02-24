@@ -7,7 +7,7 @@ from timeit import repeat
 from statistics import median, median_high, mean
 
 
-from laza.di.injectors import Injector
+from laza.di.injectors import Injector, wire
 from laza.di.containers import Container
 
 
@@ -35,7 +35,7 @@ def injector():
 
 @pytest.fixture()
 def injectorcontext(injector: Injector):
-    with injector.make() as scp:
+    with wire(injector) as scp:
         yield scp
 
 

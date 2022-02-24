@@ -6,7 +6,7 @@ from inspect import Parameter
 
 
 
-from laza.di.functools import ParamResolver, _EMPTY
+from laza.di.providers.util import ParamResolver, _EMPTY
 from laza.di.common import Inject
 from laza.di.injectors import Injector
 

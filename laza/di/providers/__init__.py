@@ -1,33 +1,28 @@
 # from __future__ import annotations
-from email.policy import default
-from functools import lru_cache, update_wrapper, wraps
-from inspect import ismemberdescriptor, signature
+from inspect import ismemberdescriptor
 from logging import getLogger
-from operator import is_
-from threading import Lock
-from types import FunctionType, GenericAlias, new_class
+from types import GenericAlias
 import typing as t
-from inspect import Parameter, Signature
-from abc import ABC, ABCMeta, abstractmethod
-from laza.common.collections import Arguments, frozendict, orderedset
+from functools import wraps
+from inspect import Parameter
+from abc import ABCMeta, abstractmethod
+from laza.common.collections import Arguments, orderedset
 
 from collections import ChainMap
-from collections.abc import Callable, Set, Mapping
+from collections.abc import Callable, Set
 from laza.common.typing import get_args, UnionType, Self, get_origin
 
 
-from laza.common.functools import Missing, export, cache
+from laza.common.functools import Missing, export
 
 
-from laza.common.abc import abstractclass
 from laza.common.enum import BitSetFlag, auto
 
-from libs.common.laza.common.promises import Promise
-
-from .exc import DuplicateProviderError
+from laza.common.promises import Promise
 
 
-from .common import (
+
+from ..common import (
     Inject,
     InjectionMarker,
     InjectedLookup,
@@ -36,13 +31,12 @@ from .common import (
     T_Injectable,
     isinjectable,
 )
-from .functools import FactoryResolver, PartialFactoryResolver, singleton_decorator
-from .context import context_partial
+from .util import FactoryResolver, PartialFactoryResolver, singleton_decorator
 
 
 if t.TYPE_CHECKING:
-    from .containers import Container
-    from .injectors import Injector, InjectorContext, TContextBinding
+    from ..containers import Container
+    from ..injectors import Injector, InjectorContext
 
 
 logger = getLogger(__name__)
@@ -66,36 +60,10 @@ T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
 
 T_UsingAny = t.Union[T_UsingCallable, T_UsingAlias, T_UsingValue]
 
+TContextBinding =  Callable[['InjectorContext', t.Optional[Injectable]], Callable[..., T_Injected]]
 
 def _fluent_decorator(default=Missing, *, fluent: bool = False):
     def decorator(func: _T_Fn) -> _T_Fn:
-
-        # if t.TYPE_CHECKING:
-
-        #     @t.overload
-        #     def wrapper(self, v, *a, **kwds) -> Self:
-        #         ...
-
-        #     @t.overload
-        #     def wrapper(self, **kwds) -> Callable[[_T], _T]:
-        #         ...
-
-        #     if fluent is True:
-
-        #         @wraps(func)
-        #         def wrapper(
-        #             self, v=default, /, *args, **kwds
-        #         ) -> t.Union[_T, Callable[..., _T]]:
-        #             ...
-
-        #     else:
-
-        #         @wraps(func)
-        #         def wrapper(
-        #             self, v: _T = default, /, *args, **kwds
-        #         ) -> t.Union[_T, Callable[..., _T]]:
-        #             ...
-
         fn = func
         while hasattr(fn, "_is_fluent_decorator"):
             fn = fn.__wrapped__
@@ -120,23 +88,11 @@ def _fluent_decorator(default=Missing, *, fluent: bool = False):
     return decorator
 
 
-class Flag(BitSetFlag):
-    aot: "Flag" = auto()
-    """Compile the provider `Ahead of Time`
-    """
-    shared: "Flag" = auto()
-    """Compile the provider `Ahead of Time`
-    """
 
+@export()
+class DuplicateProviderError(ValueError):
+    pass
 
-class ProviderCondition(Callable[..., bool]):
-
-    __class_getitem__ = classmethod(GenericAlias)
-
-    def __call__(
-        self, provider: "Provider", scope: "Injector", key: T_Injectable
-    ) -> bool:
-        ...
 
 
 
@@ -213,6 +169,8 @@ class ProviderType(ABCMeta):
         return cls
 
 
+_missing_or_none = frozenset([Missing, None])
+
 @export()
 @InjectionMarker.register
 class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
@@ -221,9 +179,13 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     _is_registered: bool = False
 
+    __boot: Promise
+
     container: "Container" = None
     """The Container where this provider is setup.
     """
+
+    autoloaded: bool = False
 
     is_default: bool = False
     """Whether this provider is the default. 
@@ -247,13 +209,15 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
     """
 
     def __init__(self, provide: Injectable = Missing, using: Injectable = Missing) -> None:
+        object.__setattr__(self, '_Provider__boot', Promise())
+        # self.__boot.then(lambda: self._register())
         self.__init_attrs__()
-        using is None or self.using(using)
-        provide is None or self.provide(provide)
+        using in _missing_or_none or self.using(using)
+        provide in _missing_or_none or self.provide(provide)
 
     @property
     def __dependency__(self):
-        return self
+        return self if self.container is None else self.provides
 
     @property
     def provides(self) -> T_Injectable:
@@ -300,12 +264,13 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
             raise RuntimeError(
                 f"container for `{self}` already set to `{self.container}`."
             )
-
+        
         self.__set_attr("container", container)
         self._register()
         return self
    
     def _register(self):
+
         if self._is_registered is False:
             if self._prepare_to_register():
                 self.container.add_to_registry(self.provides, self)
@@ -314,22 +279,28 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
             raise TypeError(f'{self!s} already registered to {self.container}.')
 
     def _prepare_to_register(self):
-        if self._is_registered:
-            raise TypeError(f'{self!s} already registered to {self.container}.')
-        try:
-            if self._provides is Missing:
-                self.__set_attr("_provides", self.provides)
-            if self._uses is Missing:
-                self.__set_attr("_uses", self.uses)
-            return not self.container is None
-        except AttributeError:
-            return False
+        if not self.__boot.done():
+            if self._is_registered:
+                raise TypeError(f'{self!s} already registered to {self.container}.')
+            try:
+                if self._provides is Missing:
+                    self.__set_attr("_provides", self.provides)
+                if self._uses is Missing:
+                    self.__set_attr("_uses", self.uses)
+                return not self.container is None
+            except AttributeError:
+                return False
+        return False
       
     def when(self, *filters, append: bool=False) -> Self:
         if append:
             self.__set_attr("filters", tuple(orderedset(self.filters + filters)))
         else:
             self.__set_attr("filters", tuple(orderedset(filters)))
+        return self
+
+    def autoload(self, autoloaded: bool = True) -> Self:
+        self.__set_attr("autoloaded", autoloaded)
         return self
 
     def final(self, is_final: bool = True) -> Self:
@@ -367,6 +338,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         return self
 
     def bind(self, injector: "Injector", provides: T_Injectable=None) -> 'TContextBinding':
+        self.__boot.settle()
         if provides is None: provides = self.provides
         fn, deps = self._bind(injector, provides)
         return fn
@@ -376,8 +348,13 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         ...
 
     def can_bind(self, injector: "Injector", dep: T_Injectable=None) -> bool:
-        if dep is None: dep = self.provides
-        return self._can_bind(injector, dep) and self._run_filters(injector, dep)
+        self.__boot.settle()
+        if dep is None: 
+            dep = self.provides
+        
+        if self.container is None or injector.is_scope(self.container):
+            return self._can_bind(injector, dep) and self._run_filters(injector, dep)
+        return False
 
     def _can_bind(self, injector: "Injector", dep: T_Injectable) -> bool:
         return True
@@ -394,6 +371,9 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
         sub, *subs = subs
         return sub.substitute(*subs) if subs else sub
+
+    def onboot(self, callback: t.Union[Promise, Callable]=None):
+        return self.__boot.then(callback)
 
     def __init_attrs__(self):
         for k, attr in self.__attr_defaults__.items():
@@ -414,8 +394,8 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     # @t.Final
     def __setattr__(self, name, value, *, force=False):
-        # if not force or self._is_registered: # not force and (self.booted and self._is_setup):
-            # raise AttributeError(f"{self.__class__.__name__}.{name} is not writable")
+        if self.__boot.done():
+            raise AttributeError(f"{self.__class__.__name__}.{name} is not writable")
         object.__setattr__(self, name, value)
 
     if t.TYPE_CHECKING:
@@ -456,6 +436,9 @@ class InjecorContextProvider(Provider[T_UsingValue, "Injector"]):
     """Provides given value as it is."""
     _uses = None
 
+    def _provides_fallback(self):
+        return self
+
     def _bind(self, injector: "Injector", dep: T_Injectable):
         return lambda ctx, key=dep: lambda: ctx, None
 
@@ -491,7 +474,7 @@ class UnionProvider(Provider[_T_Using, T_Injected]):
     _uses = UnionType
 
     def _provides_fallback(self):
-        return t.Union
+        return UnionType
 
     def get_all_args(self, token: Injectable):
         return get_args(token)
@@ -508,17 +491,14 @@ class UnionProvider(Provider[_T_Using, T_Injected]):
         return self._is_bind_type(obj) and next(self._iter_injectable(injector, obj), ...)
 
     def _bind(self, injector: "Injector", obj):
-
-        deps = [*self._iter_injectable(injector, obj)]
-
-        def resolver(scp: "InjectorContext", o=obj):
-            nonlocal deps
-            for a in deps:
-                v = scp.get(a)
-                if not v is None:
-                    return v
-
-        return resolver, {*deps}
+        if deps := [*self._iter_injectable(injector, obj)]:
+            def resolver(scp: "InjectorContext", o=obj):
+                nonlocal deps
+                for dep in deps:
+                    if not (fn := scp[dep]) is None:
+                        return fn
+            return resolver, {*deps}
+        return None, None
 
 
 
@@ -548,21 +528,14 @@ class InjectProvider(Provider[Inject, T_Injected]):
         return Inject
 
     def _can_bind(self, injector: "Injector", obj: Inject) -> bool:
-        if obj.__scope__ is None or obj.__scope__ in injector:
-            if obj.is_optional:
-                return not isinstance(obj.__default__, DependencyMarker)\
-                    or injector.is_provided(obj.__dependency__) \
-                    or injector.is_provided(obj.__default__)
-            else:
-                return injector.is_provided(obj.__dependency__)
-        return False
+        return obj.__scope__ is None or injector.is_scope(obj.__scope__)
 
     def _bind(self, injector: "Injector", obj: Inject):
 
         dep = obj.__injects__
         scope = obj.__scope__
 
-        if scope is None or scope == injector:
+        if scope is None or injector.is_scope(scope):
                 
             if obj.is_optional:
 
@@ -656,73 +629,8 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
 
 
 @export()
-class Function(Factory[T_Injected]):
-    ...
-
-
-@export()
-class Type(Factory[T_Injected]):
-    ...
-
-
-@export()
 class PartialFactory(Factory[T_Injected]):
 
     _resolver_class: t.ClassVar[type[PartialFactoryResolver]] = PartialFactoryResolver
 
-    
-    
-
-def _provder_factory_method(cls: type[_T]):
-    @wraps(cls)
-    def wrapper(self: "RegistrarMixin", *a, **kw) -> type[_T]:
-        val = cls(*a, **kw)
-        self.register_provider(val)
-        return val
-
-    return t.cast(cls, wrapper)
-
-
-
-@export()
-class RegistrarMixin(ABC, t.Generic[T_Injected]):
-
-    __slots__ = ()
-
-    @abstractmethod
-    def register_provider(self, provider: Provider[T_UsingAny, T_Injected]) -> Self:
-        ...
-
-    def alias(self, *a, **kw) -> Alias:
-        ...
-
-    def value(self, *a, **kw) -> Value:
-        ...
-
-    def factory(self, *a, **kw) -> Factory:
-        ...
-
-    def function(self, *a, **kw) -> Function:
-        ...
-
-    def type(self, *a, **kw) -> Type:
-        ...
-
-    if t.TYPE_CHECKING:
-        alias = Alias
-        value = Value
-        factory = Factory
-        function = Function
-        type = Type
-    else:
-        alias = _provder_factory_method(Alias)
-        value = _provder_factory_method(Value)
-        factory = _provder_factory_method(Factory)
-        function = _provder_factory_method(Function)
-        type = _provder_factory_method(Type)
-
-    def inject(self, func: _T_Fn) -> _T_Fn:
-        provider = PartialFactory(func)
-        self.register_provider(provider)
-        return update_wrapper(context_partial(provider), func)
-       
+   

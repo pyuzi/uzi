@@ -50,6 +50,8 @@ def singleton_decorator(func):
 
 
 
+
+
 class ParamResolver(t.Generic[_T]):
 
     __slots__ = (
@@ -237,20 +239,20 @@ class FactoryResolver:
             return self.make_args_kwds_resolver(provides, func, _args, _kwds, _vals)
     
     def make_plain_resolver(self, provides, func):
-        def resolve(ctx: "InjectorContext", dep=provides):
+        def resolve(ctx: "InjectorContext"):
                 nonlocal func
                 return self._decorate(self.plain_wrap_func(func))
         return resolve
           
     def make_args_resolver(self, provides, func, _args, vals):
-        def resolve(ctx: "InjectorContext", dep=provides):
+        def resolve(ctx: "InjectorContext"):
                 nonlocal _args, vals, self
                 args = [*self.iresolve_args(_args, ctx)]
                 return self._decorate(self.arg_wrap_func(func, args, vals))
         return resolve
                  
     def make_kwds_resolver(self, provides, func, _kwds, vals):
-        def resolve(ctx: "InjectorContext", dep=provides):
+        def resolve(ctx: "InjectorContext"):
                 nonlocal vals, _kwds, self
                 kwds = [*self.iresolve_kwds(_kwds, ctx)]
                 return self._decorate(self.kwd_wrap_func(func, kwds, vals))
@@ -258,7 +260,7 @@ class FactoryResolver:
         return resolve
 
     def make_args_kwds_resolver(self, provides, func, _args, _kwds, vals):
-        def resolve(ctx: "InjectorContext", dep=provides):
+        def resolve(ctx: "InjectorContext"):
                 nonlocal _args, vals, _kwds, self
                 args = [*self.iresolve_args(_args, ctx)]
                 kwds = [*self.iresolve_kwds(_kwds, ctx)]

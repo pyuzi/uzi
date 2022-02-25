@@ -1,4 +1,5 @@
 # from __future__ import annotations
+from contextlib import ExitStack
 from inspect import ismemberdescriptor
 from logging import getLogger
 from types import GenericAlias
@@ -425,22 +426,9 @@ class Value(Provider[T_UsingValue, T_Injected]):
 
     def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
         value = self.uses
-        func = lambda at, key=dep: lambda: value
-        return func, None
+        func = lambda: value
+        return lambda ctx: func, None
 
-
-
-
-@export()
-class InjecorContextProvider(Provider[T_UsingValue, "Injector"]):
-    """Provides given value as it is."""
-    _uses = None
-
-    def _provides_fallback(self):
-        return self
-
-    def _bind(self, injector: "Injector", dep: T_Injectable):
-        return lambda ctx, key=dep: lambda: ctx, None
 
 
 
@@ -458,12 +446,7 @@ class Alias(Provider[T_UsingAlias, T_Injected]):
 
     def _bind(self, injector: "Injector", obj: T_Injectable) -> 'TContextBinding':
         real = self.uses
-
-        def resolver(at: "InjectorContext", dep: T_Injectable=obj):
-            nonlocal real
-            return at[real]
-
-        return resolver, {real}
+        return lambda ctx: ctx[real], {real}
 
 
 
@@ -492,14 +475,8 @@ class UnionProvider(Provider[_T_Using, T_Injected]):
 
     def _bind(self, injector: "Injector", obj):
         if deps := [*self._iter_injectable(injector, obj)]:
-            def resolver(scp: "InjectorContext", o=obj):
-                nonlocal deps
-                for dep in deps:
-                    if not (fn := scp[dep]) is None:
-                        return fn
-            return resolver, {*deps}
+            return lambda ctx: ctx.first(*deps), {*deps}
         return None, None
-
 
 
 
@@ -542,14 +519,15 @@ class InjectProvider(Provider[Inject, T_Injected]):
 
                 default = obj.__default__
                 if isinstance(default, InjectionMarker):
-                    return lambda ctx, d=obj: ctx.get(dep) or ctx[default], {dep}
+                    return lambda ctx: ctx.get(dep) or ctx[default], {dep}
                 else:
                     fd = lambda: default
-                    return lambda ctx, d=obj: ctx.get(dep, fd), {dep}
+                    return lambda ctx: ctx.get(dep, fd), {dep}
             else:
-                return lambda ctx, d=obj: ctx[dep], {dep}
+                return lambda ctx: ctx[dep], {dep}
 
         return None, {dep}
+
 
 
 
@@ -562,7 +540,7 @@ class LookupProvider(Provider[Inject, T_Injected]):
         dep = obj.depends
         path = obj.path
 
-        def hander(scp: "InjectorContext", o=obj):
+        def hander(scp: "InjectorContext"):
             nonlocal dep, path
             var = scp[dep]
             return lambda: path.get(var())

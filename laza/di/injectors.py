@@ -33,7 +33,7 @@ from .containers import InjectorContainer, Container
 from .context import InjectorContext, context_partial, wire
 from .providers import (
     Alias, Provider, UnionProvider, AnnotatedProvider, 
-    InjectProvider, PartialFactory, InjecorContextProvider
+    InjectProvider, PartialFactory
 )
 from .providers.tools import BindingsMap, ProviderResolver, ProviderRegistry
 

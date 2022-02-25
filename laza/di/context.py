@@ -28,16 +28,18 @@ def context_partial(provider: Injectable):
     def wrapper(*a, **kw):
         nonlocal provider
         return  __ctxvar.get()[provider](*a, **kw)
-        
+    
+    wrapper.__dependency__ = provider
+
     return wrapper
     
 
 def run_forever(injector: 'Injector'):
-    InjectorContext(__ctxvar.get()).__enter__()
+    wire(injector).__enter__()
   
 
 def run(injector: 'Injector', func, /, *args, **kwargs):
-    with InjectorContext(injector, __ctxvar.get()) as ctx:
+    with wire(injector) as ctx:
         return ctx[func](*args, **kwargs)
   
 
@@ -52,9 +54,8 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     __slots__ = (
         '__injector',
         '__parent',
-        # '__token',
+        '__exitstack',
         '__bindings',
-        # '__depth',
     )
 
     __injector: "Injector"
@@ -65,6 +66,7 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         self.__injector = injector
         self.__parent = parent
         self.__bindings = injector.bindings
+        self.__exitstack = []
         dict.__setitem__(self, injector, lambda: self)
 
     @property
@@ -87,11 +89,17 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
             return default
         return rv
 
+    def first(self, *keys):
+        for key in keys:
+            rv = self[key]
+            if not rv is None:
+                return rv
+
     def __missing__(self, key):
         res = self.__bindings[key]
         if res is None:
             return dict.setdefault(self, key, self.__parent[key])
-        return dict.setdefault(self, key, res(self, key))
+        return dict.setdefault(self, key, res(self))
 
     def __contains__(self, x) -> bool:
         return dict.__contains__(self, x) or x in self.__parent

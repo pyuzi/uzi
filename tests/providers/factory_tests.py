@@ -75,13 +75,13 @@ class FactoryProviderTests(ProviderTestCase):
 
         args = 'aaa', 123, 'xyz'
         provider.args(*args)
-        provider.bind(injector, func)(injectorcontext, func)()
+        provider.bind(injector, func)(injectorcontext)()
 
         provider = Factory(func)
 
         args = 'aaa', 123, _default
         provider.args(*args[:-1])
-        provider.bind(injector, func)(injectorcontext, func)()
+        provider.bind(injector, func)(injectorcontext)()
         
     def test_with_kwargs(self, injector, injectorcontext):
         _default = object()
@@ -93,13 +93,13 @@ class FactoryProviderTests(ProviderTestCase):
 
         kwargs = dict(a='aaa', b=123, c='xyz')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(injectorcontext, func)()
+        provider.bind(injector, func)(injectorcontext)()
 
         provider = Factory(func)
 
         kwargs = dict(a='BAR', b='BOO')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(injectorcontext, func)()
+        provider.bind(injector, func)(injectorcontext)()
  
  
 class Foo:

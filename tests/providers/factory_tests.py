@@ -40,8 +40,8 @@ class FactoryProviderTests(ProviderTestCase):
     def test_singleton(self, provider: Factory):
         rv = provider.singleton()
         assert rv is provider
-        assert provider.is_singleton
-        assert not provider.singleton(False).is_singleton
+        assert provider.is_shared
+        assert not provider.singleton(False).is_shared
 
     def test_args_kwargs(self, provider: Factory):
         args = 1,2,3

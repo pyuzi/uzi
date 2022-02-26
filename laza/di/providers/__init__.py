@@ -1,7 +1,8 @@
 # from __future__ import annotations
-from contextlib import ExitStack
+from contextlib import AbstractContextManager, ExitStack
 from inspect import ismemberdescriptor
 from logging import getLogger
+from threading import Lock
 from types import GenericAlias
 import typing as t
 from functools import wraps
@@ -9,8 +10,8 @@ from inspect import Parameter
 from abc import ABCMeta, abstractmethod
 from laza.common.collections import Arguments, orderedset
 
-from collections import ChainMap
-from collections.abc import Callable, Set
+from collections import ChainMap, abc
+from collections.abc import Set
 from laza.common.typing import get_args, UnionType, Self, get_origin
 
 
@@ -32,7 +33,7 @@ from ..common import (
     T_Injectable,
     isinjectable,
 )
-from .util import FactoryResolver, PartialFactoryResolver, singleton_decorator
+from .functools import CallableFactoryResolver, FactoryResolver, PartialFactoryResolver, decorators
 
 
 if t.TYPE_CHECKING:
@@ -44,7 +45,7 @@ logger = getLogger(__name__)
 
 
 _T = t.TypeVar("_T")
-_T_Fn = t.TypeVar("_T_Fn", bound=Callable, covariant=True)
+_T_Fn = t.TypeVar("_T_Fn", bound=abc.Callable, covariant=True)
 _T_Using = t.TypeVar("_T_Using")
 
 _EMPTY = Parameter.empty
@@ -53,7 +54,7 @@ T_UsingAlias = T_Injectable
 T_UsingVariant = T_Injectable
 T_UsingValue = T_Injected
 
-T_UsingFunc = Callable[..., T_Injected]
+T_UsingFunc = abc.Callable[..., T_Injected]
 T_UsingType = type[T_Injected]
 
 T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
@@ -61,7 +62,7 @@ T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
 
 T_UsingAny = t.Union[T_UsingCallable, T_UsingAlias, T_UsingValue]
 
-TContextBinding =  Callable[['InjectorContext', t.Optional[Injectable]], Callable[..., T_Injected]]
+TContextBinding =  abc.Callable[['InjectorContext', t.Optional[Injectable]], abc.Callable[..., T_Injected]]
 
 def _fluent_decorator(default=Missing, *, fluent: bool = False):
     def decorator(func: _T_Fn) -> _T_Fn:
@@ -105,7 +106,7 @@ class _Attr(t.Generic[_T]):
     )
 
     def __new__(
-        cls: type[Self], default: _T = ..., *, default_factory: Callable[[], _T] = ...
+        cls: type[Self], default: _T = ..., *, default_factory: abc.Callable[[], _T] = ...
     ) -> Self:
         if isinstance(default, cls):
             return default
@@ -176,11 +177,11 @@ _missing_or_none = frozenset([Missing, None])
 @InjectionMarker.register
 class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
+    _frozen: bool = False
+
     __attr_defaults__: t.Final[dict[str, _Attr]] = ...
 
     _is_registered: bool = False
-
-    __boot: Promise
 
     container: "Container" = None
     """The Container where this provider is setup.
@@ -205,13 +206,15 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
     """The object used to resolve 
     """
 
-    filters: tuple[Callable[['Injector', Injectable], bool]] = ()
+    is_shared: t.ClassVar[bool] = None
+    """Whether this provided value is shared.
+    """
+
+    filters: tuple[abc.Callable[['Injector', Injectable], bool]] = ()
     """Called to determine whether this provider can be bound.
     """
 
     def __init__(self, provide: Injectable = Missing, using: Injectable = Missing) -> None:
-        object.__setattr__(self, '_Provider__boot', Promise())
-        # self.__boot.then(lambda: self._register())
         self.__init_attrs__()
         using in _missing_or_none or self.using(using)
         provide in _missing_or_none or self.provide(provide)
@@ -280,7 +283,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
             raise TypeError(f'{self!s} already registered to {self.container}.')
 
     def _prepare_to_register(self):
-        if not self.__boot.done():
+        if not self._frozen:
             if self._is_registered:
                 raise TypeError(f'{self!s} already registered to {self.container}.')
             try:
@@ -313,7 +316,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         return self
 
     @t.overload
-    def provide(self) -> Callable[[T_Injectable], T_Injectable]:
+    def provide(self) -> abc.Callable[[T_Injectable], T_Injectable]:
         ...
 
     @t.overload
@@ -326,7 +329,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         return self
 
     @t.overload
-    def using(self) -> Callable[[_T], _T]:
+    def using(self) -> abc.Callable[[_T], _T]:
         ...
 
     @t.overload
@@ -339,17 +342,17 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         return self
 
     def bind(self, injector: "Injector", provides: T_Injectable=None) -> 'TContextBinding':
-        self.__boot.settle()
+        self._freeze()
         if provides is None: provides = self.provides
         fn, deps = self._bind(injector, provides)
         return fn
 
     @abstractmethod
-    def _bind(self, injector: "Injector", token: T_Injectable) -> tuple[Callable, Set]:
+    def _bind(self, injector: "Injector", token: T_Injectable) -> tuple[abc.Callable, Set]:
         ...
 
     def can_bind(self, injector: "Injector", dep: T_Injectable=None) -> bool:
-        self.__boot.settle()
+        self._freeze()
         if dep is None: 
             dep = self.provides
         
@@ -362,7 +365,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     def _run_filters(self, injector: "Injector", dep: T_Injectable) -> bool:
         for fl in self.filters:
-            if not fl(injector, dep):
+            if not fl(self, injector, dep):
                 return False
         return True
 
@@ -373,8 +376,11 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         sub, *subs = subs
         return sub.substitute(*subs) if subs else sub
 
-    def onboot(self, callback: t.Union[Promise, Callable]=None):
-        return self.__boot.then(callback)
+    def _freeze(self):
+        self._frozen or (self._onfreeze(), self.__set_attr("_frozen", True))
+
+    def _onfreeze(self):
+        ...
 
     def __init_attrs__(self):
         for k, attr in self.__attr_defaults__.items():
@@ -395,8 +401,8 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     # @t.Final
     def __setattr__(self, name, value, *, force=False):
-        if force is False and self.__boot.done():
-            raise AttributeError(f"{self.__class__.__name__}.{name} is not writable")
+        if force is False and self._frozen:
+            raise AttributeError(f"`{name}` is not writable.")
         object.__setattr__(self, name, value)
 
     if t.TYPE_CHECKING:
@@ -420,6 +426,8 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 class Value(Provider[T_UsingValue, T_Injected]):
     """Provides given value as it is."""
 
+    is_shared: t.ClassVar[bool] = True
+
     if t.TYPE_CHECKING:
         def __init__(self, provide: Injectable = Missing, value: T_Injected = Missing) -> None:
             ...
@@ -428,8 +436,35 @@ class Value(Provider[T_UsingValue, T_Injected]):
         value = self.uses
         func = lambda: value
         return lambda ctx: func, None
+        
+        
 
 
+
+@export()
+class ContextManagerProvider(Value):
+    """Provides given value as it is."""
+
+    def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
+        cm = self.uses
+        if not isinstance(cm, AbstractContextManager):
+            raise TypeError(f'value must be a `ContextManager` not `{cm}`')
+        
+        return lambda ctx: decorators.contextmanager(cm, ctx), None
+
+
+
+
+
+
+@export()
+class CurrentContextProvider(Provider[T_UsingValue, T_Injected]):
+    """Provides the current `InjectorContext`"""
+    _uses: t.ClassVar = None
+    uses: t.ClassVar = None
+
+    def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
+        return lambda ctx: lambda: ctx, None
 
 
 
@@ -514,9 +549,7 @@ class InjectProvider(Provider[Inject, T_Injected]):
         scope = obj.__scope__
 
         if scope is None or injector.is_scope(scope):
-                
             if obj.is_optional:
-
                 default = obj.__default__
                 if isinstance(default, InjectionMarker):
                     return lambda ctx: ctx.get(dep) or ctx[default], {dep}
@@ -531,36 +564,31 @@ class InjectProvider(Provider[Inject, T_Injected]):
 
 
 
-
 @export()
 class LookupProvider(Provider[Inject, T_Injected]):
 
     def _bind(self, injector: "Injector", obj: "InjectedLookup") -> 'TContextBinding':
+        dep, path = obj.depends, obj.path
+        return lambda ctx: lambda: path.get(ctx[dep]())
 
-        dep = obj.depends
-        path = obj.path
-
-        def hander(scp: "InjectorContext"):
-            nonlocal dep, path
-            var = scp[dep]
-            return lambda: path.get(var())
-
-        return hander, {dep}
 
 
 
 @export()
-class Factory(Provider[Callable[..., T_Injected], T_Injected]):
+class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     arguments: Arguments = _Attr(default_factory=Arguments)
-    is_singleton: bool = False
+    is_shared: bool = False
+    is_resource: bool = False
     # is_partial: bool = False
 
-    decorators: list[Callable[[Callable], Callable]] = _Attr(default_factory=list)
+    decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]] = _Attr(default_factory=tuple)
+
+    _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
 
     _resolver_class: t.ClassVar[type[FactoryResolver]] = FactoryResolver
 
-    def __init__(self, using: Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
+    def __init__(self, using: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         super().__init__()
         using is None or self.using(using)
         args and self.args(*args)
@@ -584,32 +612,63 @@ class Factory(Provider[Callable[..., T_Injected], T_Injected]):
         self.__set_attr("arguments", self.arguments.replace(kwargs=kwargs))
         return self
 
+    def resource(self, is_resource=True):
+        self.__set_attr("is_resource", True)
+        return self
+
     def singleton(self, is_singleton: bool = True) -> Self:
-        self.__set_attr("is_singleton", is_singleton)
+        self.__set_attr("is_shared", is_singleton)
         return self
     
-    def decorate(self, *decorators: Callable[[Callable], Callable]) -> Self:
-        self.decorators.extend(decorators)
+    def decorate(self, *decorators: abc.Callable[[abc.Callable], abc.Callable], replace: bool=False) -> Self:
+        if replace is True:
+            self.decorators = decorators
+        else:
+            self.decorators = self.decorators + decorators
         return self
+
+    def _extra_decorators(self):
+        if self.is_shared:
+            yield decorators.singleton
 
     def _iter_decorators(self):
         yield from self.decorators
-        if self.is_singleton:
-            yield singleton_decorator
+        yield from self._extra_decorators()
+
+    def _onfreeze(self):
+        self.__set_attr('_all_decorators', tuple(self._iter_decorators()))
 
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
         return self._resolver_class(
                     self.uses, 
                     arguments=self.arguments, 
-                    decorators=self._iter_decorators()
+                    decorators=self._all_decorators
                 )(injector, token)
 
 
 
 
 @export()
+class Callable(Factory[T_Injected]):
+
+    _resolver_class: t.ClassVar = CallableFactoryResolver
+
+   
+
+
+@export()
 class PartialFactory(Factory[T_Injected]):
 
     _resolver_class: t.ClassVar[type[PartialFactoryResolver]] = PartialFactoryResolver
-
    
+   
+
+
+@export()
+class Resource(Factory[T_Injected]):
+
+    is_shared: t.ClassVar[bool] = True
+    
+    def _extra_decorators(self):
+       yield decorators.resource
+

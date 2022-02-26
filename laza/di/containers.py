@@ -21,7 +21,7 @@ from .common import (
 )
 
 from .providers import Provider, T_UsingAny
-from .providers.tools import ProviderRegistry
+from .providers.util import ProviderRegistry
 
 
 

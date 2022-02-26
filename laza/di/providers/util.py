@@ -1,321 +1,167 @@
-from logging import getLogger
-
-import typing as t
-from threading import Lock
-from inspect import Signature, Parameter
-
-from collections.abc import Callable, Iterable
-
-from laza.common.collections import Arguments
-from laza.common.functools import export, Missing
-from laza.common.typing import Self, typed_signature
+from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager
+from functools import update_wrapper
+from types import FunctionType, GenericAlias
+import typing as t 
+import logging
+from functools import wraps
+from collections.abc import Callable as AbcCallable, Sequence
+from typing_extensions import Self
 
 
+from laza.common.collections import MultiChainMap
+from laza.common.typing import get_origin
 
-from ..common import InjectionMarker, Injectable, T_Injectable, T_Injected
+
+
+from ..context import context_partial
+from ..common import InjectionMarker, Injectable
+from . import Callable, ContextManagerProvider, Provider, Alias, Resource, Value, Factory, PartialFactory
 
 if t.TYPE_CHECKING:
-    from ..injectors import Injector, InjectorContext
+    from ..injectors import Injector
 
+logger = logging.getLogger(__name__)
 
-logger = getLogger(__name__)
-
-_POSITIONAL_ONLY = Parameter.POSITIONAL_ONLY
-_VAR_POSITIONAL = Parameter.VAR_POSITIONAL
-_POSITIONAL_KINDS = frozenset([_POSITIONAL_ONLY, _VAR_POSITIONAL])
-_POSITIONAL_OR_KEYWORD = Parameter.POSITIONAL_OR_KEYWORD
-_KEYWORD_ONLY = Parameter.KEYWORD_ONLY
-_VAR_KEYWORD = Parameter.VAR_KEYWORD
-_KEYWORD_KINDS = frozenset([Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY, Parameter.VAR_KEYWORD])
-
-_EMPTY = Parameter.empty
-
-_T = t.TypeVar('_T')
-
-
-
-
-def singleton_decorator(func):
-    lock = Lock()
-    value = Missing
-
-    def singleton() -> T_Injected:
-        nonlocal lock, func, value
-        if value is Missing:
-            with lock:
-                if value is Missing:
-                    value = func()
-        return value
-    return singleton
+_T_Fn = t.TypeVar('_T_Fn', bound=AbcCallable)
 
 
 
 
 
-class ParamResolver(t.Generic[_T]):
+class ProviderResolver:
 
-    __slots__ = (
-        'annotation', 'value', 'dependency', 'default', 'has_value', 'has_default',
-    )
-    annotation: t.Any
-    value: _T
-    default: t.Any
-    dependency: Injectable
+    __slots__ = '__injector',  '__registry', 
 
-    def __new__(cls: type[Self], value: t.Any=_EMPTY, default=_EMPTY, annotation=_EMPTY) -> Self:
-        if isinstance(value, InjectionMarker):
-            dependency = value
-        elif isinstance(default, InjectionMarker):
-            dependency = default
-        else:
-            dependency = annotation
-          
-        self = object.__new__(cls)        
-        self.annotation = annotation
-        self.dependency = dependency
-        self.value = value
-        self.default = default
-        
-        self.has_value = not (value is _EMPTY or isinstance(value, InjectionMarker))
-        self.has_default = not (default is _EMPTY or isinstance(default, InjectionMarker))
+    __injector: 'Injector'
+    __registry: MultiChainMap[Injectable, Provider]
 
+    def __new__(cls, injecor: 'Injector', registry: MultiChainMap[Injectable, Provider]):
+        self = object.__new__(cls)
+        self.__injector = injecor
+        self.__registry = registry
         return self
     
-    def bind(self, injector: 'Injector'):
-        if not self.has_value:
-            dep = self.dependency
-            if not dep is _EMPTY and injector.is_provided(dep):
-                return dep
-            elif not self.has_default:
-                raise TypeError(f'unresolvable dependency `{self.dependency}` in {self}.')
-        
-    def resolve(self, ctx: 'InjectorContext'):
-        if self.has_value:
-            return self.value, _EMPTY, _EMPTY
-        elif self.dependency is _EMPTY:
-            return _EMPTY, _EMPTY, self.default if self.has_default else _EMPTY
-        elif self.has_default:
-            return _EMPTY, ctx.get(self.dependency, _EMPTY), self.default
-        else:
-            return _EMPTY, ctx[self.dependency], _EMPTY
-   
-    def __repr__(self) -> str:
-        value, annotation, default  = ('...' if x is _EMPTY else x for x in (self.value, self.annotation, self.default))
-        if isinstance(annotation, type):
-            annotation = annotation.__name__
+    def resolve(self, dep: Injectable) -> t.Union[Provider, None]:
+        if isinstance(dep, InjectionMarker):
+            dep = dep.__dependency__
 
-        return f'<{self.__class__.__name__}: {"Any" if annotation == "..." else annotation!s} ={default!s}, {value=!s}>'
+        if isinstance(dep, Provider):
+            return dep if dep.can_bind(self.__injector, dep) else None
 
-
-
-
-
-@export
-class FactoryResolver:
-
-    __slots__ = 'factory', 'arguments', 'signature', 'decorators',
-
-    factory: Callable
-    arguments: dict[str, t.Any]
-    signature: Signature
-    decorators: list[Callable[[Callable], Callable]]
-
-    def __init__(self,
-                factory: Callable,
-                *,
-                arguments: Arguments=None,
-                decorators: Iterable[Callable[[Callable], Callable]]=(),
-                signature: Signature=None):
-        self.factory = factory
-        self.signature = signature or typed_signature(factory)
-        self.decorators = list(decorators or ())
-        self.arguments = self.parse_arguments(arguments)
+        ls = self.__registry.get_all(dep)
+        if ls is None:
+            ls = (origin := get_origin(dep)) and self.__registry.get_all(origin)
+            if ls is None:
+                return None
+        return self._reduce_providers(dep, ls[::-1])
     
-    def __call__(self,  injector: 'Injector'=None, provides: T_Injectable=None) -> Callable:
-        _args, _kwds, _vals, deps = self.evaluate(injector)
-        return self.make_resolver(provides, self.factory, _args, _kwds, _vals), deps
+    def _reduce_providers(self, obj: Injectable, stack: Sequence['Provider']):
+        stack = [v for v in stack if v.can_bind(self.__injector, obj)]
+        stack = [v for v in stack if not v.is_default] or stack
+        if stack:
+            top, *extra = stack
+            if extra:
+                top = top.substitute(*extra)
+            return top            
 
-    def parse_arguments(self, arguments: Arguments=None):
-        if arguments:
-            bound = self.signature.bind_partial(*arguments.args, **arguments.kwargs)
-        else:
-            bound = self.signature.bind_partial()
-        return bound.arguments        
-    
-    def iter_param_resolvers(self):
-        arguments = self.arguments
-        for n, p in self.signature.parameters.items():
-            if p.kind is _VAR_POSITIONAL:
-                p = p.replace(annotation=_EMPTY)
-                for v in arguments.get(n, ()):
-                    yield n, p, self.make_param_resolver(p, v)
-            elif p.kind is _VAR_KEYWORD:
-                p = p.replace(annotation=_EMPTY)
-                for k, v in arguments.get(n, {}).items():
-                    yield k, p, self.make_param_resolver(p, v)
-            else:
-                yield n, p, self.make_param_resolver(p, arguments.get(n, _EMPTY))
 
-    def make_param_resolver(self, param: Parameter, value=_EMPTY):
-        return ParamResolver(value, param.default, param.annotation)
 
-    def evaluate(self, injector: 'Injector'):
-        args = []
-        kwds = []
-        vals = {}
-        deps = set()
 
-        skip_pos = False
-        for n, p, r in self.iter_param_resolvers():
-            dep = r.bind(injector)
-            if p.kind in _POSITIONAL_KINDS:
-                if skip_pos is False:
-                    if not dep is None:
-                        args.append(r)
-                        deps.add(dep)
-                    elif (r.has_value or r.has_default):
-                        args.append(r)
-                    else:
-                        skip_pos = True
-                continue
-            elif r.has_value:
-                vals[n] = r.value
-            elif not dep is None:
-                kwds.append((n,r))
-                deps.add(dep)
+class BindingsMap(dict[Injectable, t.Union[_T_Fn, None]], t.Generic[_T_Fn]):
 
-        return args, kwds, vals, deps
-    
-    def iresolve_args(self, args: Iterable[ParamResolver], ctx: 'InjectorContext'):
-        for r in args:
-            v, f, d = r.resolve(ctx)
-            if _EMPTY is v is d is f:
-                break
-            yield v, f, d
+    __slots__ = '__injector', '__resolver',
 
-    def iresolve_kwds(self, kwds: Iterable[tuple[str, ParamResolver]], ctx: 'InjectorContext'):
-        for n, r in kwds:
-            v, f, d = r.resolve(ctx)
-            if f is _EMPTY:
-                continue
-            yield n, f
-    
-    def _decorate(self, func):
-        for fn in self.decorators:
-            func = fn(func)
-        return func
+    __injector: 'Injector'
+    __resolver: ProviderResolver
 
-    def _iargs(self, args):
-        for v, fn, d in args:
-            if not v is _EMPTY:
-                yield v
-            elif not fn is _EMPTY:
-                yield fn()
-            else:
-                yield d
+    def __init__(self, injector: 'Injector', resolver: ProviderResolver):
+        self.__injector = injector
+        self.__resolver = resolver
 
-    def _ikwds(self, kwds: Iterable[tuple[str, Callable]], vals=None, *, skip=None):
-        if vals is None:
-            vals = {}
+    def __missing__(self, key):
+        p = self.__resolver.resolve(key)
+        # We cache the result for next time. This is  aggressive because by this
+        # time it is expected the the key is provided and will bind somewhere.
+        return dict.setdefault(self, key, p and p.bind(self.__injector, key))
+         
+    def not_mutable(self, *a, **kw):
+        raise TypeError(f'immutable type {self.__class__.__name__}')
 
-        if skip:
-            for n, f in kwds:
-                if not n in skip:
-                    vals[n] = f()
-        else:
-            for n, f in kwds:
-                vals[n] = f()
-            
-        return vals
+    __delitem__ = __setitem__ = setdefault = \
+        pop = popitem = update = clear = \
+        copy = __copy__ = __reduce__ = __deepcopy__ = not_mutable
+    del not_mutable
 
-    def make_resolver(self, provides, func, _args, _kwds, _vals):
-        if not self.signature.parameters:
-            return self.make_plain_resolver(provides, func)
-        elif not _args:
-            return self.make_kwds_resolver(provides, func, _kwds, _vals)
-        elif not _kwds:
-            return self.make_args_resolver(provides, func, _args, _vals)
-        else:
-            return self.make_args_kwds_resolver(provides, func, _args, _kwds, _vals)
-    
-    def make_plain_resolver(self, provides, func):
-        def resolve(ctx: "InjectorContext"):
-                nonlocal func
-                return self._decorate(self.plain_wrap_func(func))
-        return resolve
-          
-    def make_args_resolver(self, provides, func, _args, vals):
-        def resolve(ctx: "InjectorContext"):
-                nonlocal _args, vals, self
-                args = [*self.iresolve_args(_args, ctx)]
-                return self._decorate(self.arg_wrap_func(func, args, vals))
-        return resolve
-                 
-    def make_kwds_resolver(self, provides, func, _kwds, vals):
-        def resolve(ctx: "InjectorContext"):
-                nonlocal vals, _kwds, self
-                kwds = [*self.iresolve_kwds(_kwds, ctx)]
-                return self._decorate(self.kwd_wrap_func(func, kwds, vals))
-
-        return resolve
-
-    def make_args_kwds_resolver(self, provides, func, _args, _kwds, vals):
-        def resolve(ctx: "InjectorContext"):
-                nonlocal _args, vals, _kwds, self
-                args = [*self.iresolve_args(_args, ctx)]
-                kwds = [*self.iresolve_kwds(_kwds, ctx)]
-
-                return self._decorate(self.arg_kwd_wrap_func(func, args, kwds, vals))
-
-        return resolve
-          
-    def plain_wrap_func(self, func):
-        return func
-                    
-    def arg_wrap_func(self, func, args, vals):
-        if vals:
-            return lambda: func(*self._iargs(args), **vals)
-        else:
-            return lambda: func(*self._iargs(args))
-
-    def kwd_wrap_func(self, func, kwds, vals):
-        if vals:
-            return lambda: func(**vals, **self._ikwds(kwds))
-        else:
-            return lambda: func(**self._ikwds(kwds))
-
-    def arg_kwd_wrap_func(self, func, args, kwds, vals):
-        if vals:
-            return lambda: func(*self._iargs(args), **vals, **self._ikwds(kwds))
-        else:
-            return lambda: func(*self._iargs(args), **self._ikwds(kwds))
-       
 
 
  
+    
+
+def _provder_factory_method(cls: _T_Fn) -> _T_Fn:
+    @wraps(cls)
+    def wrapper(self: "ProviderRegistry", *a, **kw):
+        val = cls(*a, **kw)
+        self.register(val)
+        return val
+
+    return t.cast(cls, wrapper)
 
 
 
-class PartialFactoryResolver(FactoryResolver):
+class ProviderRegistry(ABC):
 
     __slots__ = ()
 
-    def arg_wrap_func(self, func, args, vals):
-        if vals:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **(vals | kw))
-        else:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **kw)
-
-    def kwd_wrap_func(self, func, kwds, vals):
-        if vals:
-            return lambda *a, **kw: func(*a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
-        else:
-            return lambda *a, **kw: func(*a, **kw, **self._ikwds(kwds, skip=kw))
-
-    def arg_kwd_wrap_func(self, func, args, kwds, vals):
-        if vals:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
-        else:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **kw, **self._ikwds(kwds, skip=kw))
+    @abstractmethod
+    def register(self, provider: Provider) -> Self:
+        ...
 
 
+    def provide(self, *providers: t.Union[Provider, type, GenericAlias, FunctionType]) -> Self:
+        for provider in providers:
+            if isinstance(provider, Provider):
+                self.register(provider)
+            elif isinstance(provider, (type, GenericAlias, FunctionType)):
+                self.factory(provider)
+            else:
+                raise ValueError(
+                    f'providers must be of type `Provider`, `type`, '
+                    f'`FunctionType` not {provider.__class__.__name__}'
+                )
+        return self
+
+
+    def inject(self, func: _T_Fn) -> _T_Fn:
+        provider = PartialFactory(func)
+        self.register(provider)
+        return update_wrapper(context_partial(provider), func)
+       
+    
+    if t.TYPE_CHECKING:
+
+        def alias(self, provide: Injectable, alias: t.Any, /) -> Alias:
+            ...
+
+        def value(self, provide: Injectable, value: t.Any, /) -> Value:
+            ...
+
+        def contextmanager(self, provide: Injectable, cm: AbstractContextManager, /) -> ContextManagerProvider:
+            ...
+
+        def callable(self, factory: _T_Fn,  *a, **kw) -> Callable:
+            ...
+
+        def factory(self, factory: _T_Fn,  *a, **kw) -> Factory:
+            ...
+
+        def resource(self, factory: _T_Fn,  *a, **kw) -> Resource:
+            ...
+            
+    else:
+        alias = _provder_factory_method(Alias)
+        value = _provder_factory_method(Value)
+        callable = _provder_factory_method(Callable)
+        contextmanager = _provder_factory_method(ContextManagerProvider)
+        factory = _provder_factory_method(Factory)
+        resource = _provder_factory_method(Resource)

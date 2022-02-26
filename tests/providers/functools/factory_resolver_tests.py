@@ -6,7 +6,7 @@ from inspect import Parameter
 
 
 
-from laza.di.providers.util import FactoryResolver, _EMPTY
+from laza.di.providers.functools import FactoryResolver, _EMPTY
 from laza.di.common import Inject
 
 
@@ -47,6 +47,7 @@ class FactoryResolverTests:
             Inject(str): lambda: vals[2], 
             list: lambda: vals[3], 
         }
+        
         injector.is_provided = Mock(side_effect=lambda o: o in ctx)
 
 

@@ -30,12 +30,12 @@ from .common import (
 )
 
 from .containers import InjectorContainer, Container
-from .context import InjectorContext, context_partial, wire
+from .context import InjectorContext, context_partial, wire, ExitStack
 from .providers import (
-    Alias, Provider, UnionProvider, AnnotatedProvider, 
+    Alias, CurrentContextProvider, Provider, UnionProvider, AnnotatedProvider, 
     InjectProvider, PartialFactory
 )
-from .providers.tools import BindingsMap, ProviderResolver, ProviderRegistry
+from .providers.util import BindingsMap, ProviderResolver, ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +50,6 @@ def inject(func: _T_Fn, /, *, provider: 'Provider'=None) -> _T_Fn:
     
     return update_wrapper(context_partial(provider), func)
     
-
-
 
 
 
@@ -168,13 +166,13 @@ class Injector(ProviderRegistry):
                 return False
         return True
 
-    def create_context(self, top: InjectorContext) -> InjectorContext:
+    def create_context(self, current: InjectorContext) -> InjectorContext:
         if parent := self.__parent:
-            if not top.injector is parent:
-                top = parent.create_context(top)
+            if not current.injector is parent:
+                current = parent.create_context(current)
 
         self.__boot.settle()
-        ctx = self._context_class(self, top)
+        ctx = self._context_class(current, self, self.__bindings)
         if auto := self.__autoloads:
             for d in auto:
                 if fn := ctx[d]:
@@ -188,15 +186,16 @@ class Injector(ProviderRegistry):
             comp = dict(self.__container.bind())
             self.__containers = frozenorderedset(comp.keys())
             self.__registry.maps = [frozendict(), *reversed(comp.values())]
-            self._register_default_providers()
+            self.__register_default_providers()
             self.onboot(lambda: self._collect_autoloaded())
 
-    def _register_default_providers(self):
+    def __register_default_providers(self):
         self.register(UnionProvider().final())
         self.register(AnnotatedProvider().final())
         self.register(InjectProvider().final())
-        for container in self.containers:
-            self.register(Alias(container, self).final())
+        self.register(CurrentContextProvider(self).autoload().final())
+        # for container in self.containers:
+        #     self.register(Alias(container, self).final())
 
     def _collect_autoloaded(self):
         self.__autoloads = frozenset(

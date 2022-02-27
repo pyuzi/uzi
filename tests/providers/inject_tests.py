@@ -6,7 +6,7 @@ import typing as t
 
 from laza.di.providers import InjectProvider as Provider
 
-from laza.di.common import Inject
+from laza.di import Inject
 from laza.di.injectors import Injector
  
 

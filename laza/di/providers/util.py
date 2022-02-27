@@ -15,7 +15,7 @@ from laza.common.typing import get_origin
 
 
 from ..context import context_partial
-from ..common import InjectionMarker, Injectable
+from .. import InjectionMarker, Injectable
 from . import Callable, ContextManagerProvider, Provider, Alias, Resource, Value, Factory
 
 if t.TYPE_CHECKING:

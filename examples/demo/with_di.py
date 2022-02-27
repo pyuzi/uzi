@@ -4,7 +4,7 @@ import os
 from after import ApiClient, Service
 
 from laza.di.injectors import Injector
-from laza.di.common import Depends
+from laza.di import Depends
 
 
 ioc = Injector()

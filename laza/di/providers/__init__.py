@@ -1,15 +1,12 @@
 # from __future__ import annotations
-from contextlib import AbstractContextManager, ExitStack
-from curses.ascii import SI
+from contextlib import AbstractContextManager
 from inspect import Signature, ismemberdescriptor
 from logging import getLogger
-from threading import Lock
-from types import GenericAlias
 import typing as t
 from functools import wraps
 from inspect import Parameter
 from abc import ABCMeta, abstractmethod
-from laza.common.collections import Arguments, orderedset
+from laza.common.collections import Arguments
 
 from collections import ChainMap, abc
 from collections.abc import Set, Callable as AbstractCallable
@@ -19,13 +16,11 @@ from laza.common.typing import get_args, UnionType, Self, get_origin, typed_sign
 from laza.common.functools import Missing, export
 
 
-from laza.common.enum import BitSetFlag, auto
-
-from laza.common.promises import Promise
 
 
 
-from ..common import (
+
+from .. import (
     Inject,
     InjectionMarker,
     InjectedLookup,
@@ -173,6 +168,10 @@ class ProviderType(ABCMeta):
 
 
 _missing_or_none = frozenset([Missing, None])
+
+
+
+
 
 @export()
 @InjectionMarker.register
@@ -647,8 +646,6 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
             try:
                 return typed_signature(self.uses)
             except ValueError:
-                if not isinstance(self.uses, AbstractCallable):
-                    raise
                 return self._blank_signature
         return sig
 
@@ -665,7 +662,6 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     def _provides_fallback(self):
         return self._uses
-
 
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
         return self._resolver_class(
@@ -685,7 +681,7 @@ class Callable(Factory[T_Injected]):
     is_shared: t.ClassVar[bool] = False
 
     @property
-    def _resolver_class(self) -> None:
+    def _resolver_class(self):
         if self.is_partial:
             return PartialFactoryResolver
         else:

@@ -1,7 +1,7 @@
 import os
 
 from laza.di.injectors import Injector
-from laza.di.common import Depends as Dep
+from laza.di import Depends as Dep
 
 
 

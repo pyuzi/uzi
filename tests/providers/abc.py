@@ -8,7 +8,7 @@ from collections.abc import Set
 from laza.di.providers import Provider
 from laza.di.injectors import Injector
 
-from laza.di.common import InjectionMarker, isinjectable
+from laza.di import InjectionMarker, isinjectable
 
 
 
@@ -73,13 +73,13 @@ class ProviderTestCase:
         provider.final(False)
         assert provider.is_final is False
 
-    def test___dependency__(self, provider: Provider):
+    def test__dependency__(self, provider: Provider):
         assert provider.container is None
         dep = provider.__dependency__
         assert dep is provider or isinjectable(dep)
         
     @xfail(raises=ValueError, strict=True)        
-    def test_xfail___dependency__with_set_container(self, provider: Provider, container):
+    def test_xfail__dependency__with_set_container(self, provider: Provider, container):
         assert provider.container is None
         provider.set_container(container)
         provider.__dependency__
@@ -89,7 +89,7 @@ class ProviderTestCase:
         provider._freeze()
         assert provider._frozen
 
-    @xfail(raises=AttributeError)
+    @xfail(raises=AttributeError, strict=True)
     def test_xfail_frozen(self, provider: Provider):
         provider._freeze()
         provider.default(not provider.is_default)
@@ -101,7 +101,7 @@ class ProviderTestCase:
         func = bound(context)
         assert callable(func)
                 
-    def test_cant_bind_outside_own_scope(self, provider: Provider, injector: Injector, container):
+    def test_no_binds_outside_own_scope(self, provider: Provider, injector: Injector, container):
         assert provider.container is None
         assert not injector.is_scope(container)
         provider.set_container(container)

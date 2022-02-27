@@ -14,7 +14,7 @@ from laza.common.typing import Self, typed_signature
 
 
 
-from ..common import InjectionMarker, Injectable, T_Injectable, T_Injected
+from .. import InjectionMarker, Injectable, T_Injectable, T_Injected
 from ..util import InjectorLock, ExitStack
 
 if t.TYPE_CHECKING:

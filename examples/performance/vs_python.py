@@ -1,12 +1,8 @@
-from pprint import pprint
-from time import time
-from typing import Union
-import pytest
 
 from laza.di.injectors import Injector, inject, wire
 
 
-from libs.di.examples.performance._benchmarkutil import Benchmark, Timer
+from _benchmarkutil import Benchmark, Timer
 
 
 
@@ -22,8 +18,7 @@ class Bar:
         assert isinstance(foo, Foo)
 
      
-class Baz:
-    
+class Baz:   
     def __init__(self, bar: Bar, /) -> None:
         assert isinstance(bar, Bar)
 
@@ -49,13 +44,12 @@ class FooBarBaz:
 
 class Service:
     
-    def __init__(self, foo: Foo, bar: Bar, baz: Baz, /, foobar: FooBar, foobarbaz: FooBarBaz) -> None:
+    def __init__(self, foo: Foo, bar: Bar, baz: Baz, /, *, foobar: FooBar, foobarbaz: FooBarBaz) -> None:
         assert isinstance(foo, Foo)
         assert isinstance(bar, Bar)
         assert isinstance(baz, Baz)
         assert isinstance(foobar, FooBar)
         assert isinstance(foobarbaz, FooBarBaz)
-
 
 
 
@@ -96,7 +90,7 @@ mkbar = lambda: Bar(mkfoo())
 mkbaz = lambda: Baz(mkbar())
 mkfoobar = lambda: FooBar(mkfoo(), mkbar())
 mkfoobarbaz = lambda: FooBarBaz(mkfoo(), mkbar(), mkbaz())
-mkservice = lambda: Service(mkfoo(), mkbar(), mkbaz(), mkfoobar(), mkfoobarbaz())
+mkservice = lambda: Service(mkfoo(), mkbar(), mkbaz(), foobar=mkfoobar(), foobarbaz=mkfoobarbaz())
 
 mkinject_1 = lambda: inject_1.__wrapped__(mkbaz())
 mkinject_2 = lambda: inject_2.__wrapped__(mkfoo(), mkbar(), mkbaz())
@@ -117,9 +111,9 @@ with Timer() as tm:
         bench |= bfoo | bbar | bbaz 
         print(bench, '\n')
 
-        bfoobar = Benchmark('FooBar.', _n).run(py=mkfoobar, laza=ctx[FooBar])
-        bfoobarbaz = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, laza=ctx[FooBarBaz])
-        bservice = Benchmark('Service.', _n).run(py=mkservice, laza=ctx[Service])
+        bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, laza=ctx[FooBar])
+        bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, laza=ctx[FooBarBaz])
+        bservice    = Benchmark('Service.', _n).run(py=mkservice, laza=ctx[Service])
 
         bench = Benchmark(str(FooBar | FooBarBaz | Service), _n)
         bench |= bfoobar | bfoobarbaz | bservice

@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 from laza.common.functools import export
 
-from .common import Injectable, T_Injectable, T_Injected
+from . import Injectable, T_Injectable, T_Injected
 from .util import ExitStack
 
 

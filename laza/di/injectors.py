@@ -22,7 +22,7 @@ from laza.common.promises import Promise
 
 
 
-from .common import (
+from . import (
     InjectionMarker,
     Injectable, 
     T_Injectable,
@@ -211,9 +211,6 @@ class Injector(ProviderRegistry):
         self.register(InjectorContextProvider(self).autoload().final())
         self.register(Factory(ExitStack).singleton().autoload().final())
         self.register(Factory(Lock).provide(InjectorLock).final())
-
-        # for container in self.containers:
-        #     self.register(Alias(container, self).final())
 
     def _collect_autoloaded(self):
         self.__autoloads = frozenset(

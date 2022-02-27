@@ -15,7 +15,7 @@ from laza.common.promises import Promise
 
 
 
-from .common import (
+from . import (
     Injectable,
     Injectable,
     T_Injected,
@@ -151,7 +151,7 @@ class InjectorContainer(Container):
             injector = self.__injector
 
         if not source is None:
-            raise TypeError(f'{self} cannot be required in other containers.')
+            raise TypeError(f'{self} cannot be included in other containers.')
         elif not self.__injector is injector:
             raise TypeError(f'{self} already belongs to {self.__injector}')
         return super().bind(injector)

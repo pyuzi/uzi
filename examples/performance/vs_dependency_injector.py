@@ -72,9 +72,9 @@ test_factory_provider = providers.Factory(
 
 with wire(ioc) as ctx:
     ls = [
-        Benchmark('A.', N).run(VS=providers.Factory(A), DI=ctx[A]),
-        Benchmark('B.', N).run(VS=providers.Factory(B, providers.Factory(A)), DI=ctx[B]),
-        Benchmark('C.', N).run(VS=providers.Factory(C, providers.Factory(A), providers.Factory(B, providers.Factory(A))), DI=ctx[C]),
+        Benchmark('A.', N).run(di=providers.Factory(A), laza=ctx[A]),
+        Benchmark('B.', N).run(di=providers.Factory(B, providers.Factory(A)), laza=ctx[B]),
+        Benchmark('C.', N).run(di=providers.Factory(C, providers.Factory(A), providers.Factory(B, providers.Factory(A))), laza=ctx[C]),
         
     ]
 
@@ -83,7 +83,7 @@ with wire(ioc) as ctx:
     bench |= reduce(or_, ls)
     print(bench, '\n')
 
-    print(Benchmark('Providers.Test.', N).run(VS=test_factory_provider, DI=ctx[Test]))
+    print(Benchmark('Providers.Test.', N).run(di=test_factory_provider, laza=ctx[Test]))
 
 
 

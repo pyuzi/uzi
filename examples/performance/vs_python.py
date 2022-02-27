@@ -109,25 +109,25 @@ with Timer() as tm:
         
         # [ctx[d]() for d in (Foo, Bar, Baz, FooBar, FooBarBaz, Service)]
         
-        bfoo = Benchmark('Foo.', _n).run(PY=mkfoo, DI=ctx[Foo])
-        bbar = Benchmark('Bar.', _n).run(PY=mkbar, DI=ctx[Bar])
-        bbaz = Benchmark('Baz.', _n).run(PY=mkbaz, DI=ctx[Baz])
+        bfoo = Benchmark('Foo.', _n).run(py=mkfoo, laza=ctx[Foo])
+        bbar = Benchmark('Bar.', _n).run(py=mkbar, laza=ctx[Bar])
+        bbaz = Benchmark('Baz.', _n).run(py=mkbaz, laza=ctx[Baz])
         
         bench = Benchmark(str(Foo | Bar | Baz), _n)
         bench |= bfoo | bbar | bbaz 
         print(bench, '\n')
 
-        bfoobar = Benchmark('FooBar.', _n).run(PY=mkfoobar, DI=ctx[FooBar])
-        bfoobarbaz = Benchmark('FooBarBaz.', _n).run(PY=mkfoobarbaz, DI=ctx[FooBarBaz])
-        bservice = Benchmark('Service.', _n).run(PY=mkservice, DI=ctx[Service])
+        bfoobar = Benchmark('FooBar.', _n).run(py=mkfoobar, laza=ctx[FooBar])
+        bfoobarbaz = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, laza=ctx[FooBarBaz])
+        bservice = Benchmark('Service.', _n).run(py=mkservice, laza=ctx[Service])
 
         bench = Benchmark(str(FooBar | FooBarBaz | Service), _n)
         bench |= bfoobar | bfoobarbaz | bservice
         print(bench, '\n')
 
-        binject_1 = Benchmark('inject_1.', _n).run(PY=mkinject_1, DI=inject_1)
-        binject_2 = Benchmark('inject_2.', _n).run(PY=mkinject_2, DI=inject_2)
-        binject_3 = Benchmark('inject_3.', _n).run(PY=mkinject_3, DI=inject_3)
+        binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, laza=inject_1)
+        binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, laza=inject_2)
+        binject_3 = Benchmark('inject_3.', _n).run(py=mkinject_3, laza=inject_3)
 
 
         bench = Benchmark('INJECT', _n)

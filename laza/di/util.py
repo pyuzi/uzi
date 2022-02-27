@@ -1,20 +1,14 @@
 from abc import abstractmethod
-from collections import deque
-import contextlib
+from contextlib import AbstractContextManager
 import logging
 import sys
 from types import MethodType
 import typing as t
-from collections.abc import MutableSequence, Callable
-from contextvars import ContextVar, Token
+from collections.abc import Callable
 from typing_extensions import Self
 
 from laza.common.abc import abstractclass
 
-from .common import Injectable, T_Injectable, T_Injected
-
-if t.TYPE_CHECKING:
-    from .injectors import Injector, BindingsMap
 
 
 logger = logging.getLogger(__name__)
@@ -22,6 +16,13 @@ logger = logging.getLogger(__name__)
 
 _T = t.TypeVar('_T')
 _T_Fn = t.TypeVar('_T_Fn', bound=Callable)
+
+
+
+@abstractclass
+class InjectorLock(AbstractContextManager):
+    __slots__ = ()
+
 
 
 
@@ -40,14 +41,13 @@ class AbstractExitStack:
             callback(*args, **kwds)
         return _exit_wrapper
 
-
     @abstractmethod
-    def append(self, k, cb):
-        return NotImplementedError(f'{self.__class__.__name__}.append()')
+    def push(self, k, cb):
+        raise NotImplementedError(f'{self.__class__.__name__}.push()')
 
     @abstractmethod
     def pop(self, *args, **kw):
-        return NotImplementedError(f'{self.__class__.__name__}.pop()')
+        raise NotImplementedError(f'{self.__class__.__name__}.pop()')
     
     def exit(self, exit: _T) -> _T:
         """Registers a callback with the standard __exit__ method signature.
@@ -64,9 +64,9 @@ class AbstractExitStack:
             exit_method = _cb_type.__exit__
         except AttributeError:
             # Not a context manager, so assume it's a callable.
-            self.append(exit)
+            self.push(exit, exit)
         else:
-            self.append(self._create_exit_wrapper(exit, exit_method))
+            self.push(exit, self._create_exit_wrapper(exit, exit_method))
         return exit  # Allow use as a decorator.
 
     def enter(self, cm):
@@ -80,7 +80,7 @@ class AbstractExitStack:
         _cm_type = cm.__class__
         _exit = _cm_type.__exit__
         result = _cm_type.__enter__(cm)
-        self.append(self._create_exit_wrapper(cm, _exit))
+        self.push(cm, self._create_exit_wrapper(cm, _exit))
         return result
 
     def callback(self, callback: _T_Fn, /, *args, **kwds) -> _T_Fn:
@@ -93,7 +93,7 @@ class AbstractExitStack:
         # We changed the signature, so using @wraps is not appropriate, but
         # setting __wrapped__ may still help with introspection.
         _exit_wrapper.__wrapped__ = callback
-        self.append(_exit_wrapper)
+        self.push((callback, args, kwds), _exit_wrapper)
         return callback  # Allow use as a decorator
 
     def flush(self, exc_details: tuple[t.Any, t.Any, t.Any]=(None, None, None)):
@@ -138,7 +138,7 @@ class AbstractExitStack:
         self.flush()
         return result
 
-    def __enter__(self, *excinfo):
+    def __enter__(self):
         return self
 
     def __exit__(self, *excinfo):
@@ -147,10 +147,12 @@ class AbstractExitStack:
 
 
 
-class ExitStack(list[tuple], AbstractExitStack):
+class ExitStack(list[Callable], AbstractExitStack):
 
     __slots__ = ()
 
+    def push(self, k, cb):
+        self.append(cb)
 
 
 

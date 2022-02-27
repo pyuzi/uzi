@@ -17,6 +17,7 @@ from laza.common.promises import Promise
 
 from .common import (
     Injectable,
+    Injectable,
     T_Injected,
 )
 
@@ -36,7 +37,6 @@ _T = t.TypeVar('_T')
 
 
 @export()
-@Injectable.register
 class Container(ProviderRegistry):
 
     __slots__ = (
@@ -92,15 +92,16 @@ class Container(ProviderRegistry):
         return self
 
     def register(self, provider: Provider) -> Self:
-        self.onboot(lambda: provider.set_container(self))
+        provider.set_container(self)
+        # self.onboot(lambda: provider.set_container(self))
         return self
 
     def onboot(self, callback: t.Union[Promise, Callable, None]=None):
         self.__boot.then(callback)
 
     def add_to_registry(self, tag: Injectable, provider: Provider):
-        if not self.__boot.done():
-            raise TypeError(f'container not booted: {self!r}')
+        # if not self.__boot.done():
+        #     raise TypeError(f'container not booted: {self!r}')
         self.__registry[tag] = provider
         provider.autoloaded and self.__autoloads.add(tag)
         # logger.debug(f'{self}.add_to_registry({tag}, {provider=!s})')
@@ -111,7 +112,7 @@ class Container(ProviderRegistry):
             self.__bound.add(injector)
             yield self, self.__registry
             yield from self._bind_included(injector)
-            injector.onboot(self.__boot)
+            # injector.onboot(self.__boot)
 
     def _bind_included(self, injector: 'Injector'):
         for c in reversed(self.__includes):

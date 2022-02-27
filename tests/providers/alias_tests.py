@@ -1,5 +1,5 @@
 import pytest
-import time
+import typing as t
 
 
 
@@ -14,24 +14,18 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-token = InjectionToken('aliased') 
 
-
-@pytest.fixture
-def provider(injector:Injector, injectorcontext):
-    injector.value(token, f'VALUE FOR [{token=!r}]!')
-    return Provider(type, token)
-
-
-
-@pytest.fixture
-def provided(provider:Provider, injectorcontext):
-    return injectorcontext[provider.uses]
-
-
+_Ta = t.TypeVar('_Ta')
 
 
 class AliasProviderTests(ProviderTestCase):
 
-    cls = Provider
+    @pytest.fixture
+    def provider(self):
+        return Provider(type, _Ta)
+
+    @pytest.fixture
+    def context(self, context, value_setter):
+        context[_Ta] = value_setter
+        return context
 

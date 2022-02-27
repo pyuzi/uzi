@@ -16,21 +16,14 @@ parametrize = pytest.mark.parametrize
 
 _T = t.TypeVar('_T')
 
-@pytest.fixture
-def provider():
-    return Provider(_T, object())
-
-
-@pytest.fixture
-def provided(provider: Provider):
-    return lambda: provider.uses
-
-
 
 class ValueProviderTests(ProviderTestCase):
     
-    cls = Provider
+
+    @pytest.fixture
+    def provider(self, value_factory):
+        self.value = value_factory()
+        return Provider(_T, self.value)
 
 
-    
 

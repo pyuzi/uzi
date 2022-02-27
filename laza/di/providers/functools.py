@@ -1,3 +1,4 @@
+from collections import defaultdict
 from logging import getLogger
 
 import typing as t
@@ -7,13 +8,14 @@ from inspect import Signature, Parameter
 from collections.abc import Callable, Iterable, Sequence
 
 from laza.common.abc import abstractclass
-from laza.common.collections import Arguments
+from laza.common.collections import Arguments, frozendict
 from laza.common.functools import export, Missing
 from laza.common.typing import Self, typed_signature
 
 
 
 from ..common import InjectionMarker, Injectable, T_Injectable, T_Injected
+from ..util import InjectorLock, ExitStack
 
 if t.TYPE_CHECKING:
     from ..injectors import Injector, InjectorContext
@@ -39,7 +41,7 @@ class decorators:
 
     @staticmethod
     def singleton(func: Callable, ctx: 'InjectorContext'):
-        lock = ctx.lock()
+        lock = ctx[InjectorLock]()
         value = Missing
         if lock is None:
             def run() -> T_Injected:
@@ -59,21 +61,22 @@ class decorators:
 
     @staticmethod
     def resource(func: Callable, ctx: 'InjectorContext'):
-        lock = ctx.lock()
+        lock = ctx[InjectorLock]()
+        stack: ExitStack = ctx[ExitStack]()
         value = Missing
         if lock is None:
             def run() -> T_Injected:
-                nonlocal func, value
+                nonlocal func, value, stack
                 if value is Missing:
-                    value = ctx.enter(func())
+                    value = stack.enter(func())
                 return value
         else:
             def run() -> T_Injected:
-                nonlocal lock, func, value
+                nonlocal lock, func, value, stack
                 if value is Missing:
                     with lock:
                         if value is Missing:
-                            value = ctx.enter(func())
+                            value = stack.enter(func())
                 return value
         return run
 
@@ -81,20 +84,21 @@ class decorators:
     def contextmanager(cm, ctx: 'InjectorContext'):
         lock = ctx.lock()
         value = Missing
+        stack: ExitStack = ctx[ExitStack]()
 
         if lock is None:
             def run():
-                nonlocal cm, value
+                nonlocal cm, value, stack
                 if value is Missing:
-                    value = ctx.enter(cm)
+                    value = stack.enter(cm)
                 return value
         else:
             def run():
-                nonlocal cm, value, lock
+                nonlocal cm, value, lock, stack
                 if value is Missing:
                     with lock:
                         if value is Missing:
-                            value = ctx.enter(cm)
+                            value = stack.enter(cm)
                 return value
         return run
 
@@ -173,10 +177,10 @@ class FactoryResolver:
 
     def __init__(self,
                 factory: Callable,
+                signature: Signature=None,
                 *,
                 arguments: Arguments=None,
-                decorators: Sequence[Callable[[Callable, 'InjectorContext'], Callable]]=(),
-                signature: Signature=None):
+                decorators: Sequence[Callable[[Callable, 'InjectorContext'], Callable]]=()):
         self.factory = factory
         self.signature = signature or typed_signature(factory)
         self.decorators = decorators
@@ -214,7 +218,7 @@ class FactoryResolver:
         args = []
         kwds = []
         vals = {}
-        deps = set()
+        deps = defaultdict(list)
 
         skip_pos = False
         for n, p, r in self.iter_param_resolvers():
@@ -223,7 +227,7 @@ class FactoryResolver:
                 if skip_pos is False:
                     if not dep is None:
                         args.append(r)
-                        deps.add(dep)
+                        deps[dep].append(n)
                     elif (r.has_value or r.has_default):
                         args.append(r)
                     else:
@@ -233,9 +237,9 @@ class FactoryResolver:
                 vals[n] = r.value
             elif not dep is None:
                 kwds.append((n,r))
-                deps.add(dep)
+                deps[dep].append(n)
 
-        return args, kwds, vals, deps
+        return tuple(args), tuple(kwds), vals, dict(deps)
     
     def iresolve_args(self, args: Iterable[ParamResolver], ctx: 'InjectorContext'):
         for r in args:
@@ -298,14 +302,14 @@ class FactoryResolver:
     def make_args_resolver(self, provides, func, _args, vals):
         def resolve(ctx: "InjectorContext"):
                 nonlocal _args, vals, self
-                args = [*self.iresolve_args(_args, ctx)]
+                args = *self.iresolve_args(_args, ctx), 
                 return self._decorate(self.arg_wrap_func(func, args, vals), ctx)
         return resolve
                  
     def make_kwds_resolver(self, provides, func, _kwds, vals):
         def resolve(ctx: "InjectorContext"):
                 nonlocal vals, _kwds, self
-                kwds = [*self.iresolve_kwds(_kwds, ctx)]
+                kwds = *self.iresolve_kwds(_kwds, ctx),
                 return self._decorate(self.kwd_wrap_func(func, kwds, vals), ctx)
 
         return resolve
@@ -313,15 +317,15 @@ class FactoryResolver:
     def make_args_kwds_resolver(self, provides, func, _args, _kwds, vals):
         def resolve(ctx: "InjectorContext"):
                 nonlocal _args, vals, _kwds, self
-                args = [*self.iresolve_args(_args, ctx)]
-                kwds = [*self.iresolve_kwds(_kwds, ctx)]
+                args = *self.iresolve_args(_args, ctx),
+                kwds = *self.iresolve_kwds(_kwds, ctx),
 
                 return self._decorate(self.arg_kwd_wrap_func(func, args, kwds, vals), ctx)
 
         return resolve
           
     def plain_wrap_func(self, func):
-        return func
+        return lambda: func()
                     
     def arg_wrap_func(self, func, args, vals):
         if vals:
@@ -346,53 +350,62 @@ class FactoryResolver:
  
 
 
-
-class PartialFactoryResolver(FactoryResolver):
-
-    __slots__ = ()
-
-    def arg_wrap_func(self, func, args, vals):
-        if vals:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **(vals | kw))
-        else:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **kw)
-
-    def kwd_wrap_func(self, func, kwds, vals):
-        if vals:
-            return lambda *a, **kw: func(*a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
-        else:
-            return lambda *a, **kw: func(*a, **kw, **self._ikwds(kwds, skip=kw))
-
-    def arg_kwd_wrap_func(self, func, args, kwds, vals):
-        if vals:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
-        else:
-            return lambda *a, **kw: func(*self._iargs(args), *a, **kw, **self._ikwds(kwds, skip=kw))
-
-
-
-
-
 class CallableFactoryResolver(FactoryResolver):
 
     __slots__ = ()
 
+    def plain_wrap_func(self, func):
+        return lambda: func
+                    
     def arg_wrap_func(self, func, args, vals):
         if vals:
-            return lambda: lambda *a, **kw: func(*self._iargs(args), *a, **(vals | kw))
+            fn = lambda *a, **kw: func(*a, *self._iargs(args[len(a):]), **(vals | kw))
         else:
-            return lambda: lambda *a, **kw: func(*self._iargs(args), *a, **kw)
+            fn = lambda *a, **kw: func(*a, *self._iargs(args[len(a):]), **kw)
+        return lambda: fn
 
     def kwd_wrap_func(self, func, kwds, vals):
         if vals:
-            return lambda: lambda *a, **kw: func(*a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
+            fn = lambda *a, **kw: func(*a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
         else:
-            return lambda: lambda *a, **kw: func(*a, **kw, **self._ikwds(kwds, skip=kw))
+            fn = lambda *a, **kw: func(*a, **kw, **self._ikwds(kwds, skip=kw))
+        return lambda: fn
 
     def arg_kwd_wrap_func(self, func, args, kwds, vals):
         if vals:
-            return lambda: lambda *a, **kw: func(*self._iargs(args), *a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
+            fn = lambda *a, **kw: func(*a, *self._iargs(args[len(a):]), **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
         else:
-            return lambda: lambda *a, **kw: func(*self._iargs(args), *a, **kw, **self._ikwds(kwds, skip=kw))
+            fn = lambda *a, **kw: func(*a, *self._iargs(args[len(a):]), **kw, **self._ikwds(kwds, skip=kw))
+        return lambda: fn
+
+
+
+
+
+
+class PartialFactoryResolver(CallableFactoryResolver):
+
+    __slots__ = ()
+
+    def arg_wrap_func(self, func, args, vals):
+        if vals:
+            fn = lambda *a, **kw: func(*self._iargs(args), *a, **(vals | kw))
+        else:
+            fn = lambda *a, **kw: func(*self._iargs(args), *a, **kw)
+        return lambda: fn
+
+    def kwd_wrap_func(self, func, kwds, vals):
+        if vals:
+            fn = lambda *a, **kw: func(*a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
+        else:
+            fn = lambda *a, **kw: func(*a, **kw, **self._ikwds(kwds, skip=kw))
+        return lambda: fn
+
+    def arg_kwd_wrap_func(self, func, args, kwds, vals):
+        if vals:
+            fn = lambda *a, **kw: func(*self._iargs(args), *a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw))
+        else:
+            fn = lambda *a, **kw: func(*self._iargs(args), *a, **kw, **self._ikwds(kwds, skip=kw))
+        return lambda: fn
 
 

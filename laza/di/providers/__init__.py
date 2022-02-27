@@ -1,6 +1,7 @@
 # from __future__ import annotations
 from contextlib import AbstractContextManager, ExitStack
-from inspect import ismemberdescriptor
+from curses.ascii import SI
+from inspect import Signature, ismemberdescriptor
 from logging import getLogger
 from threading import Lock
 from types import GenericAlias
@@ -11,8 +12,8 @@ from abc import ABCMeta, abstractmethod
 from laza.common.collections import Arguments, orderedset
 
 from collections import ChainMap, abc
-from collections.abc import Set
-from laza.common.typing import get_args, UnionType, Self, get_origin
+from collections.abc import Set, Callable as AbstractCallable
+from laza.common.typing import get_args, UnionType, Self, get_origin, typed_signature
 
 
 from laza.common.functools import Missing, export
@@ -221,7 +222,9 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     @property
     def __dependency__(self):
-        return self if self.container is None else self.provides
+        if self.container is None:
+            return self
+        raise ValueError(f'provider is registered to {self.container}')
 
     @property
     def provides(self) -> T_Injectable:
@@ -235,13 +238,13 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     @provides.setter
     def provides(self, val):
-        if self._provides is Missing:
-            self.__set_attr("_provides", val)
+        if self._is_registered:
+            raise AttributeError(f"{self} already registered.")
+        elif not isinjectable(val):
+            raise ValueError(f'{self.__class__.__name__}.provides must be an `Injectable` not `{val}`')
+        else:
+            self.__set_attr(_provides=val)
             self._register()
-        elif val is not self._provides:
-            raise AttributeError(
-                f"cannot {val=}. {self} already provides {self._provides}."
-            )
 
     @property
     def uses(self) -> _T_Using:
@@ -254,7 +257,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     @uses.setter
     def uses(self, val):
-        self.__set_attr("_uses", val)
+        self.__set_attr(_uses=val)
         self._is_registered or self._register()
 
     def _uses_fallback(self):
@@ -264,21 +267,21 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         return Missing
 
     def set_container(self, container: "Container") -> Self:
-        if not (self.container or container) is container:
-            raise RuntimeError(
-                f"container for `{self}` already set to `{self.container}`."
-            )
-        
-        self.__set_attr("container", container)
-        self._register()
+        if not self.container is None:
+            if not container is self.container:
+                raise AttributeError(
+                    f"container for `{self}` already set to `{self.container}`."
+                )
+        else:
+            self.__set_attr(container=container)
+            self._register()
         return self
    
     def _register(self):
-
         if self._is_registered is False:
             if self._prepare_to_register():
+                self.__set_attr(_is_registered=True)
                 self.container.add_to_registry(self.provides, self)
-                self.__set_attr("_is_registered", True)
         else:
             raise TypeError(f'{self!s} already registered to {self.container}.')
 
@@ -287,10 +290,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
             if self._is_registered:
                 raise TypeError(f'{self!s} already registered to {self.container}.')
             try:
-                if self._provides is Missing:
-                    self.__set_attr("_provides", self.provides)
-                if self._uses is Missing:
-                    self.__set_attr("_uses", self.uses)
+                self.__set_attr(_provides=self.provides, _uses=self.uses)
                 return not self.container is None
             except AttributeError:
                 return False
@@ -298,21 +298,21 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
       
     def when(self, *filters, append: bool=False) -> Self:
         if append:
-            self.__set_attr("filters", tuple(orderedset(self.filters + filters)))
+            self.__set_attr(filters=tuple(dict.fromkeys(self.filters + filters)))
         else:
-            self.__set_attr("filters", tuple(orderedset(filters)))
+            self.__set_attr(filters=tuple(dict.fromkeys(filters)))
         return self
 
     def autoload(self, autoloaded: bool = True) -> Self:
-        self.__set_attr("autoloaded", autoloaded)
+        self.__set_attr(autoloaded=autoloaded)
         return self
 
     def final(self, is_final: bool = True) -> Self:
-        self.__set_attr("is_final", is_final)
+        self.__set_attr(is_final=is_final)
         return self
 
     def default(self, is_default: bool = True) -> Self:
-        self.__set_attr("is_default", is_default)
+        self.__set_attr(is_default=is_default)
         return self
 
     @t.overload
@@ -325,7 +325,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     @_fluent_decorator()
     def provide(self, provide: T_Injectable):
-        self.__set_attr("provides", provide)
+        self.__set_attr(provides=provide)
         return self
 
     @t.overload
@@ -338,14 +338,14 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     @_fluent_decorator()
     def using(self, using):
-        self.__set_attr("uses", using)
+        self.__set_attr(uses=using)
         return self
 
     def bind(self, injector: "Injector", provides: T_Injectable=None) -> 'TContextBinding':
         self._freeze()
-        if provides is None: provides = self.provides
-        fn, deps = self._bind(injector, provides)
-        return fn
+        if self.container is None or injector.is_scope(self.container):
+            fn, deps = self._bind(injector, provides)
+            return fn
 
     @abstractmethod
     def _bind(self, injector: "Injector", token: T_Injectable) -> tuple[abc.Callable, Set]:
@@ -353,9 +353,6 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     def can_bind(self, injector: "Injector", dep: T_Injectable=None) -> bool:
         self._freeze()
-        if dep is None: 
-            dep = self.provides
-        
         if self.container is None or injector.is_scope(self.container):
             return self._can_bind(injector, dep) and self._run_filters(injector, dep)
         return False
@@ -377,14 +374,14 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         return sub.substitute(*subs) if subs else sub
 
     def _freeze(self):
-        self._frozen or (self._onfreeze(), self.__set_attr("_frozen", True))
+        self._frozen or (self._onfreeze(), self.__set_attr(_frozen=True))
 
     def _onfreeze(self):
         ...
 
     def __init_attrs__(self):
         for k, attr in self.__attr_defaults__.items():
-            self.__set_attr(k, attr(), force=True)
+            self.__set_attr(k, attr(), True)
 
     def __str__(self):
         using = self._uses_fallback() if self._uses is Missing else self._uses
@@ -395,15 +392,19 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         provides = (
             self._provides_fallback() if self._provides is Missing else self._provides
         )
-        container = getattr(self, "container", None)
-        container = container and container.name
+        container = self.container
         return f"{self.__class__.__name__}({provides=!r}, {using=!r}, {container=!r})"
 
     # @t.Final
-    def __setattr__(self, name, value, *, force=False):
+    def __setattr__(self, name=None, value=None, force=False, /, **kw):
+        
+        name is None or (kw := {name: value})
+
         if force is False and self._frozen:
-            raise AttributeError(f"`{name}` is not writable.")
-        object.__setattr__(self, name, value)
+            raise AttributeError(f"`cannot set {tuple(kw)} on frozen {self}.")
+        
+        for k,v in kw.items():
+            object.__setattr__(self, k, v)
 
     if t.TYPE_CHECKING:
         t.Final
@@ -458,7 +459,22 @@ class ContextManagerProvider(Value):
 
 
 @export()
-class CurrentContextProvider(Provider[T_UsingValue, T_Injected]):
+class BindingProvider(Provider[T_UsingValue, T_Injected]):
+    """Provides the current `InjectorContext`"""
+
+    @Provider.uses.setter
+    def uses(self, value):
+        if not isinstance(value, AbstractCallable):
+            raise ValueError(f'{self.__class__.__name__}.uses must be a `Callable` not {value}')
+        super().uses = value
+
+    def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
+        return self.uses
+
+
+
+@export()
+class InjectorContextProvider(Provider[T_UsingValue, T_Injected]):
     """Provides the current `InjectorContext`"""
     _uses: t.ClassVar = None
     uses: t.ClassVar = None
@@ -579,10 +595,11 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     arguments: Arguments = _Attr(default_factory=Arguments)
     is_shared: bool = False
-    is_resource: bool = False
-    # is_partial: bool = False
+    
+    _signature: Signature = None
+    _blank_signature: Signature = Signature()
 
-    decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]] = _Attr(default_factory=tuple)
+    decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]] = ()
 
     _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
 
@@ -594,30 +611,27 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         args and self.args(*args)
         kwargs and self.kwargs(**kwargs)
 
-    def _uses_fallback(self):
-        if callable(self._provides):
-            return self._provides
-        return super()._uses_fallback()
-
-    def _provides_fallback(self):
-        if isinstance(self._uses, Injectable):
-            return self._uses
-        return super()._provides_fallback()
+    @Provider.uses.setter
+    def uses(self, value):
+        if not isinstance(value, AbstractCallable):
+            raise ValueError(f'must be a `Callable` not `{value}`')
+        self.__set_attr(_uses=value)
+        self._is_registered or self._register()
 
     def args(self, *args) -> Self:
-        self.__set_attr("arguments", self.arguments.replace(args))
+        self.__set_attr(arguments=self.arguments.replace(args))
         return self
 
     def kwargs(self, **kwargs) -> Self:
-        self.__set_attr("arguments", self.arguments.replace(kwargs=kwargs))
+        self.__set_attr(arguments=self.arguments.replace(kwargs=kwargs))
         return self
-
-    def resource(self, is_resource=True):
-        self.__set_attr("is_resource", True)
-        return self
-
+        
     def singleton(self, is_singleton: bool = True) -> Self:
-        self.__set_attr("is_shared", is_singleton)
+        self.__set_attr(is_shared=is_singleton)
+        return self
+        
+    def signature(self, signature: Signature) -> Self:
+        self.__set_attr(_signature=signature)
         return self
     
     def decorate(self, *decorators: abc.Callable[[abc.Callable], abc.Callable], replace: bool=False) -> Self:
@@ -626,6 +640,17 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         else:
             self.decorators = self.decorators + decorators
         return self
+
+    def get_signature(self):
+        sig = self._signature
+        if sig is None:
+            try:
+                return typed_signature(self.uses)
+            except ValueError:
+                if not isinstance(self.uses, AbstractCallable):
+                    raise
+                return self._blank_signature
+        return sig
 
     def _extra_decorators(self):
         if self.is_shared:
@@ -636,11 +661,16 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         yield from self._extra_decorators()
 
     def _onfreeze(self):
-        self.__set_attr('_all_decorators', tuple(self._iter_decorators()))
+        self.__set_attr(_all_decorators=tuple(self._iter_decorators()))
+
+    def _provides_fallback(self):
+        return self._uses
+
 
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
         return self._resolver_class(
                     self.uses, 
+                    self.get_signature(),
                     arguments=self.arguments, 
                     decorators=self._all_decorators
                 )(injector, token)
@@ -651,17 +681,22 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 @export()
 class Callable(Factory[T_Injected]):
 
-    _resolver_class: t.ClassVar = CallableFactoryResolver
+    is_partial: bool = False
+    is_shared: t.ClassVar[bool] = False
 
+    @property
+    def _resolver_class(self) -> None:
+        if self.is_partial:
+            return PartialFactoryResolver
+        else:
+            return CallableFactoryResolver
    
+    def partial(self, is_partial: bool = True) -> Self:
+        self.__set_attr(is_partial=is_partial)
+        return self
 
 
-@export()
-class PartialFactory(Factory[T_Injected]):
 
-    _resolver_class: t.ClassVar[type[PartialFactoryResolver]] = PartialFactoryResolver
-   
-   
 
 
 @export()

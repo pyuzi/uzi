@@ -53,7 +53,7 @@ class FactoryResolverTests:
 
         rfn, deps = res(injector, foo)
         assert callable(rfn)
-        assert deps == {object, list, Inject(str)}
+        assert deps == {object: ['obj'], list: ['kw'], Inject(str): ['k']}
         fn = rfn(ctx)
         assert callable(fn)
         v = fn()

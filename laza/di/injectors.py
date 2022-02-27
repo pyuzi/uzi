@@ -1,5 +1,6 @@
 from functools import update_wrapper
 import sys
+from threading import Lock
 import typing as t 
 import logging
 from weakref import finalize, ref
@@ -30,10 +31,11 @@ from .common import (
 )
 
 from .containers import InjectorContainer, Container
-from .context import InjectorContext, context_partial, wire, ExitStack
+from .context import InjectorContext, context_partial, wire
+from .util import ExitStack, InjectorLock
 from .providers import (
-    Alias, CurrentContextProvider, Provider, UnionProvider, AnnotatedProvider, 
-    InjectProvider, PartialFactory
+    Alias, Factory, InjectorContextProvider, Provider, UnionProvider, AnnotatedProvider, 
+    InjectProvider, Callable as CallableProvider
 )
 from .providers.util import BindingsMap, ProviderResolver, ProviderRegistry
 
@@ -44,17 +46,27 @@ _T_Fn = t.TypeVar('_T_Fn', bound=Callable)
 
 
 
-def inject(func: _T_Fn, /, *, provider: 'Provider'=None) -> _T_Fn:
+
+@t.overload
+def inject(func: _T_Fn, /, *, provider: 'Provider'=None) -> _T_Fn: ...
+@t.overload
+def inject(func: None=None, /, *, provider: 'Provider'=None) -> Callable[[_T_Fn], _T_Fn]: ...
+
+def inject(func: _T_Fn=None, /, *, provider: 'Provider'=None) -> _T_Fn:
     if provider is None:
-        provider = PartialFactory(func)
+        provider = CallableProvider()
     
-    return update_wrapper(context_partial(provider), func)
+    if func is None:
+        return lambda fn: inject(fn, provider=provider)
+    else:
+        return update_wrapper(context_partial(provider.using(func)), func)
     
 
 
 
 
 @export
+@Injectable.register
 class Injector(ProviderRegistry):
     """"""
 
@@ -144,17 +156,20 @@ class Injector(ProviderRegistry):
         self.__container.register(provider)
         return self
 
-    def require(self, *containers) -> Self:
-        self.__container.include(*containers)
+    def include(self, *containers, replace: bool=False) -> Self:
+        self.__container.include(*containers, replace=replace)
         return self
 
     def has_scope(self, scope: t.Union['Injector', Container, None]):
+        self.__boot.settle()
         return self.is_scope(scope) or self.__parent.has_scope(scope)
 
     def is_scope(self, scope: t.Union['Injector', Container, None]):
+        self.__boot.settle()
         return scope is None or scope is self or scope in self.__containers
 
     def is_provided(self, obj: Injectable, *, onlyself=False) -> bool:
+        self.__boot.settle()
         if not (isinstance(obj, InjectionMarker) or obj in self.__bindings):
             if isinjectable(obj):
                 provider =  self.__resolver.resolve(obj)
@@ -193,7 +208,10 @@ class Injector(ProviderRegistry):
         self.register(UnionProvider().final())
         self.register(AnnotatedProvider().final())
         self.register(InjectProvider().final())
-        self.register(CurrentContextProvider(self).autoload().final())
+        self.register(InjectorContextProvider(self).autoload().final())
+        self.register(Factory(ExitStack).singleton().autoload().final())
+        self.register(Factory(Lock).provide(InjectorLock).final())
+
         # for container in self.containers:
         #     self.register(Alias(container, self).final())
 

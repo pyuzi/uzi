@@ -167,8 +167,7 @@ class InjectedLookup(t.Generic[T_Injected]):
 
 
 @export()
-class InjectableType(ABCMeta):
-
+class _InjectableMeta(ABCMeta):
 
     def register(self, subclass):
         if not (calling_frame().get('__package__') or '').startswith(__package__):
@@ -181,15 +180,14 @@ class InjectableType(ABCMeta):
     
 
 @export()
-class Injectable(metaclass=InjectableType):
+class Injectable(metaclass=_InjectableMeta):
 
     __slots__ = ()
 
     __class_getitem__ = classmethod(GenericAlias)
 
     def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass Injectable")
-
+        raise TypeError(f"Cannot subclass {cls.__name__}")
 
 
 Injectable.register(type)
@@ -201,6 +199,7 @@ Injectable.register(type(t.Union))
 Injectable.register(InjectionToken)
 Injectable.register(InjectedLookup)
 Injectable.register(ImportRef)
+
 
 
 

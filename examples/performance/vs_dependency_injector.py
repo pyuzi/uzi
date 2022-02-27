@@ -2,6 +2,8 @@
 
 from collections import defaultdict
 from fcntl import ioctl
+from functools import reduce
+from operator import or_
 import time
 
 from dependency_injector import providers, containers, wiring
@@ -10,6 +12,7 @@ from laza.di.injectors import Injector, inject
 from laza.di.context import wire
 
 
+from _benchmarkutil import Benchmark, Timer
 
 
 N = int(.25e6)
@@ -55,6 +58,34 @@ ioc.factory(A)
 ioc.factory(B)#.singleton()
 ioc.factory(C)#.singleton()
 ioc.factory(Test)#.singleton()
+
+
+
+test_factory_provider = providers.Factory(
+    Test,
+    providers.Factory(A),
+    b=providers.Factory(B, providers.Factory(A)),
+    c=providers.Factory(C, providers.Factory(A), providers.Factory(B, providers.Factory(A))),
+)
+
+
+
+with wire(ioc) as ctx:
+    ls = [
+        Benchmark('A.', N).run(VS=providers.Factory(A), DI=ctx[A]),
+        Benchmark('B.', N).run(VS=providers.Factory(B, providers.Factory(A)), DI=ctx[B]),
+        Benchmark('C.', N).run(VS=providers.Factory(C, providers.Factory(A), providers.Factory(B, providers.Factory(A))), DI=ctx[C]),
+        
+    ]
+
+
+    bench = Benchmark(f'Providers[{A | B | C | Test}]', N)
+    bench |= reduce(or_, ls)
+    print(bench, '\n')
+
+    print(Benchmark('Providers.Test.', N).run(VS=test_factory_provider, DI=ctx[Test]))
+
+
 
 @inject
 def _inj(test: Test, b: B, c: C):

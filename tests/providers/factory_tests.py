@@ -20,22 +20,18 @@ parametrize = pytest.mark.parametrize
 
 _T = t.TypeVar('_T')
 
-@pytest.fixture
-def provider():
-    return Factory(lambda: 'value')
-
-
-@pytest.fixture
-def provided():
-    return lambda: 'value'
-
-
 
 
 
 class FactoryProviderTests(ProviderTestCase):
     
-    cls = Factory
+    @pytest.fixture
+    def provider(self, factory):
+        return Factory(factory)
+
+    @pytest.fixture
+    def factory(self, value_setter):
+        return value_setter
 
     def test_singleton(self, provider: Factory):
         rv = provider.singleton()
@@ -65,7 +61,7 @@ class FactoryProviderTests(ProviderTestCase):
         assert provider.arguments.args == args
         assert provider.arguments.kwargs == kwd
 
-    def test_with_args(self, injector, injectorcontext):
+    def test_with_args(self, injector, context):
         _default = object()
         
         def func(a: Foo, b: Bar, c=_default, /):
@@ -75,15 +71,15 @@ class FactoryProviderTests(ProviderTestCase):
 
         args = 'aaa', 123, 'xyz'
         provider.args(*args)
-        provider.bind(injector, func)(injectorcontext)()
+        provider.bind(injector, func)(context)()
 
         provider = Factory(func)
 
         args = 'aaa', 123, _default
         provider.args(*args[:-1])
-        provider.bind(injector, func)(injectorcontext)()
+        provider.bind(injector, func)(context)()
         
-    def test_with_kwargs(self, injector, injectorcontext):
+    def test_with_kwargs(self, injector, context):
         _default = object()
         
         def func(*, a: Foo, b: Bar, c=_default):
@@ -93,13 +89,13 @@ class FactoryProviderTests(ProviderTestCase):
 
         kwargs = dict(a='aaa', b=123, c='xyz')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(injectorcontext)()
+        provider.bind(injector, func)(context)()
 
         provider = Factory(func)
 
         kwargs = dict(a='BAR', b='BOO')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(injectorcontext)()
+        provider.bind(injector, func)(context)()
  
  
 class Foo:

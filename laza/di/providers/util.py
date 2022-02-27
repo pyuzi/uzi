@@ -16,7 +16,7 @@ from laza.common.typing import get_origin
 
 from ..context import context_partial
 from ..common import InjectionMarker, Injectable
-from . import Callable, ContextManagerProvider, Provider, Alias, Resource, Value, Factory, PartialFactory
+from . import Callable, ContextManagerProvider, Provider, Alias, Resource, Value, Factory
 
 if t.TYPE_CHECKING:
     from ..injectors import Injector
@@ -131,9 +131,8 @@ class ProviderRegistry(ABC):
                 )
         return self
 
-
     def inject(self, func: _T_Fn) -> _T_Fn:
-        provider = PartialFactory(func)
+        provider = Callable(func)
         self.register(provider)
         return update_wrapper(context_partial(provider), func)
        

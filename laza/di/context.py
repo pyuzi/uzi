@@ -34,7 +34,7 @@ def context_partial(provider: Injectable):
 
     def wrapper(*a, **kw):
         nonlocal provider
-        return  __ctxvar.get()[provider](*a, **kw)
+        return  __ctxvar.get()[provider]()(*a, **kw)
     
     wrapper.__dependency__ = provider
 
@@ -76,12 +76,12 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     if not t.TYPE_CHECKING:
         _lock_class = Lock
 
-    def __init__(self, parent: "InjectorContext", injector: "Injector", bindings: 'BindingsMap'):
+    def __init__(self, parent: "InjectorContext", injector: "Injector", bindings: 'BindingsMap', content=()):
         self.__parent = parent
         self.__injector = injector
         self.__bindings = bindings
         self.__exitstack = ExitStack()
-        # dict.__setitem__(self, injector, lambda: self)
+        super().__init__(content)
 
     @property
     def name(self) -> str:
@@ -100,7 +100,7 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         return self.__parent
       
     def lock(self) -> t.Union[AbstractContextManager, None]:
-        if cls := self._lock_class():
+        if cls := self._lock_class:
             return cls()
 
     def exit(self, exit):
@@ -131,8 +131,11 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         """
         return self.__exitstack.callback(callback, *args, **kwds)
 
+    # def __exit__(self, *er):
+    #     return self.__exitstack.flush(er)
+
     def __exit__(self, *er):
-        return self.__exitstack.flush(er)
+        return self[ExitStack]().flush(er)
 
     def get(self, key, default=None):
         rv = self[key]

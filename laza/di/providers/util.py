@@ -14,7 +14,7 @@ from laza.common.typing import get_origin
 
 
 
-from ..context import context_partial
+from ..ctx import context_partial
 from .. import InjectionMarker, Injectable
 from . import Callable, ContextManagerProvider, Provider, Alias, Resource, Value, Factory
 

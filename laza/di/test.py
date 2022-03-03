@@ -6,7 +6,7 @@ import typing as t
 
 from .containers import Container, InjectorContainer
 from .injectors import Injector
-from .context import InjectorContext
+from .ctx import InjectorContext
 
 
 

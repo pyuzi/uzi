@@ -1,29 +1,29 @@
 import os
 
+from injector import inject
+
 
 from after import ApiClient, Service
 
-from laza.di.injectors import Injector
-from laza.di import Depends
+from laza.di.injectors import Injector, inject, context
 
 
-ioc = Injector()
 
-ioc.factory(ApiClient)\
-    .singleton()\
-    .args(
-        Depends(on=os.getenv, args=('API_KEY',)), 
-        Depends(on=os.getenv, args=('TIMEOUT',))
-    )
-ioc.factory(Service)
-
-
-@ioc.inject
+@inject
 def main(service: Service):
-    print(f"Got serivce {service=!r}")
+    service.do_something()
+
+
+
+injector = Injector()
+
+injector.factory(Service)
+injector.factory(ApiClient).singleton()\
+    .args(os.getenv("API_URL"), os.getenv('API_KEY'))
+
 
 
 if __name__ == "__main__":
 
-    with ioc.make():
+    with context(injector):
         main()

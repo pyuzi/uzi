@@ -15,11 +15,11 @@ from laza.common.typing import Self
 
 from . import Injectable, InjectionMarker, isinjectable
 from .containers import Container, InjectorContainer
-from .ctx import InjectorContext, context_partial, context
+from .ctx import InjectorContext, context_partial
 from .providers import AnnotatedProvider
 from .providers import Callable as CallableProvider
 from .providers import (
-    InjectMarkerProvider,
+    DepMarkerProvider,
     InjectorContextProvider,
     Provider,
     UnionProvider,
@@ -202,7 +202,7 @@ class Injector(ProviderRegistry):
     def __register_default_providers(self):
         self.register(UnionProvider().final())
         self.register(AnnotatedProvider().final())
-        self.register(InjectMarkerProvider().final())
+        self.register(DepMarkerProvider().final())
         self.register(InjectorContextProvider(self).autoload().final())
 
     def _collect_autoloaded(self):

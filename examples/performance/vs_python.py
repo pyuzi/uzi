@@ -1,5 +1,5 @@
 
-from laza.di.injectors import Injector, inject, context
+from laza.di import Injector, inject, context
 
 
 from _benchmarkutil import Benchmark, Timer

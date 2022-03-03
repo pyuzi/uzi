@@ -13,7 +13,7 @@ from laza.common.functools import Missing, export
 from laza.common.typing import (Self, UnionType, get_args, get_origin,
                                 typed_signature)
 
-from .. import (Inject, Injectable, InjectFlag, InjectionMarker, T_Injectable,
+from .. import (Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, isinjectable)
 from .functools import (CallableFactoryResolver, FactoryResolver,
                         PartialFactoryResolver, decorators)
@@ -529,31 +529,31 @@ class AnnotatedProvider(UnionProvider):
 
 
 @export()
-class InjectMarkerProvider(Provider[Inject, T_Injected]):
+class DepMarkerProvider(Provider[Dep, T_Injected]):
     
-    _uses: t.ClassVar = Inject
+    _uses: t.ClassVar = Dep
 
     _none_fn: AbstractCallable[[], None] = _Attr(lambda: None)
 
     
     def _provides_fallback(self):
-        return Inject
+        return Dep
 
-    def _can_bind(self, injector: "Injector", obj: Inject) -> bool:
-        return isinstance(obj, Inject) and ( 
+    def _can_bind(self, injector: "Injector", obj: Dep) -> bool:
+        return isinstance(obj, Dep) and ( 
                 obj.__injector__ is None
-                or obj.__injector__ in InjectFlag
+                or obj.__injector__ in DepInjectorFlag
                 or injector.is_scope(obj.__injector__)
             )
 
-    def _bind(self, injector: "Injector", marker: Inject):
+    def _bind(self, injector: "Injector", marker: Dep):
         dep = marker.__injects__
         flag = marker.__injector__
         default = marker.__default__
         hasdefault = marker.__hasdefault__
         inject_default = hasdefault and isinstance(default, InjectionMarker)
 
-        if flag is Inject.ONLY_SELF:
+        if flag is Dep.ONLY_SELF:
             def run(ctx: 'InjectorContext'):
                 func = ctx.get(dep)
                 if func is None:
@@ -564,7 +564,7 @@ class InjectMarkerProvider(Provider[Inject, T_Injected]):
                 else:
                     return lambda: marker.__eval__(func())
 
-        elif flag is Inject.SKIP_SELF:
+        elif flag is Dep.SKIP_SELF:
             def run(ctx: 'InjectorContext'):
                 func = ctx.parent[dep] 
                 if func is None:

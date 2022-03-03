@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod
 from logging import getLogger
 from types import FunctionType, GenericAlias
 
-from laza.common import datapath
+from laza.common.datapath import DataPath
 from laza.common.collections import frozendict
 from laza.common.enum import Enum
 from laza.common.functools import Missing, calling_frame, export
@@ -133,58 +133,23 @@ class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
         return super().__setattr__(name, value)
 
 
-@InjectionMarker.register
-class InjectExpr(datapath.DataPath[T_Injected]):
 
-    __slots__ = ()
-
-    __expr__: tuple[Injectable, t.Any]
-
-    def __new__(cls, __path: t.Union[Injectable, tuple]):
-        self = object.__new__(cls)
-        if __path.__class__ is tuple:
-            self.__expr__ = __path
-        else:
-            self.__expr__ = (__path,)
-        return self
-
-    @property
-    def __dependency__(self):
-        return self
-
-    @property
-    def __injects__(self):
-        return self.__expr__[0]
-
-    @property
-    def __origin__(self):
-        return self.__class__
-
-    def __add__(self, v):
-        if isinstance(v, InjectExpr):
-            return NotImplemented
-        return super().__add__(v)
-
-    def __eval__(self, /, root: T_Injected, *, start: int = None, stop: int = None):
-        return super().__eval__(root, start=(start or 0) + 1, stop=stop)
-
-
-class InjectFlag(Enum):
+class DepInjectorFlag(Enum):
 
     # none: 'InjectFlag'      = None
 
-    only_self: "InjectFlag" = "ONLY_SELF"
+    only_self: "DepInjectorFlag" = "ONLY_SELF"
     """Only inject from the current context without considering parents
     """
 
-    skip_self: "InjectFlag" = "SKIP_SELF"
+    skip_self: "DepInjectorFlag" = "SKIP_SELF"
     """Skip the current context and resolve from it's parent instead.
     """
 
 
 @export()
 @InjectionMarker.register
-class Inject(datapath.DataPath[T_Injected]):
+class Dep(DataPath[T_Injected]):
 
     """Marks an injectable as a `dependency` to be injected."""
 
@@ -195,11 +160,11 @@ class Inject(datapath.DataPath[T_Injected]):
         "__default__",
     )
 
-    ONLY_SELF: t.Final = InjectFlag.only_self
+    ONLY_SELF: t.Final = DepInjectorFlag.only_self
     """Only inject from the current context without considering parents
     """
 
-    SKIP_SELF: t.Final = InjectFlag.skip_self
+    SKIP_SELF: t.Final = DepInjectorFlag.skip_self
     """Skip the current context and resolve from it's parent instead.
     """
 
@@ -213,7 +178,7 @@ class Inject(datapath.DataPath[T_Injected]):
         cls: type[Self],
         dependency: T_Injectable,
         *,
-        injector: t.Union[InjectFlag, "Injector", None] = None,
+        injector: t.Union[DepInjectorFlag, "Injector", None] = None,
         default=Missing,
     ) -> Self:
         ...
@@ -221,7 +186,7 @@ class Inject(datapath.DataPath[T_Injected]):
     def __new__(
         cls,
         dependency: T_Injectable,
-        injector: t.Union[InjectFlag, "Injector", None] = None,
+        injector: t.Union[DepInjectorFlag, "Injector", None] = None,
         default=Missing,
         __expr=(),
     ):
@@ -247,12 +212,6 @@ class Inject(datapath.DataPath[T_Injected]):
     def __hasdefault__(self):
         return not self.__default__ is Missing
 
-    # def __datapath__(self, *, callable=False):
-    #     if callable is True:
-    #         return datapath.DataPath()().__push__(*self.__expr__)
-    #     else:
-    #         return datapath.DataPath(self.__expr__)
-
     @property
     def __hashident__(self) -> int:
         try:
@@ -272,10 +231,6 @@ class Inject(datapath.DataPath[T_Injected]):
         return self.__class__(
             self.__injects__, self.__injector__, self.__default__, self.__expr__ + expr
         )
-
-    # def __eval__(self, /, root: T_Injected, *, start: int = None, stop: int = None):
-    #     print('__eval__', root)
-    #     return super().__eval__(root, start=start, stop=stop)
 
     def __reduce__(self):
         return self.__class__, (
@@ -323,5 +278,5 @@ class Inject(datapath.DataPath[T_Injected]):
 
 
 from .ctx import context
-from .injectors import Injector
+from .injectors import Injector, inject
 from .containers import Container

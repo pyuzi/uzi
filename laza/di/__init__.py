@@ -1,39 +1,24 @@
-from abc import abstractmethod, ABCMeta
-from logging import getLogger
 import typing as t
+from abc import ABCMeta, abstractmethod
+from logging import getLogger
+from types import FunctionType, GenericAlias
 
-
-from typing_extensions import Self
-from laza.common import text
+from laza.common import datapath
 from laza.common.collections import frozendict
-from laza.common.imports import ImportRef
-
-from laza.common.functools import export, calling_frame, cache, Missing
-from laza.common.data import DataPath
-
-
-
-
-from types import FunctionType, GenericAlias, new_class
-
-
-
-
-
-
+from laza.common.enum import Enum
+from laza.common.functools import Missing, calling_frame, export
+from typing_extensions import Self
 
 if t.TYPE_CHECKING:
-    from .providers import Provider
     from .injectors import Injector
-    from .containers import Container
+    from .providers import Provider
+
     ProviderType = type[Provider]
-
-
 
 
 T_Injected = t.TypeVar("T_Injected", covariant=True)
 T_Default = t.TypeVar("T_Default")
-T_Injectable = t.TypeVar('T_Injectable', bound='Injectable', covariant=True)
+T_Injectable = t.TypeVar("T_Injectable", bound="Injectable", covariant=True)
 
 # export('T_Injected', 'T_Injectable', 'T_Default')
 
@@ -45,92 +30,16 @@ def isinjectable(obj):
     return isinstance(obj, Injectable)
 
 
-
-
-@export()
-class InjectedLookup(t.Generic[T_Injected]):
-
-    __slots__ = '__args__', '__weakref__'
-
-    __name__: str
-    __type__: type[T_Injected]
-
-    __new_type = False 
-
-    @classmethod
-    @cache
-    def __class_getitem__(cls, params):
-        aka: GenericAlias = super().__class_getitem__(params)
-        ns = dict(__type__=aka.__args__[0])
-        name = f'{text.uppercamel(aka.__origin__.__name__)}{cls.__name__}'
-        cls.__new_type = True
-        res = new_class(name, (aka,), None, lambda dct: dct.update(ns))
-        cls.__new_type = False
-        return res
-
-    def __init_subclass__(cls, *args, **kwargs):
-        if cls.__new_type is not True:
-            raise TypeError(f"Cannot subclass {cls.__name__}")
-
-    @classmethod
-    @cache
-    def __class_getitem__(cls, params):
-        aka: GenericAlias = super().__class_getitem__(params)
-        ns = dict(__type__=aka.__args__[0])
-        name = f'{text.uppercamel(aka.__origin__.__name__)}InjectionToken'
-        return new_class(name, (aka,), None, lambda dct: dct.update(ns))
-
-    def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass {cls.__name__}")
-
-    def __init__(self, depends: 'Injectable', lookup):
-        self.__args__ = depends,  DataPath(lookup)
-
-    @property
-    def __origin__(self):
-        return InjectedLookup
-
-    @property
-    def depends(self):
-        return self.__args__[0]
-
-    @property
-    def path(self):
-        return self.__args__[1]
-
-    def __hash__(self):
-        return hash(self.__args__)
-
-    def __eq__(self, x):
-        if isinstance(x, InjectedLookup):
-            return self.__args__ == x.__args__
-        return NotImplemented
-
-    def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.depends}, path={self.path!r})'
-
-
-
-
-
-
-
-
-
-class _InjectableMeta(ABCMeta):
-
+class _PrivateABCMeta(ABCMeta):
     def register(self, subclass):
-        if not (calling_frame().get('__package__') or '').startswith(__package__):
-            raise TypeError(f'virtual subclasses not allowed for {self.__name__}')
+        if not (calling_frame().get("__package__") or "").startswith(__package__):
+            raise TypeError(f"virtual subclasses not allowed for {self.__name__}")
 
         return super().register(subclass)
 
 
-
-    
-
 @export()
-class Injectable(metaclass=_InjectableMeta):
+class Injectable(metaclass=_PrivateABCMeta):
 
     __slots__ = ()
 
@@ -146,70 +55,66 @@ Injectable.register(FunctionType)
 Injectable.register(GenericAlias)
 Injectable.register(type(t.Generic[T_Injected]))
 Injectable.register(type(t.Union))
-Injectable.register(InjectedLookup)
-Injectable.register(ImportRef)
 
-
-
-
-
-    
 
 @export()
 @Injectable.register
-class InjectionMarker(t.Generic[T_Injectable], metaclass=ABCMeta):
+class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
 
-    __slots__ = '__injects__',  '__metadata__', '_hash',
+    __slots__ = (
+        "__injects__",
+        "__metadata__",
+        "_hash",
+    )
 
     __injects__: T_Injectable
     __metadata__: frozendict
 
-    @property 
+    @property
     @abstractmethod
-    def __dependency__(self) -> T_Injectable: 
+    def __dependency__(self) -> T_Injectable:
         ...
 
-    def __new__(cls: type[Self], inject: T_Injectable, metadata: dict=(), /):
+    def __new__(cls: type[Self], inject: T_Injectable, metadata: dict = (), /):
         if not isinjectable(inject):
             raise TypeError(
-                f'`dependency` must be an Injectable not '
-                f'`{inject.__class__.__name__}`'
+                f"`dependency` must be an Injectable not "
+                f"`{inject.__class__.__name__}`"
             )
 
         self = object.__new__(cls)
         self.__injects__ = inject
         self.__metadata__ = frozendict(metadata)
         return self
-    
+
     _create = classmethod(__new__)
-    
+
     @property
     def __origin__(self):
         return self.__class__
 
-    def _clone(self, metadata: dict=(), /, **extra_metadata):
+    def _clone(self, metadata: dict = (), /, **extra_metadata):
         metadata = frozendict(metadata or self.__metadata__, **extra_metadata)
         return self._create(self.__injects__, metadata)
-    
+
     def __getitem__(self: Self, type_: type[T_Injected]):
         """Annotate given type with this marker.
-        
+
         Calling `marker[T]` is the same as `Annotated[type_, marker]`
         """
         if type_.__class__ is tuple:
-            type_ = t.Annotated[type_] # type: ignore
-        
-        return t.Annotated[type_, self] 
+            type_ = t.Annotated[type_]  # type: ignore
+
+        return t.Annotated[type_, self]
 
     def __reduce__(self):
         return self._create, (self.__injects__, self.__metadata__)
-    
+
     def __eq__(self, x) -> bool:
         if not isinstance(x, self.__class__):
             return not self.__metadata__ and x == self.__injects__
-        return self.__injects__ == x.__injects__\
-            and self.__metadata__ == x.__metadata__
-        
+        return self.__injects__ == x.__injects__ and self.__metadata__ == x.__metadata__
+
     def __hash__(self):
         try:
             return self._hash
@@ -219,65 +124,184 @@ class InjectionMarker(t.Generic[T_Injectable], metaclass=ABCMeta):
             else:
                 self._hash = hash(self.__injects__)
             return self._hash
-           
+
     def __setattr__(self, name: str, value) -> None:
-        if hasattr(self, '_hash'):
+        if hasattr(self, "_hash"):
             getattr(self, name)
-            raise AttributeError(f'cannot set readonly attribute {name!r}')
+            raise AttributeError(f"cannot set readonly attribute {name!r}")
 
-        return super().__setattr__(name, value)    
-
-
+        return super().__setattr__(name, value)
 
 
-_T_Dot = t.Literal['.', '..', '...', '....']
+@InjectionMarker.register
+class InjectExpr(datapath.DataPath[T_Injected]):
 
-
-@export()
-class Inject(InjectionMarker[T_Injectable]):
-
-    """Marks an injectable as a `dependency` to be injected.
-    """
     __slots__ = ()
 
-    def __new__(cls, 
-                inject: T_Injectable, *,
-                scope: t.Union['Injector', _T_Dot]=Missing,
-                default=Missing):
-        metadata = {}
-        scope is Missing or metadata.update(scope=scope)
-        default is Missing or metadata.update(default=default)
-        return super().__new__(cls, inject, metadata)
+    __expr__: tuple[Injectable, t.Any]
+
+    def __new__(cls, __path: t.Union[Injectable, tuple]):
+        self = object.__new__(cls)
+        if __path.__class__ is tuple:
+            self.__expr__ = __path
+        else:
+            self.__expr__ = (__path,)
+        return self
 
     @property
     def __dependency__(self):
-        return self if self.__metadata__ else self.__injects__
+        return self
 
     @property
-    def __default__(self):
-        return self.__metadata__.get('default')
+    def __injects__(self):
+        return self.__expr__[0]
 
     @property
-    def __scope__(self):
-        return self.__metadata__.get('scope')
+    def __origin__(self):
+        return self.__class__
 
-    @property
-    def is_optional(self):
-        return 'default' in self.__metadata__
+    def __add__(self, v):
+        if isinstance(v, InjectExpr):
+            return NotImplemented
+        return super().__add__(v)
 
-    def optional(self, default=None):
-        return self._clone(default=default)
+    def __eval__(self, /, root: T_Injected, *, start: int = None, stop: int = None):
+        return super().__eval__(root, start=(start or 0) + 1, stop=stop)
 
-    def scope(self, scope=None):
-        return self._clone(scope=scope)
+
+class InjectFlag(Enum):
+
+    # none: 'InjectFlag'      = None
+
+    only_self: "InjectFlag" = "ONLY_SELF"
+    """Only inject from the current context without considering parents
+    """
+
+    skip_self: "InjectFlag" = "SKIP_SELF"
+    """Skip the current context and resolve from it's parent instead.
+    """
+
+
+@export()
+@InjectionMarker.register
+class Inject(datapath.DataPath[T_Injected]):
+
+    """Marks an injectable as a `dependency` to be injected."""
+
+    __slots__ = (
+        "__injects__",
+        "__injector__",
+        "__v_hashident__",
+        "__default__",
+    )
+
+    ONLY_SELF: t.Final = InjectFlag.only_self
+    """Only inject from the current context without considering parents
+    """
+
+    SKIP_SELF: t.Final = InjectFlag.skip_self
+    """Skip the current context and resolve from it's parent instead.
+    """
+
+    _default_metadata = None, Missing, ()
 
     def __init_subclass__(cls, *args, **kwargs):
         raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__name__}")
 
+    @t.overload
+    def __new__(
+        cls: type[Self],
+        dependency: T_Injectable,
+        *,
+        injector: t.Union[InjectFlag, "Injector", None] = None,
+        default=Missing,
+    ) -> Self:
+        ...
+
+    def __new__(
+        cls,
+        dependency: T_Injectable,
+        injector: t.Union[InjectFlag, "Injector", None] = None,
+        default=Missing,
+        __expr=(),
+    ):
+        self = super().__new__(cls, __expr)
+        object.__setattr__(self, "__injects__", dependency)
+        object.__setattr__(self, "__injector__", injector)
+        object.__setattr__(self, "__default__", default)
+        return self
+
+    @property
+    def __origin__(self):
+        return self.__class__
+
+    @property
+    def __metadata__(self):
+        return self.__injector__, self.__default__, self.__expr__
+
+    @property
+    def __dependency__(self):
+        return self.__injects__ if self.__hashident__ is None else self
+
+    @property
+    def __hasdefault__(self):
+        return not self.__default__ is Missing
+
+    # def __datapath__(self, *, callable=False):
+    #     if callable is True:
+    #         return datapath.DataPath()().__push__(*self.__expr__)
+    #     else:
+    #         return datapath.DataPath(self.__expr__)
+
+    @property
+    def __hashident__(self) -> int:
+        try:
+            return self.__v_hashident__
+        except AttributeError:
+            meta = self.__metadata__
+            ash = None
+            if meta == self._default_metadata:
+                object.__setattr__(self, "__v_hashident__", None)
+            else:
+                object.__setattr__(
+                    self, "__v_hashident__", ash := hash((self.__injects__, meta))
+                )
+            return ash
+
+    def __push__(self, *expr):
+        return self.__class__(
+            self.__injects__, self.__injector__, self.__default__, self.__expr__ + expr
+        )
+
+    # def __eval__(self, /, root: T_Injected, *, start: int = None, stop: int = None):
+    #     print('__eval__', root)
+    #     return super().__eval__(root, start=start, stop=stop)
+
+    def __reduce__(self):
+        return self.__class__, (
+            self.__injects__,
+            self.__injector__,
+            self.__default__,
+            self.__expr__,
+        )
+
+    def __eq__(self, x) -> bool:
+        if not isinstance(x, self.__class__):
+            return self.__hashident__ is None and x == self.__injects__
+        return self.__injects__ == x.__injects__ and self.__metadata__ == x.__metadata__
+
+    def __hash__(self):
+        ash = self.__hashident__
+        if ash is None:
+            return hash(self.__injects__)
+        else:
+            return ash
+
+    def __str__(self):
+        return f"{self.__injects__!s}" + "".join(map(str, self.__expr__))
+
     def __repr__(self) -> bool:
         dependency = self.__injects__
-        scope = self.__scope__ # or ... #'...'
-        default = self.__default__ # '...' if self.__default__ is Parameter.empty else self.__default__
-        return f'{self.__class__.__name__}({dependency=}, {default=}, {scope=})'
-
-
+        injector = self.__injector__
+        default = self.__default__
+        return f'{self.__class__.__name__}({dependency=}, {default=}, {injector=}){"".join(map(str, self.__expr__))}'

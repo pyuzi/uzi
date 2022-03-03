@@ -1,36 +1,22 @@
-# from __future__ import annotations
-from contextlib import AbstractContextManager
-from inspect import Signature, ismemberdescriptor
-from logging import getLogger
 import typing as t
-from functools import wraps
-from inspect import Parameter
 from abc import ABCMeta, abstractmethod
-from laza.common.collections import Arguments
-
 from collections import ChainMap, abc
-from collections.abc import Set, Callable as AbstractCallable
-from laza.common.typing import get_args, UnionType, Self, get_origin, typed_signature
+from collections.abc import Callable as AbstractCallable
+from collections.abc import Set
+from contextlib import AbstractContextManager
+from functools import wraps
+from inspect import Parameter, Signature, ismemberdescriptor
+from logging import getLogger
 
-
+from laza.common.collections import Arguments
 from laza.common.functools import Missing, export
+from laza.common.typing import (Self, UnionType, get_args, get_origin,
+                                typed_signature)
 
-
-
-
-
-
-from .. import (
-    Inject,
-    InjectionMarker,
-    InjectedLookup,
-    Injectable,
-    T_Injected,
-    T_Injectable,
-    isinjectable,
-)
-from .functools import CallableFactoryResolver, FactoryResolver, PartialFactoryResolver, decorators
-
+from .. import (Inject, Injectable, InjectFlag, InjectionMarker, T_Injectable,
+                T_Injected, isinjectable)
+from .functools import (CallableFactoryResolver, FactoryResolver,
+                        PartialFactoryResolver, decorators)
 
 if t.TYPE_CHECKING:
     from ..containers import Container
@@ -240,7 +226,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         if self._is_registered:
             raise AttributeError(f"{self} already registered.")
         elif not isinjectable(val):
-            raise ValueError(f'{self.__class__.__name__}.provides must be an `Injectable` not `{val}`')
+            raise ValueError(f'{self.__class__.__name__}.provides must be an `Injectable` not `{val!r}`')
         else:
             self.__set_attr(_provides=val)
             self._register()
@@ -436,8 +422,6 @@ class Value(Provider[T_UsingValue, T_Injected]):
         value = self.uses
         func = lambda: value
         return lambda ctx: func, None
-        
-        
 
 
 
@@ -451,8 +435,6 @@ class ContextManagerProvider(Value):
             raise TypeError(f'value must be a `ContextManager` not `{cm}`')
         
         return lambda ctx: decorators.contextmanager(cm, ctx), None
-
-
 
 
 
@@ -547,44 +529,63 @@ class AnnotatedProvider(UnionProvider):
 
 
 @export()
-class InjectProvider(Provider[Inject, T_Injected]):
+class InjectMarkerProvider(Provider[Inject, T_Injected]):
     
-    _uses: t.Final = Inject
+    _uses: t.ClassVar = Inject
+
+    _none_fn: AbstractCallable[[], None] = _Attr(lambda: None)
+
     
     def _provides_fallback(self):
         return Inject
 
     def _can_bind(self, injector: "Injector", obj: Inject) -> bool:
-        return isinstance(obj, Inject) and obj.__scope__ is None \
-            or injector.is_scope(obj.__scope__)
+        return isinstance(obj, Inject) and ( 
+                obj.__injector__ is None
+                or obj.__injector__ in InjectFlag
+                or injector.is_scope(obj.__injector__)
+            )
 
-    def _bind(self, injector: "Injector", obj: Inject):
+    def _bind(self, injector: "Injector", marker: Inject):
+        dep = marker.__injects__
+        flag = marker.__injector__
+        default = marker.__default__
+        hasdefault = marker.__hasdefault__
+        inject_default = hasdefault and isinstance(default, InjectionMarker)
 
-        dep = obj.__injects__
-        scope = obj.__scope__
-
-        if scope is None or injector.is_scope(scope):
-            if obj.is_optional:
-                default = obj.__default__
-                if isinstance(default, InjectionMarker):
-                    return lambda ctx: ctx.get(dep) or ctx[default], {dep}
+        if flag is Inject.ONLY_SELF:
+            def run(ctx: 'InjectorContext'):
+                func = ctx.get(dep)
+                if func is None:
+                    if inject_default is True:
+                        return ctx[default] 
+                    elif hasdefault is True:
+                        return lambda: default
                 else:
-                    fd = lambda: default
-                    return lambda ctx: ctx.get(dep, fd), {dep}
-            else:
-                return lambda ctx: ctx[dep], {dep}
+                    return lambda: marker.__eval__(func())
 
-        return None, {dep}
+        elif flag is Inject.SKIP_SELF:
+            def run(ctx: 'InjectorContext'):
+                func = ctx.parent[dep] 
+                if func is None:
+                    if inject_default is True:
+                        return ctx[default] 
+                    elif hasdefault is True:
+                        return lambda: default
+                else:
+                    return lambda: marker.__eval__(func())
+        else:
+            def run(ctx: 'InjectorContext'):
+                func = ctx[dep] 
+                if func is None:
+                    if inject_default is True:
+                        return ctx[default] 
+                    elif hasdefault is True:
+                        return lambda: default
+                else:
+                    return lambda: marker.__eval__(func())
 
-
-
-
-@export()
-class LookupProvider(Provider[Inject, T_Injected]):
-
-    def _bind(self, injector: "Injector", obj: "InjectedLookup") -> 'TContextBinding':
-        dep, path = obj.depends, obj.path
-        return lambda ctx: lambda: path.get(ctx[dep]())
+        return run, {dep}
 
 
 

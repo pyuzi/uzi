@@ -19,8 +19,10 @@ _T_Fn = t.TypeVar('_T_Fn', bound=Callable)
 
 
 
+  
+
 @abstractclass
-class InjectorLock(AbstractContextManager):
+class ContextLock(AbstractContextManager):
     __slots__ = ()
 
 

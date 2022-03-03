@@ -1,26 +1,20 @@
-from contextlib import AbstractContextManager
 import logging
-from threading import Lock
 import typing as t
 from collections.abc import Callable
 from contextvars import ContextVar, Token
-from typing_extensions import Self
+from threading import Lock
 
 from laza.common.functools import export
+from typing_extensions import Self
 
 from . import Injectable, T_Injectable, T_Injected
-from .util import ExitStack
-
-
+from .util import ContextLock, ExitStack
 
 if t.TYPE_CHECKING:
-    from .injectors import Injector, BindingsMap
+    from .injectors import BindingsMap, Injector
 
-
-_T = t.TypeVar('_T')
 
 logger = logging.getLogger(__name__)
-
 
 
 TContextBinding = Callable[
@@ -28,60 +22,57 @@ TContextBinding = Callable[
 ]
 
 
-
-
 def context_partial(provider: Injectable):
-
     def wrapper(*a, **kw):
         nonlocal provider
-        return  __ctxvar.get()[provider]()(*a, **kw)
-    
+        return __ctxvar.get()[provider]()(*a, **kw)
+
     wrapper.__dependency__ = provider
 
     return wrapper
-    
 
-def run_forever(injector: 'Injector'):
+
+def run_forever(injector: "Injector"):
     wire(injector).__enter__()
-  
 
-def run(injector: 'Injector', func, /, *args, **kwargs):
+
+def run(injector: "Injector", func, /, *args, **kwargs):
     with wire(injector) as ctx:
         return ctx[func](*args, **kwargs)
-  
 
-def wire(injector: 'Injector'):
+
+def wire(injector: "Injector"):
     return ContextManager(injector, __ctxvar)
-  
-  
-  
 
+
+_dict_setdefault = dict.setdefault
 
 
 @export()
 class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 
     __slots__ = (
-        '__injector',
-        '__parent',
-        '__exitstack',
-        '__bindings',
+        "__injector",
+        "__parent",
+        "__exitstack",
+        "__bindings",
     )
 
     __injector: "Injector"
     __parent: Self
-    __bindings: "BindingsMap"
+    __bindings: dict[Injectable, Callable[[Self], Callable[[], T_Injected]]]
     __exitstack: ExitStack
 
     if not t.TYPE_CHECKING:
-        _lock_class = Lock
+        _exitstack_class = ExitStack
 
-    def __init__(self, parent: "InjectorContext", injector: "Injector", bindings: 'BindingsMap', content=()):
+    def __init__(
+        self, parent: "InjectorContext", injector: "Injector", bindings: "BindingsMap"
+    ):
         self.__parent = parent
         self.__injector = injector
         self.__bindings = bindings
-        self.__exitstack = ExitStack()
-        super().__init__(content)
+        self.__exitstack = self._exitstack_class()
 
     @property
     def name(self) -> str:
@@ -94,14 +85,13 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     @property
     def injector(self):
         return self.__injector
-        
+
     @property
     def parent(self):
         return self.__parent
-      
-    def lock(self) -> t.Union[AbstractContextManager, None]:
-        if cls := self._lock_class:
-            return cls()
+
+    def lock(self) -> t.Union[ContextLock, None]:
+        return Lock()
 
     def exit(self, exit):
         """Registers a callback with the standard __exit__ method signature.
@@ -113,7 +103,7 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         # We use an unbound method rather than a bound method to follow
         # the standard lookup behaviour for special methods.
         return self.__exitstack.exit(exit)
-        
+
     def enter(self, cm):
         """Enters the supplied context manager.
 
@@ -131,29 +121,21 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         """
         return self.__exitstack.callback(callback, *args, **kwds)
 
-    # def __exit__(self, *er):
-    #     return self.__exitstack.flush(er)
-
     def __exit__(self, *er):
-        return self[ExitStack]().flush(er)
+        return self.__exitstack.flush(er)
 
-    def get(self, key, default=None):
-        rv = self[key]
-        if rv is None:
-            return default
-        return rv
-
-    def first(self, *keys):
+    def first(self, *keys, default=None):
         for key in keys:
             rv = self[key]
             if not rv is None:
                 return rv
+        return default
 
     def __missing__(self, key):
         res = self.__bindings[key]
         if res is None:
-            return dict.setdefault(self, key, self.__parent[key])
-        return dict.setdefault(self, key, res(self) or self.__parent[key])
+            return _dict_setdefault(self, key, self.__parent[key])
+        return _dict_setdefault(self, key, res(self) or self.__parent[key])
 
     def __contains__(self, x) -> bool:
         return dict.__contains__(self, x) or x in self.__parent
@@ -172,18 +154,20 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 
     def __hash__(self):
         return id(self)
-    
+
     def not_mutable(self, *a, **kw):
-        raise TypeError(f'immutable type: {self} ')
+        raise TypeError(f"immutable type: {self} ")
 
-    __delitem__ = __setitem__ = setdefault = \
-        pop = popitem = update = clear = \
-        copy = __copy__ = __reduce__ = __deepcopy__ = not_mutable
+    __delitem__ = (
+        __setitem__
+    ) = (
+        setdefault
+    ) = (
+        pop
+    ) = (
+        popitem
+    ) = update = clear = copy = __copy__ = __reduce__ = __deepcopy__ = not_mutable
     del not_mutable
-
-
-
-
 
 
 @export()
@@ -195,16 +179,18 @@ class NullInjectorContext(InjectorContext):
     name: t.Final = None
     injector = parent = None
 
-    def noop(slef, *a, **kw): 
+    def noop(slef, *a, **kw):
         ...
+
     __init__ = __getitem__ = __missing__ = __contains__ = _reset = noop
     del noop
-    
+
+    def __missing__(self, key):
+        raise KeyError(key)
 
 
-
-__ctxvar: ContextVar['InjectorContext'] = ContextVar(
-    f'{__package__}.InjectorContext',
+__ctxvar: ContextVar["InjectorContext"] = ContextVar(
+    f"{__package__}.InjectorContext",
 )
 
 
@@ -213,14 +199,14 @@ __ctxvar.set(NullInjectorContext())
 
 class ContextManager:
 
-    __slots__ = '__injector', '__token', '__context', '__var'
+    __slots__ = "__injector", "__token", "__context", "__var"
 
-    __injector: 'Injector'
+    __injector: "Injector"
     __token: Token
     __context: InjectorContext
     __var: ContextVar[InjectorContext]
 
-    def __new__(cls, injector: 'Injector', var: ContextVar[InjectorContext]):
+    def __new__(cls, injector: "Injector", var: ContextVar[InjectorContext]):
         self = object.__new__(cls)
         self.__var = var
         self.__injector = injector
@@ -239,7 +225,7 @@ class ContextManager:
                 self.__token = self.__var.set(self.__context)
             return self.__context
         else:
-            raise RuntimeError(f'context already active: {self.__context}')
+            raise RuntimeError(f"context already active: {self.__context}")
 
     def __exit__(self, *e):
         if not self.__token is None:
@@ -251,7 +237,3 @@ class ContextManager:
                 ctx = ctx.parent
 
             del self.__context
-            
-
-
-

@@ -28,6 +28,8 @@ class ProviderTestCase:
     value = _notset
     provider: Provider
 
+    Foo=None
+
     @property
     def provides(self):
         return self.provider.provides
@@ -111,7 +113,9 @@ class ProviderTestCase:
         bound =  provider.bind(injector, self.provides)
         func = bound(context)
         val = func()
-        assert self.value is _notset or self.value is val
-        assert not provider.is_shared or val is func() is func() is func()
+        assert self.value is _notset or self.value == val
+        if provider.is_shared:
+            assert val is func() is func() is func()
+
        
 

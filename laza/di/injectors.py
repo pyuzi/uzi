@@ -1,68 +1,56 @@
-from functools import update_wrapper
-import sys
-from threading import Lock
-import typing as t 
 import logging
-from weakref import finalize, ref
+import typing as t
 from collections.abc import Callable
+from functools import update_wrapper
 
-
-from laza.common.collections import MultiChainMap, frozenorderedset, orderedset, frozendict
-from laza.common.typing import get_origin, Self
-
-from laza.common.functools import ( 
-    export
+from laza.common.collections import (
+    MultiChainMap,
+    frozendict,
+    frozenorderedset,
+    orderedset,
 )
-
-from laza.common.functools import calling_frame, uniqueid
-
+from laza.common.functools import calling_frame, export
 from laza.common.promises import Promise
+from laza.common.typing import Self
 
-
-
-
-
-from . import (
-    InjectionMarker,
-    Injectable, 
-    T_Injectable,
-    T_Injected,
-    isinjectable,
-)
-
-from .containers import InjectorContainer, Container
+from . import Injectable, InjectionMarker, isinjectable
+from .containers import Container, InjectorContainer
 from .context import InjectorContext, context_partial, wire
-from .util import ExitStack, InjectorLock
+from .providers import AnnotatedProvider
+from .providers import Callable as CallableProvider
 from .providers import (
-    Alias, Factory, InjectorContextProvider, Provider, UnionProvider, AnnotatedProvider, 
-    InjectProvider, Callable as CallableProvider
+    InjectMarkerProvider,
+    InjectorContextProvider,
+    Provider,
+    UnionProvider,
 )
-from .providers.util import BindingsMap, ProviderResolver, ProviderRegistry
+from .providers.util import BindingsMap, ProviderRegistry, ProviderResolver
 
 logger = logging.getLogger(__name__)
 
-_T_Fn = t.TypeVar('_T_Fn', bound=Callable)
-
-
-
+_T_Fn = t.TypeVar("_T_Fn", bound=Callable)
 
 
 @t.overload
-def inject(func: _T_Fn, /, *, provider: 'Provider'=None) -> _T_Fn: ...
-@t.overload
-def inject(func: None=None, /, *, provider: 'Provider'=None) -> Callable[[_T_Fn], _T_Fn]: ...
+def inject(func: _T_Fn, /, *, provider: "Provider" = None) -> _T_Fn:
+    ...
 
-def inject(func: _T_Fn=None, /, *, provider: 'Provider'=None) -> _T_Fn:
+
+@t.overload
+def inject(
+    func: None = None, /, *, provider: "Provider" = None
+) -> Callable[[_T_Fn], _T_Fn]:
+    ...
+
+
+def inject(func: _T_Fn = None, /, *, provider: "Provider" = None) -> _T_Fn:
     if provider is None:
         provider = CallableProvider()
-    
+
     if func is None:
         return lambda fn: inject(fn, provider=provider)
     else:
         return update_wrapper(context_partial(provider.using(func)), func)
-    
-
-
 
 
 @export
@@ -71,16 +59,23 @@ class Injector(ProviderRegistry):
     """"""
 
     __slots__ = (
-        '__name', '__parent', '__bindings', '__container', 
-        '__containers', '__boot', '__registry', '__resolver',
-        '__bootstrapped', '__autoloads',
+        "__name",
+        "__parent",
+        "__bindings",
+        "__container",
+        "__containers",
+        "__boot",
+        "__registry",
+        "__resolver",
+        "__bootstrapped",
+        "__autoloads",
     )
 
     __boot: Promise
 
     __name: str
     __parent: Self
-    
+
     __bindings: BindingsMap
     __resolver: ProviderResolver
     __registry: MultiChainMap[Injectable, Provider]
@@ -92,10 +87,10 @@ class Injector(ProviderRegistry):
     _container_class: type[InjectorContainer] = InjectorContainer
     _resolver_class: type[ProviderResolver] = ProviderResolver
 
-    def __init__(self, parent: 'Injector'=None, *, name: str=None):
-        if  name is None:
+    def __init__(self, parent: "Injector" = None, *, name: str = None):
+        if name is None:
             cf = calling_frame()
-            self.__name = cf.get('__name__') or cf.get('__package__') or '<anonymous>'
+            self.__name = cf.get("__name__") or cf.get("__package__") or "<anonymous>"
         else:
             self.__name = name
 
@@ -128,23 +123,23 @@ class Injector(ProviderRegistry):
     def containers(self):
         return self.__containers
 
-    def onboot(self, callback: t.Union[Promise, Callable, None]=None):
+    def onboot(self, callback: t.Union[Promise, Callable, None] = None):
         self.__boot.then(callback)
 
     def bootstrap(self) -> Self:
         self.__boot.settle()
         return self
 
-    def set_parent(self, parent: 'Injector'):
+    def set_parent(self, parent: "Injector"):
         if not self.__parent is None:
             if self.__parent is parent:
                 return self
-            raise TypeError(f'{self} already has parent: {self.__parent}.')
+            raise TypeError(f"{self} already has parent: {self.__parent}.")
         elif self.__boot.done():
-            raise TypeError(f'{self} already bootstrapped.')
+            raise TypeError(f"{self} already bootstrapped.")
 
         self.__parent = parent
-        return self    
+        return self
 
     def parents(self):
         parent = self.__parent
@@ -156,15 +151,15 @@ class Injector(ProviderRegistry):
         self.__container.register(provider)
         return self
 
-    def include(self, *containers, replace: bool=False) -> Self:
+    def include(self, *containers, replace: bool = False) -> Self:
         self.__container.include(*containers, replace=replace)
         return self
 
-    def has_scope(self, scope: t.Union['Injector', Container, None]):
+    def has_scope(self, scope: t.Union["Injector", Container, None]):
         self.__boot.settle()
         return self.is_scope(scope) or self.__parent.has_scope(scope)
 
-    def is_scope(self, scope: t.Union['Injector', Container, None]):
+    def is_scope(self, scope: t.Union["Injector", Container, None]):
         self.__boot.settle()
         return scope is None or scope is self or scope in self.__containers
 
@@ -172,7 +167,7 @@ class Injector(ProviderRegistry):
         self.__boot.settle()
         if not (isinstance(obj, InjectionMarker) or obj in self.__bindings):
             if isinjectable(obj):
-                provider =  self.__resolver.resolve(obj)
+                provider = self.__resolver.resolve(obj)
                 if provider is None:
                     if not onlyself and self.__parent:
                         return self.__parent.is_provided(obj)
@@ -197,7 +192,7 @@ class Injector(ProviderRegistry):
     def __bootstrap(self):
         if self.__bootstrapped is False:
             self.__bootstrapped = True
-            logger.debug(f'BOOTSTRAP: {self}')
+            logger.debug(f"BOOTSTRAP: {self}")
             comp = dict(self.__container.bind())
             self.__containers = frozenorderedset(comp.keys())
             self.__registry.maps = [frozendict(), *reversed(comp.values())]
@@ -207,20 +202,17 @@ class Injector(ProviderRegistry):
     def __register_default_providers(self):
         self.register(UnionProvider().final())
         self.register(AnnotatedProvider().final())
-        self.register(InjectProvider().final())
+        self.register(InjectMarkerProvider().final())
         self.register(InjectorContextProvider(self).autoload().final())
-        self.register(Factory(ExitStack).singleton().autoload().final())
-        self.register(Factory(Lock).provide(InjectorLock).final())
 
     def _collect_autoloaded(self):
         self.__autoloads = frozenset(
-            a for c in self.__containers 
-                for a in c.autoloads 
-                    if (p := self.__resolver.resolve(a)) and p.autoloaded
+            a
+            for c in self.__containers
+            for a in c.autoloads
+            if (p := self.__resolver.resolve(a)) and p.autoloaded
         )
 
     def __repr__(self) -> str:
         parent = self.__parent
-        return f'{self.__class__.__name__}({self.__name!r}, {parent=!s})'
-
-  
+        return f"{self.__class__.__name__}({self.__name!r}, {parent=!s})"

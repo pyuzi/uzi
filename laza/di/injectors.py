@@ -15,7 +15,7 @@ from laza.common.typing import Self
 
 from . import Injectable, InjectionMarker, isinjectable
 from .containers import Container, InjectorContainer
-from .context import InjectorContext, context_partial, wire
+from .context import InjectorContext, context_partial, context
 from .providers import AnnotatedProvider
 from .providers import Callable as CallableProvider
 from .providers import (

@@ -33,15 +33,15 @@ def context_partial(provider: Injectable):
 
 
 def run_forever(injector: "Injector"):
-    wire(injector).__enter__()
+    context(injector).__enter__()
 
 
 def run(injector: "Injector", func, /, *args, **kwargs):
-    with wire(injector) as ctx:
+    with context(injector) as ctx:
         return ctx[func](*args, **kwargs)
 
 
-def wire(injector: "Injector"):
+def context(injector: "Injector"):
     return ContextManager(injector, __ctxvar)
 
 

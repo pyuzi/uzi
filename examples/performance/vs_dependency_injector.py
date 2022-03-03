@@ -9,7 +9,7 @@ import time
 from dependency_injector import providers, containers, wiring
 
 from laza.di.injectors import Injector, inject
-from laza.di.context import wire
+from laza.di.context import context
 
 
 from _benchmarkutil import Benchmark, Timer
@@ -98,10 +98,10 @@ def _inj_di(test: Test= wiring.Provide[Container.test],
 
 
 c = Container()
-c.wire([__name__])
+c.context([__name__])
 
 
-with wire(ioc) as ctx:
+with context(ioc) as ctx:
     ls = [
         Benchmark('A.', N).run(di=Container.a, laza=ctx[A]),
         Benchmark('B.', N).run(di=Container.b, laza=ctx[B]),

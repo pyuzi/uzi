@@ -2,7 +2,7 @@ import pytest
 import typing as t
 
 
-from laza.di.injectors import Injector, wire
+from laza.di.injectors import Injector, context as context_
 from laza.di.test import TestContainer, TestInjector
 
 
@@ -31,7 +31,7 @@ def injector(Injector):
 
 @pytest.fixture()
 def ctx_manager(injector: Injector):
-    return wire(injector)
+    return context_(injector)
 
 
 @pytest.fixture()

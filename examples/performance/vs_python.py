@@ -1,5 +1,5 @@
 
-from laza.di.injectors import Injector, inject, wire
+from laza.di.injectors import Injector, inject, context
 
 
 from _benchmarkutil import Benchmark, Timer
@@ -99,7 +99,7 @@ mkinject_3 = lambda: inject_3.__wrapped__(mkfoobar(), mkfoobarbaz(), mkservice()
 _n = int(.5e6)
 
 with Timer() as tm:
-    with wire(ioc) as ctx:
+    with context(ioc) as ctx:
         
         # [ctx[d]() for d in (Foo, Bar, Baz, FooBar, FooBarBaz, Service)]
         

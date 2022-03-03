@@ -8,8 +8,7 @@ import time
 
 from dependency_injector import providers, containers, wiring
 
-from laza.di.injectors import Injector, inject
-from laza.di.context import context
+from laza.di.injectors import Injector, inject, context
 
 
 from _benchmarkutil import Benchmark, Timer

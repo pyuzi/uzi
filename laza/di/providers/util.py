@@ -45,7 +45,7 @@ class ProviderResolver:
     def resolve(self, dep: Injectable) -> t.Union[Provider, None]:
         if isinstance(dep, InjectionMarker):
             dep = dep.__dependency__
-
+            
         if isinstance(dep, Provider):
             return dep if dep.can_bind(self.__injector, dep) else None
 
@@ -148,13 +148,13 @@ class ProviderRegistry(ABC):
         def contextmanager(self, provide: Injectable, cm: AbstractContextManager, /) -> ContextManagerProvider:
             ...
 
-        def callable(self, factory: _T_Fn,  *a, **kw) -> Callable:
+        def callable(self, factory: _T_Fn=...,  *a, **kw) -> Callable:
             ...
 
-        def factory(self, factory: _T_Fn,  *a, **kw) -> Factory:
+        def factory(self, factory: _T_Fn=...,  *a, **kw) -> Factory:
             ...
 
-        def resource(self, factory: _T_Fn,  *a, **kw) -> Resource:
+        def resource(self, factory: _T_Fn=...,  *a, **kw) -> Resource:
             ...
             
     else:

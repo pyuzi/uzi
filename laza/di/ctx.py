@@ -114,7 +114,7 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         # statement.
         return self.__exitstack.enter(cm)
 
-    def callback(self, callback, /, *args, **kwds):
+    def callback(self, callback, /, *args, **kwds): 
         """Registers an arbitrary callback and arguments.
 
         Cannot suppress exceptions.
@@ -148,7 +148,7 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 
     def __eq__(self, x):
         return x is self
-
+ 
     def __ne__(self, x):
         return not self.__eq__(x)
 
@@ -173,11 +173,11 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 @export()
 class NullInjectorContext(InjectorContext):
     """NullInjector Object"""
-
+ 
     __slots__ = ()
 
     name: t.Final = None
-    injector = parent = None
+    injector = parent = None 
 
     def noop(slef, *a, **kw):
         ...
@@ -185,8 +185,6 @@ class NullInjectorContext(InjectorContext):
     __init__ = __getitem__ = __missing__ = __contains__ = _reset = noop
     del noop
 
-    def __missing__(self, key):
-        raise KeyError(key)
 
 
 __ctxvar: ContextVar["InjectorContext"] = ContextVar(

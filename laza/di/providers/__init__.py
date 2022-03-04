@@ -275,10 +275,14 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
             if self._is_registered:
                 raise TypeError(f'{self!s} already registered to {self.container}.')
             try:
-                self.__set_attr(_provides=self.provides, _uses=self.uses)
-                return not self.container is None
+                uses = self.uses
+                provides = self.provides
             except AttributeError:
                 return False
+            else:
+                uses == self._uses or self.__set_attr(_uses=uses)    
+                provides == self._provides or self.__set_attr(_provides=provides)
+                return not self.container is None
         return False
       
     def when(self, *filters, append: bool=False) -> Self:
@@ -328,6 +332,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     def bind(self, injector: "Injector", provides: T_Injectable=None) -> 'TContextBinding':
         self._freeze()
+
         if self.container is None or injector.is_scope(self.container):
             fn, deps = self._bind(injector, provides)
             return fn
@@ -529,13 +534,10 @@ class AnnotatedProvider(UnionProvider):
 
 
 @export()
-class DepMarkerProvider(Provider[Dep, T_Injected]):
+class DepMarkerProvider(Provider):
     
     _uses: t.ClassVar = Dep
 
-    _none_fn: AbstractCallable[[], None] = _Attr(lambda: None)
-
-    
     def _provides_fallback(self):
         return Dep
 
@@ -552,6 +554,7 @@ class DepMarkerProvider(Provider[Dep, T_Injected]):
         default = marker.__default__
         hasdefault = marker.__hasdefault__
         inject_default = hasdefault and isinstance(default, InjectionMarker)
+
 
         if flag is Dep.ONLY_SELF:
             def run(ctx: 'InjectorContext'):
@@ -589,7 +592,7 @@ class DepMarkerProvider(Provider[Dep, T_Injected]):
 
 
 
-
+_none_or_ellipsis = frozenset([None, ...])
 @export()
 class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
@@ -597,7 +600,11 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     is_shared: bool = False
     
     _signature: Signature = None
-    _blank_signature: Signature = Signature()
+    _blank_signature: t.ClassVar[Signature] = Signature()
+    _arbitrary_signature: t.ClassVar[Signature] = Signature([
+        Parameter('__Parameter_var_positional', Parameter.VAR_POSITIONAL),
+        Parameter('__Parameter_var_keyword', Parameter.VAR_KEYWORD),
+    ])
 
     decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]] = ()
 
@@ -607,7 +614,9 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     def __init__(self, using: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         super().__init__()
-        using is None or self.using(using)
+        if not using in _none_or_ellipsis:
+            self.provide(using)
+            self.using(using)
         args and self.args(*args)
         kwargs and self.kwargs(**kwargs)
 
@@ -629,6 +638,22 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     def singleton(self, is_singleton: bool = True) -> Self:
         self.__set_attr(is_shared=is_singleton)
         return self
+    
+
+    @t.overload
+    def using(self) -> abc.Callable[[_T], _T]:
+        ...
+
+    @t.overload
+    def using(self, using: abc.Callable, *args, **kwargs) -> Self:
+        ...
+
+    @_fluent_decorator()
+    def using(self, using, *args, **kwargs):
+        self.__set_attr(uses=using)
+        args and self.args(*args)
+        kwargs and self.kwargs(**kwargs)
+        return self
         
     def signature(self, signature: Signature) -> Self:
         self.__set_attr(_signature=signature)
@@ -647,8 +672,11 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
             try:
                 return typed_signature(self.uses)
             except ValueError:
-                return self._blank_signature
+                return self._fallback_signature()
         return sig
+
+    def _fallback_signature(self):
+        return self._arbitrary_signature if self.arguments else self._blank_signature
 
     def _extra_decorators(self):
         if self.is_shared:
@@ -691,6 +719,9 @@ class Callable(Factory[T_Injected]):
     def partial(self, is_partial: bool = True) -> Self:
         self.__set_attr(is_partial=is_partial)
         return self
+
+    def _fallback_signature(self):
+        return self._arbitrary_signature
 
 
 

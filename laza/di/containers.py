@@ -83,27 +83,24 @@ class Container(ProviderRegistry):
         return self
 
     def register(self, provider: Provider) -> Self:
-        provider.set_container(self)
-        # self.onboot(lambda: provider.set_container(self))
+        self.onboot(lambda: provider.set_container(self))
         return self
 
     def onboot(self, callback: t.Union[Promise, Callable, None] = None):
         self.__boot.then(callback)
 
     def add_to_registry(self, tag: Injectable, provider: Provider):
-        # if not self.__boot.done():
-        #     raise TypeError(f'container not booted: {self!r}')
         self.__registry[tag] = provider
         provider.autoloaded and self.__autoloads.add(tag)
-        # logger.debug(f'{self}.add_to_registry({tag}, {provider=!s})')
+        logger.debug(f'{self}.add_to_registry({tag}, {provider=!s})')
 
     def bind(self, injector: "Injector", source: "Container" = None):
         if not self._is_bound(injector):
             logger.debug(f"{self}.bind({injector=}, {source=})")
             self.__bound.add(injector)
+            injector.onboot(self.__boot)
             yield self, self.__registry
             yield from self._bind_included(injector)
-            # injector.onboot(self.__boot)
 
     def _bind_included(self, injector: "Injector"):
         for c in reversed(self.__includes):

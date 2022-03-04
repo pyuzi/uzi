@@ -83,10 +83,6 @@ class ParamResolverTests:
         injector.is_provided = Mock(side_effect=lambda o: o == resolver.dependency)
         assert resolver.bind(injector) == exp
 
-    @xfail(raises=TypeError)
-    def test_bind_missing_dependency(self, injector: Injector):
-        assert ParamResolver().bind(injector)
-
     @parametrize(
         ["resolver", "ctx", "exp"],
         [

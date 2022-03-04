@@ -14,7 +14,7 @@ _Ta = t.TypeVar("_Ta")
 _Tx = t.TypeVar("_Tx")
 
 
-class InjectMarkerTests(ProviderTestCase):
+class DepMarkerTests(ProviderTestCase):
     @pytest.fixture
     def provider(self, marker):
         return Provider(marker)
@@ -29,7 +29,7 @@ class InjectMarkerTests(ProviderTestCase):
         return context
 
 
-class InjectMarkerDataPathTests(InjectMarkerTests):
+class DepMarkerDataPathTests(DepMarkerTests):
     @pytest.fixture
     def marker(self):
         return Dep(_Ta).bar.run(1, 2, 3, k1=1, k2=2).a["list"][2:-2]
@@ -48,7 +48,7 @@ class InjectMarkerDataPathTests(InjectMarkerTests):
         return fn
 
 
-class InjectMarkerOnlySelfTests(InjectMarkerTests):
+class DepMarkerOnlySelfTests(DepMarkerTests):
     @pytest.fixture
     def marker(self):
         return Dep(_Tx, injector=Dep.ONLY_SELF, default=Dep(_Ta))
@@ -64,7 +64,7 @@ class InjectMarkerOnlySelfTests(InjectMarkerTests):
         return context
 
 
-class InjectMarkerSkipSelfTests(InjectMarkerTests):
+class DepMarkerSkipSelfTests(DepMarkerTests):
     @pytest.fixture
     def marker(self):
         return Dep(_Tx, injector=Dep.SKIP_SELF)

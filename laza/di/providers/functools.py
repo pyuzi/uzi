@@ -152,10 +152,10 @@ class ParamResolver(t.Generic[_T]):
             dep = self.dependency
             if not dep is _EMPTY and injector.is_provided(dep):
                 return dep
-            elif not self.has_default:
-                raise TypeError(
-                    f"unresolvable dependency `{self.dependency}` in {self}."
-                )
+            # elif not self.has_default:
+            #     raise TypeError(
+            #         f"unresolvable dependency `{self.dependency}` in {self}."
+            #     )
 
     def resolve(self, ctx: "InjectorContext"):
         if self.has_value:
@@ -163,7 +163,7 @@ class ParamResolver(t.Generic[_T]):
         elif self.dependency is _EMPTY:
             return _EMPTY, _EMPTY, self.default if self.has_default else _EMPTY
         elif self.has_default:
-            return _EMPTY, ctx.get(self.dependency, _EMPTY), self.default
+            return _EMPTY, ctx[self.dependency], self.default
         else:
             return _EMPTY, ctx[self.dependency], _EMPTY
 

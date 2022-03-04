@@ -1,7 +1,5 @@
 import os
 
-from injector import inject
-
 
 from after import ApiClient, Service
 
@@ -18,8 +16,7 @@ def main(service: Service):
 injector = Injector()
 
 injector.factory(Service)
-injector.factory(ApiClient).singleton()\
-    .args(os.getenv("API_URL"), os.getenv('API_KEY'))
+injector.factory(ApiClient, os.getenv("API_URL"), os.getenv('API_KEY')).singleton()
 
 
 

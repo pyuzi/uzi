@@ -3,54 +3,146 @@
 A super fast dependency injection library for python.
 
 
+
+## Why use dependency injection?
+
+Take a look at the following code.
+
 ```python
+import os
 
-from laza.di import Container
+class ApiClient:
 
-ioc = Container()
+    def __init__(self):
+        self.api_url = os.getenv("API_URL")  # a dependency
+        self.api_key = os.getenv("API_KEY")  # a dependency
 
-
-@ioc.injectable()
-class A(object):
-    ...
-
-
-@ioc.injectable(shared=True)
-class B(object):
-    ...
+    def get(self, path: str, *, token: str):
+        return { url: f'{self.api_url}/{path}', status: 'ok', data: [] }
 
 
-# Register 
-@ioc.injectable()
-class C(object):
-    def __init__(self, a: A, b: B): # <-- dependencies `A` and `B` are injected automatically
-        self.a = a
-        self.b = b
+
+class Service:
+
+    def __init__(self):
+        self._api_client = ApiClient()  # a dependency
+        # do some init
+
+    def do_something(self):
+        res = self._api_client.get('abc')
+        print("Service doing something")
 
 
-@ioc.injectable()
-class Service(object):
-    def __init__(self, a: A, b: B, c: C):
-        self.a = a
-        self.b = b
-        self.c = c
-
-
-@ioc.inject
-def main(service: Service):
-    ...
+def some_func() -> None:
+    service = Service()  # a dependency
+    service.do_something()
+    print("serivce has done something")
 
 
 if __name__ == "__main__":
+    some_func()
 
-    main()  # <-- dependency is injected automatically
+```
 
-    # transient dependencies always resolve to a new values
-    assert ioc[A] is not ioc[A] is not ioc[A]
+This code will run as expected. However:-
+
+1. **Testing it will be difficult**
     
-    # Shared dependencies always resolve to the same value.
-    assert ioc[B] is ioc[B] is ioc[B]
-    assert ioc[Service] is ioc[Service] is ioc[Service]
+    For example, to test `Service` we need a fake `ApiClient` as we don't what to 
+    make real api calls or might not have the credentials to do so. 
+    Since `Service` creates it's own `ApiClient` instance, it is impossible to 
+    safely mock the `ApiClient` for tests. 
+
+2. **Lacks flexibility and extensibility**
+
+    It's imppossible to create an additional `ApiClient` instance that uses a 
+    different `API_URL` and/or `API_KEY`.
+
+
+
+So what do we do? We should decouple our objects from their dependencies. 
+
+That is, objects should not create each other anymore. They should provide a way 
+to inject the dependencies instead.
+
+
+Here's how.
+
+```python
+
+class ApiClient:
+
+    def __init__(self, api_url: str, api_key: str): # we let the caller provide the dependencies
+        self.api_url = api_url  
+        self.api_key = api_key
+
+
+class Service:
+
+    def __init__(self, api_client: ApiClient): # we let the caller provide the dependency
+        self._api_client = api_client 
+
+
+def some_func(service: Service): # we let the caller provide the dependency
+    service.do_something()
+    print("serivce has done something")
+
+```
+
+Congratulations, your code is now loosely coupled. 
+
+But remember, with freedom comes more responsibility.
+
+The responsibility is left to the "caller" who has to know, assemble and provide the dependencies.
+
+```python
+some_func(
+    service=Service(
+        api_client=ApiClient(
+            api_key=os.getenv("API_KEY"),
+            api_url=os.getenv("TIMEOUT"),
+        ),
+    ),
+)
+
+```
+This quickly becomes a problem when you what to use `some_func()` from multiple places.
+Duplicating the assembly code with make it harder to change in the future.
+
+
+
+
+### With Laza DI.
+
+
+```python
+from laza.di import Injector, inject, context
+
+@inject  # tell the di to inject dependencies
+def some_func(service: Service):
+    service.do_something()
+
+
+injector = Injector()
+
+# register the ApiClient
+injector.factory(
+    ApiClient, 
+    api_url=os.getenv("API_URL"), # <-- provide value from env
+    api_key=os.getenv('API_KEY')  # <-- provide value from env
+).singleton()  # <-- make it provide only one instance.
+
+
+# Register the Service. 
+injector.factory(Service) 
+# Since we did not specify a value for api_client. `ApiClient` will get injected 
+# as it matches the type annotation `api_client: ApiClient`
+
+
+# Run the injector
+injector.run_forever()
+
+some_func() # <-- dependency `Service` is injected automatically
 
 ```
 
@@ -74,19 +166,3 @@ Coming soon.
 
 __This package is still in active development and should not be used in production environment__
 
-
-<!--
-What describes a good DI container#
-A good DI container:
-
-* __must not__ be a Service Locator, and that’s easier to get as one might think, just go back to my previous post about this topic
-* __must not__ be configurable globally (as a globally available instance), because it introduces problems with the reconfiguration
-* __must support__ shared dependencies, so we wouldn’t need to exploit the Singleton Pattern
-* __must support__ use of profiles, so we can configure it accordingly on different environments
-* __should support__ the Decorator Pattern
-
-
-## Modularity
-The ability to isolate deps within their modules/packages
-
--->

@@ -16,12 +16,13 @@ from laza.common.typing import Self
 from . import Injectable, InjectionMarker, isinjectable
 from .containers import Container, InjectorContainer
 from .ctx import InjectorContext, context_partial
-from .providers import AnnotatedProvider
-from .providers import Callable as CallableProvider
 from .providers import (
+    Provider,
+    Callable as CallableProvider,
     DepMarkerProvider,
     InjectorContextProvider,
-    Provider,
+    AnnotatedProvider, 
+    CallMarkerProvider,
     UnionProvider,
 )
 from .providers.util import BindingsMap, ProviderRegistry, ProviderResolver
@@ -192,16 +193,16 @@ class Injector(ProviderRegistry):
     def __bootstrap(self):
         if self.__bootstrapped is False:
             self.__bootstrapped = True
-            logger.debug(f"BOOTSTRAP: {self}")
+            self.__register_default_providers()
             comp = dict(self.__container.bind())
             self.__containers = frozenorderedset(comp.keys())
             self.__registry.maps = [frozendict(), *reversed(comp.values())]
-            self.__register_default_providers()
             self.onboot(lambda: self._collect_autoloaded())
 
     def __register_default_providers(self):
         self.register(UnionProvider().final())
         self.register(AnnotatedProvider().final())
+        self.register(CallMarkerProvider().final())
         self.register(DepMarkerProvider().final())
         self.register(InjectorContextProvider(self).autoload().final())
 

@@ -1,3 +1,4 @@
+from types import MethodType
 import typing as t
 from abc import ABCMeta, abstractmethod
 from collections import ChainMap, abc
@@ -13,7 +14,7 @@ from laza.common.functools import Missing, export
 from laza.common.typing import (Self, UnionType, get_args, get_origin,
                                 typed_signature)
 
-from .. import (Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
+from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, isinjectable)
 from .functools import (CallableFactoryResolver, FactoryResolver,
                         PartialFactoryResolver, decorators)
@@ -512,7 +513,7 @@ class UnionProvider(Provider[_T_Using, T_Injected]):
 
     def _bind(self, injector: "Injector", obj):
         if deps := [*self._iter_injectable(injector, obj)]:
-            return lambda ctx: ctx.first(*deps), {*deps}
+            return lambda ctx: ctx.find(*deps), {*deps}
         return None, None
 
 
@@ -539,10 +540,10 @@ class DepMarkerProvider(Provider):
     _uses: t.ClassVar = Dep
 
     def _provides_fallback(self):
-        return Dep
+        return self.uses
 
     def _can_bind(self, injector: "Injector", obj: Dep) -> bool:
-        return isinstance(obj, Dep) and ( 
+        return isinstance(obj, self.uses) and ( 
                 obj.__injector__ is None
                 or obj.__injector__ in DepInjectorFlag
                 or injector.is_scope(obj.__injector__)
@@ -590,6 +591,35 @@ class DepMarkerProvider(Provider):
 
         return run, {dep}
 
+
+
+
+@export()
+class CallMarkerProvider(Provider):
+    
+    _uses: t.ClassVar = Call
+
+    def _provides_fallback(self):
+        return self.uses
+
+    def _can_bind(self, injector: "Injector", obj: Dep) -> bool:
+        return isinstance(obj, self.uses)
+
+    def _bind(self, injector: "Injector", marker: Call):
+        dep = marker.__injects__
+        argv = marker.__arguments__
+
+        if isinstance(dep, InjectionMarker):
+            provider = Callable(
+                lambda fn, *a, **kw: fn(*a, **kw), 
+                dep, *argv.args, **argv.kwargs
+            )
+        else:
+            provider = Callable(dep, *argv.args, **argv.kwargs)
+
+        return provider.bind(injector, dep), None
+        
+        
 
 
 _none_or_ellipsis = frozenset([None, ...])

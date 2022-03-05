@@ -203,7 +203,9 @@ class FactoryResolver:
         self.arguments = self.parse_arguments(arguments)
 
     def __call__(
-        self, injector: "Injector" = None, provides: T_Injectable = None
+        self,
+        injector: "Injector",
+        provides: T_Injectable = None,
     ) -> Callable:
         _args, _kwds, _vals, deps = self.evaluate(injector)
         return self.make_resolver(provides, self.factory, _args, _kwds, _vals), deps

@@ -1,13 +1,14 @@
 import logging
+from types import MethodType
 import typing as t
 from collections.abc import Callable
 from contextvars import ContextVar, Token
 from threading import Lock
 
-from laza.common.functools import export
+from laza.common.functools import export, Missing
 from typing_extensions import Self
 
-from . import Injectable, T_Injectable, T_Injected
+from . import Call, Injectable, T_Default, T_Injectable, T_Injected
 from .util import ContextLock, ExitStack
 
 if t.TYPE_CHECKING:
@@ -20,6 +21,26 @@ logger = logging.getLogger(__name__)
 TContextBinding = Callable[
     ["InjectorContext", t.Optional[Injectable]], Callable[..., T_Injected]
 ]
+
+
+class InjectionLookupError(LookupError):
+    
+    key: Injectable
+    injector: 'InjectorContext'
+
+    def __init__(self, key=None, injector: 'InjectorContext'=None) -> None:
+        self.key = key
+        self.injector = injector
+
+    def __str__(self) -> str:
+        key, injector = self.key, self.injector
+        return '' if key is None is injector \
+            else f'{key!r}' if injector is None \
+                else f'at {injector!r}' if key is None \
+                    else f'{key!r} at {injector!r}'
+
+
+
 
 
 def context_partial(provider: Injectable):
@@ -121,24 +142,47 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         """
         return self.__exitstack.callback(callback, *args, **kwds)
 
+    @t.overload
+    def find(self, dep: T_Injectable, *fallbacks: T_Injectable) -> T_Injected: ...
+    @t.overload
+    def find(self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default) -> t.Union[T_Injected, T_Default]: ...
+    def find(self, *keys, default=Missing):
+        for key in keys:
+            if not (rv := self[key]) is None:
+                return rv
+        
+        if default is Missing:
+            raise InjectionLookupError(key, self)
+
+        return default
+
+    def make(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
+        func = self.find(key, *fallbacks, default=None)
+        if not func is None:
+            return func()
+        elif not default is Missing:
+            return default
+        else:
+            raise InjectionLookupError(key, self)
+        
+    def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
+        if isinstance(func, MethodType):
+            args = (func.__self__,) + args
+            func = func.__func__
+            
+        return self.make(Call(func))(*args, **kwds)
+    
     def __exit__(self, *er):
         return self.__exitstack.flush(er)
 
-    def first(self, *keys, default=None):
-        for key in keys:
-            rv = self[key]
-            if not rv is None:
-                return rv
-        return default
-
+    def __contains__(self, x) -> bool:
+        return dict.__contains__(self, x) or x in self.__parent
+    
     def __missing__(self, key):
         res = self.__bindings[key]
         if res is None:
             return _dict_setdefault(self, key, self.__parent[key])
         return _dict_setdefault(self, key, res(self) or self.__parent[key])
-
-    def __contains__(self, x) -> bool:
-        return dict.__contains__(self, x) or x in self.__parent
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.name!r})"
@@ -235,3 +279,5 @@ class ContextManager:
                 ctx = ctx.parent
 
             del self.__context
+
+

@@ -28,8 +28,6 @@ class ProviderTestCase:
     value = _notset
     provider: Provider
 
-    Foo=None
-
     @property
     def provides(self):
         return self.provider.provides

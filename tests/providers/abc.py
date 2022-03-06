@@ -1,3 +1,5 @@
+from inspect import isawaitable
+from time import sleep
 import typing as t
 import pytest
 
@@ -117,3 +119,27 @@ class ProviderTestCase:
 
        
 
+class AsyncProviderTestCase(ProviderTestCase):
+
+    @pytest.fixture
+    def value_factory(self):
+        async def fn():
+            return object()
+        return fn
+
+    @pytest.fixture
+    def value_setter(self, value_factory):
+        async def fn(*a, **kw):
+            self.value = val = await value_factory(*a, **kw)
+            return val
+        return fn
+
+    async def test_provide(self, provider: Provider, injector, context):
+        bound =  provider.bind(injector, self.provides)
+        func = bound(context)
+        aw = func()
+        assert isawaitable(aw)
+        val = await aw
+        assert self.value is _notset or self.value == val
+        if provider.is_shared:
+            assert val is func() is func() is func()

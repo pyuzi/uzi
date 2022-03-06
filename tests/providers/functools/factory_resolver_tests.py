@@ -57,3 +57,6 @@ class FactoryResolverTests:
         assert callable(fn)
         v = fn()
         assert v == vals
+
+
+

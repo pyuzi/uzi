@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 
 import typing as t
@@ -11,7 +12,7 @@ from laza.di.injectors import Injector
 from libs.di.laza.di import injectors
  
 
-from .abc import ProviderTestCase
+from .abc import ProviderTestCase, AsyncProviderTestCase
 
 
 xfail = pytest.mark.xfail
@@ -30,7 +31,17 @@ class UnionProviderTests(ProviderTestCase):
         return Provider(t.Union[_T, _Ta])
 
     @pytest.fixture
-    def injector(self, injector: Injector, value_setter):
-        injector.register(Factory(value_setter).provide(_Ta))
+    def injector(self, injector, value_setter):
+        injector.bindings[_Ta] = lambda c: value_setter
+        return injector
+
+
+
+
+class AsyncUnionProviderTests(UnionProviderTests, AsyncProviderTestCase):
+
+    @pytest.fixture
+    def injector(self, injector, value_setter):
+        injector.bindings[_Ta] = lambda c: lambda: asyncio.sleep(0, value_setter())
         return injector
 

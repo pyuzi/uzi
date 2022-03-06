@@ -1,10 +1,11 @@
+import asyncio
 import typing as t
 
 import pytest
 from laza.di import Dep
 from laza.di.providers import AnnotatedProvider as Provider
 
-from .abc import ProviderTestCase
+from .abc import ProviderTestCase, AsyncProviderTestCase
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
@@ -22,3 +23,13 @@ class AnnotatedProviderTests(ProviderTestCase):
     def context(self, context, value_setter):
         context[_Ta] = value_setter
         return context
+
+
+
+class AsyncAnnotatedProviderTests(AnnotatedProviderTests, AsyncProviderTestCase):
+
+    @pytest.fixture
+    def context(self, context, value_setter):
+        context[_Ta] = lambda: asyncio.sleep(0, value_setter())
+        return context
+       

@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 
 import typing as t
@@ -5,13 +6,10 @@ import typing as t
 
 
 from laza.di.providers import Factory
-from laza.di.injectors import Injector
-
-from memory_profiler import profile
-from copy import deepcopy, copy
 
 
-from .abc import ProviderTestCase
+
+from .abc import ProviderTestCase, AsyncProviderTestCase
 
 
 xfail = pytest.mark.xfail
@@ -19,7 +17,27 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
+_T_Async = t.TypeVar('_T_Async')
 
+
+class Foo:
+    def __init__(self) -> None:
+        pass
+
+
+class Bar:
+    def __init__(self) -> None:
+        pass
+
+
+class Baz:
+    def __init__(self) -> None:
+        pass
+
+
+class FooBar:
+    def __init__(self) -> None:
+        pass
 
 
 
@@ -96,23 +114,21 @@ class FactoryProviderTests(ProviderTestCase):
         kwargs = dict(a='BAR', b='BOO')
         provider.kwargs(**kwargs)
         provider.bind(injector, func)(context)()
- 
- 
-class Foo:
-    def __init__(self) -> None:
-        pass
 
 
-class Bar:
-    def __init__(self) -> None:
-        pass
+class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
 
+    @pytest.fixture
+    def factory(self, value_setter):
+        async def factory(a: _T, b: _T_Async):
+            assert a is b
+            return value_setter()
+        return factory
 
-class Baz:
-    def __init__(self) -> None:
-        pass
+    @pytest.fixture
+    def injector(self, injector):
+        tval = object()
+        injector.bindings[_T] = lambda c: lambda: tval
+        injector.bindings[_T_Async] = lambda c: lambda: asyncio.sleep(0, tval)
+        return injector
 
-
-class FooBar:
-    def __init__(self) -> None:
-        pass

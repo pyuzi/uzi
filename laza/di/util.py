@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from contextlib import AbstractContextManager
+from contextlib import AbstractAsyncContextManager, AbstractContextManager
 import logging
 import sys
 from types import MethodType
@@ -17,12 +17,31 @@ logger = logging.getLogger(__name__)
 _T = t.TypeVar('_T')
 _T_Fn = t.TypeVar('_T_Fn', bound=Callable)
 
+_object_new =object.__new__
+
+
+class AwaitValue(t.Generic[_T]):
+    __slots__ = '__value',
+
+    def __new__(cls, value: _T):
+        self = _object_new(cls)
+        self.__value = value
+        return self
+
+    def __await__(self):
+        yield 
+        return self.__value
 
 
   
 
 @abstractclass
 class ContextLock(AbstractContextManager):
+    __slots__ = ()
+
+
+@abstractclass
+class AsyncContextLock(AbstractAsyncContextManager):
     __slots__ = ()
 
 

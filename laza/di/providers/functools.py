@@ -309,7 +309,7 @@ class FactoryResolver:
                 lst.append(v)
             elif not fn is _EMPTY:
                 if isawaitable(v := fn()):
-                    aws[i] = asyncio.ensure_future(v)
+                    aws[i] = v # asyncio.ensure_future(v)
                 else:
                     lst.append(v)
             else:
@@ -339,13 +339,13 @@ class FactoryResolver:
             for n, fn in kwds:
                 if not n in skip:
                     if isawaitable(v := fn()):
-                        aws[n] = asyncio.ensure_future(v)
+                        aws[n] = v # asyncio.ensure_future(v)
                     else:
                         vals[n] = v
         else:
             for n, fn in kwds:
                 if isawaitable(v := fn()):
-                  aws[n] = asyncio.ensure_future(v)
+                  aws[n] = v # asyncio.ensure_future(v)
                 else:
                     vals[n] = v
 

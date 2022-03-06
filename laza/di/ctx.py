@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from types import MethodType
 import typing as t
@@ -9,7 +10,7 @@ from laza.common.functools import export, Missing
 from typing_extensions import Self
 
 from . import Call, Injectable, T_Default, T_Injectable, T_Injected
-from .util import ContextLock, ExitStack
+from .util import AsyncContextLock, ContextLock, ExitStack
 
 if t.TYPE_CHECKING:
     from .injectors import BindingsMap, Injector
@@ -84,6 +85,8 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
     __bindings: dict[Injectable, Callable[[Self], Callable[[], T_Injected]]]
     __exitstack: ExitStack
 
+    is_async: bool = False
+
     if not t.TYPE_CHECKING:
         _exitstack_class = ExitStack
 
@@ -113,6 +116,9 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 
     def lock(self) -> t.Union[ContextLock, None]:
         return Lock()
+
+    def alock(self) -> t.Union[AsyncContextLock, None]:
+        return asyncio.Lock()
 
     def exit(self, exit):
         """Registers a callback with the standard __exit__ method signature.

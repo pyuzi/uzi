@@ -6,7 +6,7 @@ from collections.abc import Callable as AbstractCallable
 from collections.abc import Set
 from contextlib import AbstractContextManager
 from functools import wraps
-from inspect import Parameter, Signature, ismemberdescriptor
+from inspect import Parameter, Signature, iscoroutinefunction, ismemberdescriptor
 from logging import getLogger
 
 from laza.common.collections import Arguments
@@ -17,10 +17,18 @@ from laza.common.typing import (Self, UnionType, get_args, get_origin,
 from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, isinjectable)
 from .functools import (
+    AsyncCallableFactoryResolver,
+    AsyncFactoryResolver,
+    AsyncPartialFactoryResolver,
     CallableFactoryResolver, 
     FactoryResolver,
+    PartialFactoryResolver,
     decorators
 )
+from .vars import (
+    ProviderVar, ValueProviderVar, FactoryProviderVar, SingletonProviderVar, ResourceProviderVar
+)
+
 
 if t.TYPE_CHECKING:
     from ..containers import Container
@@ -198,6 +206,10 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     is_shared: t.ClassVar[bool] = None
     """Whether this provided value is shared.
+    """
+
+    is_async: bool = None
+    """Whether the value is provided async.
     """
 
     filters: tuple[abc.Callable[['Injector', Injectable], bool]] = ()
@@ -428,9 +440,8 @@ class Value(Provider[T_UsingValue, T_Injected]):
             ...
 
     def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
-        value = self.uses
-        func = lambda: value
-        return lambda ctx: func, None
+        var = ValueProviderVar(self.uses, is_async=self.is_async)
+        return lambda ctx: var, None
 
 
 
@@ -449,28 +460,13 @@ class ContextManagerProvider(Value):
 
 
 @export()
-class BindingProvider(Provider[T_UsingValue, T_Injected]):
-    """Provides the current `InjectorContext`"""
-
-    @Provider.uses.setter
-    def uses(self, value):
-        if not isinstance(value, AbstractCallable):
-            raise ValueError(f'{self.__class__.__name__}.uses must be a `Callable` not {value}')
-        super().uses = value
-
-    def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
-        return self.uses
-
-
-
-@export()
 class InjectorContextProvider(Provider[T_UsingValue, T_Injected]):
     """Provides the current `InjectorContext`"""
     _uses: t.ClassVar = None
     uses: t.ClassVar = None
 
     def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
-        return lambda ctx: lambda: ctx, None
+        return lambda ctx: ValueProviderVar(ctx, ctx), None
 
 
 
@@ -556,43 +552,51 @@ class DepMarkerProvider(Provider):
         dep = marker.__injects__
         flag = marker.__injector__
         default = marker.__default__
-        hasdefault = marker.__hasdefault__
-        inject_default = hasdefault and isinstance(default, InjectionMarker)
-
+        if not (inject_default := isinstance(default, InjectionMarker)):
+            default = marker.__hasdefault__ and ValueProviderVar(default) or None
 
         if flag is Dep.ONLY_SELF:
             def run(ctx: 'InjectorContext'):
-                func = ctx.get(dep)
-                if func is None:
-                    if inject_default is True:
-                        return ctx[default] 
-                    elif hasdefault is True:
-                        return lambda: default
+                func: ProviderVar = ctx.get(dep)
+                if None is func:
+                    return ctx[default] if inject_default is True else default
+                elif True is func.is_async:
+                    async def afunc():
+                        nonlocal func, marker
+                        return marker.__eval__(await func)
+                    return FactoryProviderVar(afunc, ctx, is_async=True)
                 else:
-                    return lambda: marker.__eval__(func())
+                    return FactoryProviderVar(lambda: marker.__eval__(func.get()))
 
         elif flag is Dep.SKIP_SELF:
             def run(ctx: 'InjectorContext'):
-                func = ctx.parent[dep] 
-                if func is None:
-                    if inject_default is True:
-                        return ctx[default] 
-                    elif hasdefault is True:
-                        return lambda: default
+                func: ProviderVar = ctx.parent[dep] 
+                if None is func:
+                    return ctx[default] if inject_default is True else default
+                elif True is func.is_async:
+                    async def afunc():
+                        nonlocal func, marker
+                        return marker.__eval__(await func)
+                    return FactoryProviderVar(afunc, ctx, is_async=True)
                 else:
-                    return lambda: marker.__eval__(func())
+                    return FactoryProviderVar(lambda: marker.__eval__(func.get()))
         else:
             def run(ctx: 'InjectorContext'):
-                func = ctx[dep] 
-                if func is None:
-                    if inject_default is True:
-                        return ctx[default] 
-                    elif hasdefault is True:
-                        return lambda: default
+                func: ProviderVar = ctx[dep] 
+                if None is func:
+                    return ctx[default] if inject_default is True else default
+                elif True is func.is_async:
+                    async def afunc():
+                        nonlocal func, marker
+                        return marker.__eval__(await func)
+                    return FactoryProviderVar(afunc, ctx, is_async=True)
                 else:
-                    return lambda: marker.__eval__(func())
+                    return FactoryProviderVar(lambda: marker.__eval__(func.get()))
+                
 
         return run, {dep}
+
+
 
 
 
@@ -643,7 +647,8 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
 
-    _resolver_class: t.ClassVar[type[FactoryResolver]] = FactoryResolver
+    _sync_resolver_class: t.ClassVar[type[FactoryResolver]] = FactoryResolver
+    _async_resolver_class: t.ClassVar[type[AsyncFactoryResolver]] = AsyncFactoryResolver
 
     def __init__(self, using: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         super().__init__()
@@ -660,6 +665,13 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self.__set_attr(_uses=value)
         self._is_registered or self._register()
 
+    @property
+    def _var_factory(self):
+        if self.is_shared:
+            return SingletonProviderVar
+        else:
+            return FactoryProviderVar
+    
     def args(self, *args) -> Self:
         self.__set_attr(arguments=self.arguments.replace(args))
         return self
@@ -692,6 +704,10 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self.__set_attr(_signature=signature)
         return self
     
+    def asynchronous(self, is_async=True):
+        self.__set_attr(is_async=is_async)
+        return self
+
     def decorate(self, *decorators: abc.Callable[[abc.Callable], abc.Callable], replace: bool=False) -> Self:
         if replace is True:
             self.decorators = decorators
@@ -711,16 +727,17 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature if self.arguments else self._blank_signature
 
-    def _extra_decorators(self):
-        if self.is_shared:
-            yield decorators.singleton
-
     def _iter_decorators(self):
         yield from self.decorators
-        yield from self._extra_decorators()
 
     def _onfreeze(self):
-        self.__set_attr(_all_decorators=tuple(self._iter_decorators()))
+        if None is self.is_async:
+            self.__set_attr(is_async=self._is_awaitable_factory())
+
+        self.__set_attr(_all_decorators=(*self._iter_decorators(), self._var_factory))
+
+    def _is_awaitable_factory(self) -> bool:
+        return iscoroutinefunction(self.uses)
 
     def _provides_fallback(self):
         return self._uses
@@ -728,8 +745,14 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
         return self._create_resolver()(injector, token)
 
+    def _get_resolver_class(self):
+        if True is self.is_async:
+            return  self._async_resolver_class
+        else:
+            return  self._sync_resolver_class
+
     def _create_resolver(self):
-        return self._resolver_class(
+        return self._get_resolver_class()(
                 self.uses, 
                 self.get_signature(),
                 arguments=self.arguments, 
@@ -744,7 +767,20 @@ class Callable(Factory[T_Injected]):
 
     is_partial: bool = False
     is_shared: t.ClassVar[bool] = False
-    _resolver_class: t.ClassVar = CallableFactoryResolver
+
+    @property
+    def _sync_resolver_class(self):
+        if True is self.is_partial:
+            return PartialFactoryResolver
+        else:
+            return CallableFactoryResolver
+
+    @property
+    def _async_resolver_class(self):
+        if True is self.is_partial:
+            return AsyncPartialFactoryResolver
+        else:
+            return AsyncCallableFactoryResolver
 
     def partial(self, is_partial: bool = True) -> Self:
         self.__set_attr(is_partial=is_partial)
@@ -753,19 +789,24 @@ class Callable(Factory[T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature
 
-    def _create_resolver(self):
-        res = super()._create_resolver()
-        res.is_partial = self.is_partial
-        return res
-
 
 
 
 @export()
 class Resource(Factory[T_Injected]):
 
+    is_async: bool = None
+    is_awaitable: bool = None
     is_shared: t.ClassVar[bool] = True
     
-    def _extra_decorators(self):
-       yield decorators.resource
+    _var_factory: t.ClassVar = ResourceProviderVar
+    
+    @property
+    def _var_factory(self) -> None:
+        # if self.is_awaitable:
+        return lambda *a, is_awaitable=self.is_awaitable, **kw: ResourceProviderVar(*a, is_awaitable=is_awaitable, **kw)
 
+    def awaitable(self, is_awaitable=True):
+        self.__set_attr(is_awaitable=is_awaitable)
+        return self
+        

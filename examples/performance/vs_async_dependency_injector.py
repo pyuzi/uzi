@@ -108,9 +108,9 @@ c.wire([__name__])
 async def main():
     with context(ioc) as ctx:
         ls = [
-            await Benchmark("B.", N).arun(di=Container.b, laza=ctx[B]),
-            await Benchmark("C.", N).arun(di=Container.c, laza=ctx[C]),
-            await Benchmark("Test.", N).arun(di=Container.test, laza=ctx[Test]),
+            await Benchmark("B.", N).arun(di=Container.b, laza=lambda x=ctx[B]: x.get()),
+            await Benchmark("C.", N).arun(di=Container.c, laza=lambda: ctx[C].get()),
+            await Benchmark("Test.", N).arun(di=Container.test, laza=lambda: ctx[Test].get()),
         ]
 
         bench = Benchmark(f"Providers[{A | B | C | Test}]", N)

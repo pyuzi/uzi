@@ -101,19 +101,19 @@ _n = int(.5e6)
 with Timer() as tm:
     with context(ioc) as ctx:
         
-        # [ctx[d]() for d in (Foo, Bar, Baz, FooBar, FooBarBaz, Service)]
+        # [ctx[d].get() for d in (Foo, Bar, Baz, FooBar, FooBarBaz, Service)]
         
-        bfoo = Benchmark('Foo.', _n).run(py=mkfoo, laza=ctx[Foo])
-        bbar = Benchmark('Bar.', _n).run(py=mkbar, laza=ctx[Bar])
-        bbaz = Benchmark('Baz.', _n).run(py=mkbaz, laza=ctx[Baz])
+        bfoo = Benchmark('Foo.', _n).run(py=mkfoo, laza=ctx[Foo].get)
+        bbar = Benchmark('Bar.', _n).run(py=mkbar, laza=ctx[Bar].get)
+        bbaz = Benchmark('Baz.', _n).run(py=mkbaz, laza=ctx[Baz].get)
         
         bench = Benchmark(str(Foo | Bar | Baz), _n)
         bench |= bfoo | bbar | bbaz 
         print(bench, '\n')
 
-        bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, laza=ctx[FooBar])
-        bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, laza=ctx[FooBarBaz])
-        bservice    = Benchmark('Service.', _n).run(py=mkservice, laza=ctx[Service])
+        bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, laza=ctx[FooBar].get)
+        bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, laza=ctx[FooBarBaz].get)
+        bservice    = Benchmark('Service.', _n).run(py=mkservice, laza=ctx[Service].get)
 
         bench = Benchmark(str(FooBar | FooBarBaz | Service), _n)
         bench |= bfoobar | bfoobarbaz | bservice

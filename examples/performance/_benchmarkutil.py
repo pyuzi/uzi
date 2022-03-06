@@ -79,7 +79,7 @@ class Benchmark(dict[str, Timer]):
         ns = f'{self.name}'
 
         for k, fn in kw.items():    
-            async with Timer(ops) as tm:
+            with Timer(ops) as tm:
                 for __ in range(ops):
                     await fn()
 

@@ -187,8 +187,7 @@ class Injector(ProviderRegistry):
         ctx = self._context_class(current, self, self.__bindings)
         if auto := self.__autoloads:
             for d in auto:
-                if fn := ctx[d]:
-                    fn()
+                ctx.make(d)
         return ctx
 
     def __bootstrap(self):

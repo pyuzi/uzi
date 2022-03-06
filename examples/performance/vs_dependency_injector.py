@@ -92,10 +92,10 @@ c.wire([__name__])
 def main():
     with context(ioc) as ctx:
         ls = [
-            Benchmark("A.", N).run(di=Container.a, laza=ctx[A]),
-            Benchmark("B.", N).run(di=Container.b, laza=ctx[B]),
-            Benchmark("C.", N).run(di=Container.c, laza=ctx[C]),
-            Benchmark("Test.", N).run(di=Container.test, laza=ctx[Test]),
+            Benchmark("A.", N).run(di=Container.a, laza=lambda x=ctx[A]: x.get()),
+            Benchmark("B.", N).run(di=Container.b, laza=lambda x=ctx[B]: x.get()),
+            Benchmark("C.", N).run(di=Container.c, laza=lambda x=ctx[C]: x.get()),
+            Benchmark("Test.", N).run(di=Container.test, laza=lambda x=ctx[Test]: x.get()),
         ]
 
         bench = Benchmark(f"Providers[{A | B | C | Test}]", N)

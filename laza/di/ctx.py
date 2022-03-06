@@ -14,6 +14,7 @@ from .util import AsyncContextLock, ContextLock, ExitStack
 
 if t.TYPE_CHECKING:
     from .injectors import BindingsMap, Injector
+    from .providers.vars import ProviderVar
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ class InjectionLookupError(LookupError):
 def context_partial(provider: Injectable):
     def wrapper(*a, **kw):
         nonlocal provider
-        return __ctxvar.get()[provider]()(*a, **kw)
+        return __ctxvar.get().make(provider)(*a, **kw)
 
     wrapper.__dependency__ = provider
 
@@ -71,7 +72,7 @@ _dict_setdefault = dict.setdefault
 
 
 @export()
-class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
+class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
 
     __slots__ = (
         "__injector",
@@ -82,7 +83,7 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 
     __injector: "Injector"
     __parent: Self
-    __bindings: dict[Injectable, Callable[[Self], Callable[[], T_Injected]]]
+    __bindings: dict[Injectable, Callable[[Self], Callable[[], 'ProviderVar[T_Injected]']]]
     __exitstack: ExitStack
 
     is_async: bool = False
@@ -149,9 +150,9 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
         return self.__exitstack.callback(callback, *args, **kwds)
 
     @t.overload
-    def find(self, dep: T_Injectable, *fallbacks: T_Injectable) -> T_Injected: ...
+    def find(self, dep: T_Injectable, *fallbacks: T_Injectable) -> 'ProviderVar[T_Injected]': ...
     @t.overload
-    def find(self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default) -> t.Union[T_Injected, T_Default]: ...
+    def find(self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default) -> t.Union['ProviderVar[T_Injected]', T_Default]: ...
     def find(self, *keys, default=Missing):
         for key in keys:
             if not (rv := self[key]) is None:
@@ -164,12 +165,23 @@ class InjectorContext(dict[T_Injectable, Callable[..., T_Injected]]):
 
     def make(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
         func = self.find(key, *fallbacks, default=None)
-        if not func is None:
-            return func()
-        elif not default is Missing:
+        if func is None:
+            if default is Missing:
+                raise InjectionLookupError(key, self)
+            return default
+        elif (val := func.value) is Missing:
+            return func.get()
+        else:
+            return val
+        
+    async def amake(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
+        func = self.find(key, *fallbacks, default=None)
+        if func is None:
+            if default is Missing:
+                raise InjectionLookupError(key, self)
             return default
         else:
-            raise InjectionLookupError(key, self)
+            return await func
         
     def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
         if isinstance(func, MethodType):

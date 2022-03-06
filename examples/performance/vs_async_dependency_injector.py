@@ -1,5 +1,6 @@
 """Dependency Injector Factory providers benchmark."""
 
+import asyncio
 from functools import reduce
 from operator import or_
 
@@ -8,7 +9,7 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(0.25e6)
+N = int(2e4)
 
 res: dict[str, tuple[float, float]] = {}
 
@@ -22,14 +23,30 @@ class B(object):
     def __init__(self, a: A):
         assert isinstance(a, A)
 
+    @classmethod
+    async def make(cls, a: A):
+        return await asyncio.sleep(0, cls(a))
+
+
 
 class C(object):
+
     def __init__(self, a: A, b: B):
         assert isinstance(a, A)
         assert isinstance(b, B)
 
+    @classmethod
+    async def make(cls, a: A, b: B):
+        return await asyncio.sleep(0, cls(a, b))
+
+
 
 class Test(object):
+
+    @classmethod
+    async def make(cls, a: A, b: B, c: C):
+        return await asyncio.sleep(0, cls(a, b, c))
+
     def __init__(self, a: A, b: B, c: C):
 
         assert isinstance(a, A)
@@ -41,23 +58,23 @@ class Test(object):
         self.c = c
 
 
+
 ioc = Injector()
 
 ioc.factory(A)
-ioc.factory(B)#.singleton()
-ioc.factory(C)#.singleton()
-ioc.factory(Test)  # .singleton()
-
+ioc.factory(B).using(B.make)#.singleton()
+ioc.factory(C).using(C.make)#.singleton()
+ioc.factory(Test).using(Test.make)  # .singleton()
 
 # Singleton = providers.Singleton 
 Singleton = providers.Factory 
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
-    b = Singleton(B, a)
-    c = Singleton(C, a, b)
+    b = Singleton(B.make, a)
+    c = Singleton(C.make, a, b)
     test = providers.Factory(
-        Test,
+        Test.make,
         a=a,
         b=b,
         c=c,
@@ -65,7 +82,7 @@ class Container(containers.DeclarativeContainer):
 
 
 @inject
-def _inj_laza(test: Test, a: A, b: B, c: C):
+async def _inj_laza(test: Test, a: A, b: B, c: C):
     assert isinstance(test, Test)
     assert isinstance(a, A)
     assert isinstance(b, B)
@@ -73,7 +90,7 @@ def _inj_laza(test: Test, a: A, b: B, c: C):
 
 
 @wiring.inject
-def _inj_di(
+async def _inj_di(
     test: Test = wiring.Provide[Container.test],
     a: Test = wiring.Provide[Container.a],
     b: Test = wiring.Provide[Container.b],
@@ -88,23 +105,21 @@ def _inj_di(
 c = Container()
 c.wire([__name__])
 
-
-def main():
+async def main():
     with context(ioc) as ctx:
         ls = [
-            Benchmark("A.", N).run(di=Container.a, laza=ctx[A]),
-            Benchmark("B.", N).run(di=Container.b, laza=ctx[B]),
-            Benchmark("C.", N).run(di=Container.c, laza=ctx[C]),
-            Benchmark("Test.", N).run(di=Container.test, laza=ctx[Test]),
+            await Benchmark("B.", N).arun(di=Container.b, laza=ctx[B]),
+            await Benchmark("C.", N).arun(di=Container.c, laza=ctx[C]),
+            await Benchmark("Test.", N).arun(di=Container.test, laza=ctx[Test]),
         ]
 
         bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
         bench |= reduce(or_, ls)
         print(bench, "\n")
 
-        b = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
+        b = await Benchmark("inject.", N).arun(di=_inj_di, laza=_inj_laza)
         print(b, "\n")
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

@@ -26,6 +26,14 @@ class Timer:
         self.ended_at = time()
         self.is_error = not et is None
 
+    async def __aenter__(self):
+        self.started_at = time()
+        return self
+    
+    async def __aexit__(self, et=None, *err):
+        self.ended_at = time()
+        self.is_error = not et is None
+
     def __iter__(self):
         yield self.took
         yield self.rate
@@ -57,6 +65,23 @@ class Benchmark(dict[str, Timer]):
             with Timer(ops) as tm:
                 for __ in range(ops):
                     fn()
+
+            # self[f'{k}{ns}'] = tm
+            self[f'{ns}{k}'] = tm
+        return self
+
+    async def arun(self, func=None, key=None, /, **kw):
+        if not func is None:
+            kw = { func.__name__ if key is None else key: func }
+
+        ops = self.ops
+        ns = f'.{self.name}'.rstrip('.')
+        ns = f'{self.name}'
+
+        for k, fn in kw.items():    
+            async with Timer(ops) as tm:
+                for __ in range(ops):
+                    await fn()
 
             # self[f'{k}{ns}'] = tm
             self[f'{ns}{k}'] = tm

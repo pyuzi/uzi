@@ -87,6 +87,7 @@ class Injector(ProviderRegistry):
     _context_class: type[InjectorContext] = InjectorContext
     _container_class: type[InjectorContainer] = InjectorContainer
     _resolver_class: type[ProviderResolver] = ProviderResolver
+    _bindings_class: type[ProviderResolver] = BindingsMap
 
     def __init__(self, parent: "Injector" = None, *, name: str = None):
         if name is None:
@@ -102,7 +103,7 @@ class Injector(ProviderRegistry):
         self.__container = self._container_class(self)
         self.__registry = MultiChainMap()
         self.__resolver = self._resolver_class(self, self.__registry)
-        self.__bindings = BindingsMap(self, self.__resolver)
+        self.__bindings = self._bindings_class(self, self.__resolver)
 
     @property
     def name(self):

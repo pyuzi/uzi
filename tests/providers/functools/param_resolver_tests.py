@@ -116,9 +116,10 @@ class ParamResolverTests:
             ),
         ],
     )
-    def test_resolve(self, resolver: ParamResolver, ctx, exp):
-        assert resolver.resolve(ctx) == exp
+    def test_resolve(self, resolver: ParamResolver, ctx, exp, context: dict):
+        context.update(ctx)
+        assert resolver.resolve(context) == exp
 
     @xfail(raises=LookupError)
-    def test_resolve_missing_dependency(self):
-        assert ParamResolver(Dep(object)).resolve({})
+    def test_resolve_missing_dependency(self, context: dict):
+        assert ParamResolver(Dep(object)).resolve(context)

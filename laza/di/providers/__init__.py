@@ -16,8 +16,11 @@ from laza.common.typing import (Self, UnionType, get_args, get_origin,
 
 from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, isinjectable)
-from .functools import (CallableFactoryResolver, FactoryResolver,
-                        PartialFactoryResolver, decorators)
+from .functools import (
+    CallableFactoryResolver, 
+    FactoryResolver,
+    decorators
+)
 
 if t.TYPE_CHECKING:
     from ..containers import Container
@@ -723,12 +726,15 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         return self._uses
 
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
+        return self._create_resolver()(injector, token)
+
+    def _create_resolver(self):
         return self._resolver_class(
-                    self.uses, 
-                    self.get_signature(),
-                    arguments=self.arguments, 
-                    decorators=self._all_decorators
-                )(injector, token)
+                self.uses, 
+                self.get_signature(),
+                arguments=self.arguments, 
+                decorators=self._all_decorators
+            )
 
 
 
@@ -738,14 +744,8 @@ class Callable(Factory[T_Injected]):
 
     is_partial: bool = False
     is_shared: t.ClassVar[bool] = False
+    _resolver_class: t.ClassVar = CallableFactoryResolver
 
-    @property
-    def _resolver_class(self):
-        if self.is_partial:
-            return PartialFactoryResolver
-        else:
-            return CallableFactoryResolver
-   
     def partial(self, is_partial: bool = True) -> Self:
         self.__set_attr(is_partial=is_partial)
         return self
@@ -753,6 +753,10 @@ class Callable(Factory[T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature
 
+    def _create_resolver(self):
+        res = super()._create_resolver()
+        res.is_partial = self.is_partial
+        return res
 
 
 

@@ -1,7 +1,9 @@
+import asyncio
+import inspect
 import typing as t
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from inspect import Parameter, Signature
+from inspect import Parameter, Signature, isawaitable, iscoroutinefunction
 from logging import getLogger
 
 from laza.common.abc import abstractclass
@@ -159,9 +161,9 @@ class ParamResolver(t.Generic[_T]):
         elif self.dependency is _EMPTY:
             return _EMPTY, _EMPTY, self.default if self.has_default else _EMPTY
         elif self.has_default:
-            return _EMPTY, ctx[self.dependency], self.default
+            return _EMPTY, ctx.find(self.dependency, default=_EMPTY), self.default
         else:
-            return _EMPTY, ctx[self.dependency], _EMPTY
+            return _EMPTY, ctx.find(self.dependency, default=_EMPTY), _EMPTY
 
     def __repr__(self) -> str:
         value, annotation, default = (
@@ -182,6 +184,7 @@ class FactoryResolver:
         "arguments",
         "signature",
         "decorators",
+        "is_async",
     )
 
     factory: Callable
@@ -194,13 +197,19 @@ class FactoryResolver:
         factory: Callable,
         signature: Signature = None,
         *,
+        is_async: bool = None,
         arguments: Arguments = None,
         decorators: Sequence[Callable[[Callable, "InjectorContext"], Callable]] = (),
     ):
         self.factory = factory
+        self.is_async = iscoroutinefunction(factory) if is_async is None else is_async
         self.signature = signature or typed_signature(factory)
         self.decorators = decorators
         self.arguments = self.parse_arguments(arguments)
+        self._post_init()
+
+    def _post_init(self):
+        pass
 
     def __call__(
         self,
@@ -282,7 +291,7 @@ class FactoryResolver:
             func = fn(func, ctx)
         return func
 
-    def _iargs(self, args):
+    def iargs(self, args):
         for v, fn, d in args:
             if not v is _EMPTY:
                 yield v
@@ -291,153 +300,297 @@ class FactoryResolver:
             else:
                 yield d
 
-    def _ikwds(self, kwds: Iterable[tuple[str, Callable]], vals=None, *, skip=None):
-        if vals is None:
-            vals = {}
+    async def async_iargs(self, args):
+        lst = []
+        aws = {}
+        i = 0
+        for v, fn, d in args:
+            if not v is _EMPTY:
+                lst.append(v)
+            elif not fn is _EMPTY:
+                if isawaitable(v := fn()):
+                    aws[i] = asyncio.ensure_future(v)
+                else:
+                    lst.append(v)
+            else:
+                lst.append(d)
+            i += 1
 
+        for i, v in zip(aws, await asyncio.gather(*aws.values())):
+            lst.insert(i, v)
+        return lst
+
+    def ikwds(self, kwds: Iterable[tuple[str, Callable]], skip=None):
+        vals = {}
         if skip:
-            for n, f in kwds:
+            for n, fn in kwds:
                 if not n in skip:
-                    vals[n] = f()
+                    vals[n] = fn()
         else:
-            for n, f in kwds:
-                vals[n] = f()
+            for n, fn in kwds:
+                vals[n] = fn()
 
         return vals
 
-    def make_resolver(self, provides, func, _args, _kwds, _vals):
-        if not self.signature.parameters:
-            return self.make_plain_resolver(provides, func)
-        elif not _args:
-            return self.make_kwds_resolver(provides, func, _kwds, _vals)
-        elif not _kwds:
-            return self.make_args_resolver(provides, func, _args, _vals)
+    async def async_ikwds(self, kwds: Iterable[tuple[str, Callable]], skip=None):
+        vals = {}
+        aws = {}
+        if skip:
+            for n, fn in kwds:
+                if not n in skip:
+                    if isawaitable(v := fn()):
+                        aws[n] = asyncio.ensure_future(v)
+                    else:
+                        vals[n] = v
         else:
-            return self.make_args_kwds_resolver(provides, func, _args, _kwds, _vals)
+            for n, fn in kwds:
+                if isawaitable(v := fn()):
+                  aws[n] = asyncio.ensure_future(v)
+                else:
+                    vals[n] = v
+
+        aws and vals.update(zip(aws, await asyncio.gather(*aws.values())))
+
+        return vals
+      
+    def make_resolver(self, provides, func, _args, _kwds, _vals):
+        if self.is_async:
+            if not self.signature.parameters:
+                return self.make_async_plain_resolver(provides, func)
+            elif not _args:
+                return self.make_async_kwds_resolver(provides, func, _kwds, _vals)
+            elif not _kwds:
+                return self.make_async_args_resolver(provides, func, _args, _vals)
+            else:
+                return self.make_async_args_kwds_resolver(provides, func, _args, _kwds, _vals)
+        else:
+            if not self.signature.parameters:
+                return self.make_plain_resolver(provides, func)
+            elif not _args:
+                return self.make_kwds_resolver(provides, func, _kwds, _vals)
+            elif not _kwds:
+                return self.make_args_resolver(provides, func, _args, _vals)
+            else:
+                return self.make_args_kwds_resolver(provides, func, _args, _kwds, _vals)
 
     def make_plain_resolver(self, provides, func):
-        def resolve(ctx: "InjectorContext"):
+        def provider(ctx: "InjectorContext"):
             nonlocal func
             return self._decorate(self.plain_wrap_func(func), ctx)
 
-        return resolve
+        return provider
+
+    def make_async_plain_resolver(self, provides, func):
+        def provider(ctx: "InjectorContext"):
+            nonlocal func
+            return self._decorate(self.async_plain_wrap_func(func), ctx)
+        return provider
 
     def make_args_resolver(self, provides, func, _args, vals):
-        def resolve(ctx: "InjectorContext"):
+        def provider(ctx: "InjectorContext"):
             nonlocal _args, vals, self
             args = (*self.iresolve_args(_args, ctx),)
             return self._decorate(self.arg_wrap_func(func, args, vals), ctx)
 
-        return resolve
+        return provider
+
+    def make_async_args_resolver(self, provides, func, _args, vals):
+        def provider(ctx: "InjectorContext"):
+            nonlocal _args, vals, self
+            args = (*self.iresolve_args(_args, ctx),)
+            return self._decorate(self.async_arg_wrap_func(func, args, vals), ctx)
+    
+        return provider
 
     def make_kwds_resolver(self, provides, func, _kwds, vals):
-        def resolve(ctx: "InjectorContext"):
+        def provider(ctx: "InjectorContext"):
             nonlocal vals, _kwds, self
             kwds = (*self.iresolve_kwds(_kwds, ctx),)
             return self._decorate(self.kwd_wrap_func(func, kwds, vals), ctx)
 
-        return resolve
+        return provider
+
+    def make_async_kwds_resolver(self, provides, func, _kwds, vals):
+        def provider(ctx: "InjectorContext"):
+            nonlocal vals, _kwds, self
+            kwds = (*self.iresolve_kwds(_kwds, ctx),)
+            return self._decorate(self.async_kwd_wrap_func(func, kwds, vals), ctx)
+       
+        return provider
 
     def make_args_kwds_resolver(self, provides, func, _args, _kwds, vals):
-        def resolve(ctx: "InjectorContext"):
+        def provider(ctx: "InjectorContext"):
             nonlocal _args, vals, _kwds, self
             args = (*self.iresolve_args(_args, ctx),)
             kwds = (*self.iresolve_kwds(_kwds, ctx),)
 
             return self._decorate(self.arg_kwd_wrap_func(func, args, kwds, vals), ctx)
 
-        return resolve
+        return provider
+
+    def make_async_args_kwds_resolver(self, provides, func, _args, _kwds, vals):
+        def provider(ctx: "InjectorContext"):
+            nonlocal _args, vals, _kwds, self
+            args = (*self.iresolve_args(_args, ctx),)
+            kwds = (*self.iresolve_kwds(_kwds, ctx),)
+
+            return self._decorate(self.async_arg_kwd_wrap_func(func, args, kwds, vals), ctx)
+    
+        return provider
 
     def plain_wrap_func(self, func):
         return func
 
+    def async_plain_wrap_func(self, func):
+        return func
+
     def arg_wrap_func(self, func, args, vals):
         if vals:
-            return lambda: func(*self._iargs(args), **vals)
+            return lambda: func(*self.iargs(args), **vals)
         else:
-            return lambda: func(*self._iargs(args))
+            return lambda: func(*self.iargs(args))
+
+    def async_arg_wrap_func(self, func, args, vals):
+        if vals:
+            async def fn():
+                nonlocal self, func, args, vals
+                return await func(*(await self.async_iargs(args)), **vals)
+        else:
+            async def fn():
+                nonlocal self, func, args
+                return await func(*(await self.async_iargs(args)))
+        return fn
 
     def kwd_wrap_func(self, func, kwds, vals):
         if vals:
-            return lambda: func(**vals, **self._ikwds(kwds))
+            return lambda: func(**vals, **self.ikwds(kwds))
         else:
-            return lambda: func(**self._ikwds(kwds))
+            return lambda: func(**self.ikwds(kwds))
+
+    def async_kwd_wrap_func(self, func, kwds, vals):
+        if vals:
+            async def fn():
+                nonlocal self, func, kwds, vals
+                return await func(**vals, **(await self.async_ikwds(kwds)))
+        else:
+            async def fn():
+                nonlocal self, func, kwds
+                return await func(**(await self.async_ikwds(kwds)))
+        return fn
 
     def arg_kwd_wrap_func(self, func, args, kwds, vals):
         if vals:
-            return lambda: func(*self._iargs(args), **vals, **self._ikwds(kwds))
+            return lambda: func(*self.iargs(args), **vals, **self.ikwds(kwds))
         else:
-            return lambda: func(*self._iargs(args), **self._ikwds(kwds))
+            return lambda: func(*self.iargs(args), **self.ikwds(kwds))
+
+    def async_arg_kwd_wrap_func(self, func, args, kwds, vals):
+        if vals:
+            async def fn():
+                nonlocal self, func, args, kwds, vals
+                _args, _kwds = await asyncio.gather(self.async_iargs(args), self.async_ikwds(kwds))
+                return await func(*_args, **vals, **_kwds)
+        else:
+            async def fn():
+                nonlocal self, func, args, kwds
+                _args, _kwds = await asyncio.gather(self.async_iargs(args), self.async_ikwds(kwds))
+                return await func(*_args, **_kwds)
+        return fn
 
 
 class CallableFactoryResolver(FactoryResolver):
 
-    __slots__ = ()
+    __slots__ = 'is_partial',
+
+    def _post_init(self):
+        self.is_partial = False
+
+    def iargs(self, args, a=()):
+        if self.is_partial:
+            yield from super().iargs(args)
+            yield from a
+        else:
+            yield from a
+            yield from super().iargs(args[len(a):])
+
+    async def async_iargs(self, args, a=()):
+        if self.is_partial:
+            lst = await super().async_iargs(args)
+            return (v for seq in (lst, a) for v in seq)
+        else:
+            lst = await super().async_iargs(args[len(a):])
+            return (v for seq in (a, lst) for v in seq)
 
     def plain_wrap_func(self, func):
         return lambda: func
 
+    def async_plain_wrap_func(self, func):
+        return lambda: func
+
     def arg_wrap_func(self, func, args, vals):
         if vals:
-            fn = lambda *a, **kw: func(*a, *self._iargs(args[len(a) :]), **(vals | kw))
+            fn = lambda *a, **kw: func(*self.iargs(args, a), **(vals | kw))
         else:
-            fn = lambda *a, **kw: func(*a, *self._iargs(args[len(a) :]), **kw)
+            fn = lambda *a, **kw: func(*self.iargs(args, a), **kw)
+        return lambda: fn
+
+    def async_arg_wrap_func(self, func, args, vals):
+        if vals:
+            async def fn(*a, **kw):
+                nonlocal self, func, args, vals
+                return await func(*(await self.async_iargs(args, a)), **(vals | kw))
+        else:
+            async def fn(*a, **kw):
+                nonlocal self, func, args
+                return await func(*(await self.async_iargs(args, a)), **kw)
         return lambda: fn
 
     def kwd_wrap_func(self, func, kwds, vals):
         if vals:
             fn = lambda *a, **kw: func(
-                *a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw)
+                *a, **(kw := vals | kw), **self.ikwds(kwds, kw)
             )
         else:
-            fn = lambda *a, **kw: func(*a, **kw, **self._ikwds(kwds, skip=kw))
+            fn = lambda *a, **kw: func(*a, **kw, **self.ikwds(kwds, kw))
+        return lambda: fn
+
+    def async_kwd_wrap_func(self, func, kwds, vals):
+        if vals:
+            async def fn(*a, **kw):
+                nonlocal self, func, kwds, vals
+                return await func(
+                    *a, **(kw := vals | kw), **(await self.async_ikwds(kwds, kw))
+                )
+        else:
+            async def fn(*a, **kw):
+                nonlocal self, func, kwds
+                return await func(*a, **kw, **(await self.async_ikwds(kwds, kw)))
         return lambda: fn
 
     def arg_kwd_wrap_func(self, func, args, kwds, vals):
         if vals:
             fn = lambda *a, **kw: func(
-                *a,
-                *self._iargs(args[len(a) :]),
+                *self.iargs(args, a),
                 **(kw := vals | kw),
-                **self._ikwds(kwds, skip=kw),
+                **self.ikwds(kwds, kw),
             )
         else:
             fn = lambda *a, **kw: func(
-                *a, *self._iargs(args[len(a) :]), **kw, **self._ikwds(kwds, skip=kw)
+                *self.iargs(args, a), **kw, **self.ikwds(kwds, kw)
             )
         return lambda: fn
 
-
-class PartialFactoryResolver(CallableFactoryResolver):
-
-    __slots__ = ()
-
-    def arg_wrap_func(self, func, args, vals):
+    def async_arg_kwd_wrap_func(self, func, args, kwds, vals):
         if vals:
-            fn = lambda *a, **kw: func(*self._iargs(args), *a, **(vals | kw))
+            async def fn(*a, **kw):
+                nonlocal self, func, args, kwds, vals
+                kw = vals | kw
+                _args, _kwds = await asyncio.gather(self.async_iargs(args, a), self.async_ikwds(kwds, kw))
+                return await func(*_args, **kw, **_kwds)
         else:
-            fn = lambda *a, **kw: func(*self._iargs(args), *a, **kw)
+            async def fn(*a, **kw):
+                nonlocal self, func, args, kwds
+                _args, _kwds = await asyncio.gather(self.async_iargs(args, a), self.async_ikwds(kwds, kw))
+                return await func(*_args, **kw, **_kwds)
         return lambda: fn
 
-    def kwd_wrap_func(self, func, kwds, vals):
-        if vals:
-            fn = lambda *a, **kw: func(
-                *a, **(kw := vals | kw), **self._ikwds(kwds, skip=kw)
-            )
-        else:
-            fn = lambda *a, **kw: func(*a, **kw, **self._ikwds(kwds, skip=kw))
-        return lambda: fn
-
-    def arg_kwd_wrap_func(self, func, args, kwds, vals):
-        if vals:
-            fn = lambda *a, **kw: func(
-                *self._iargs(args),
-                *a,
-                **(kw := vals | kw),
-                **self._ikwds(kwds, skip=kw),
-            )
-        else:
-            fn = lambda *a, **kw: func(
-                *self._iargs(args), *a, **kw, **self._ikwds(kwds, skip=kw)
-            )
-        return lambda: fn

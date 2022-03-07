@@ -273,36 +273,6 @@ class FactoryResolver(t.Generic[_T]):
 
         return tuple(args), tuple(kwds), vals, dict(deps)
 
-    # def evaluate(self, injector: "Injector"):
-    #     args = []
-    #     kwds = []
-    #     vals = {}
-    #     defs = {}
-    #     deps = defaultdict(list)
-
-    #     skip_pos = False
-    #     for n, p, r in self.iter_param_resolvers():
-    #         dep = r.bind(injector)
-    #         if p.kind in _POSITIONAL_KINDS:
-    #             if skip_pos is False:
-    #                 if not dep is None:
-    #                     args.append(r)
-    #                     deps[dep].append(n)
-    #                 elif r.has_value:
-    #                     vals[n] = '',
-    #                 elif r.has_default:
-    #                     defs[n] = r
-    #                 else:
-    #                     skip_pos = True
-    #             continue
-    #         elif r.has_value:
-    #             vals[n] = r.value
-    #         elif not dep is None:
-    #             kwds.append((n, r))
-    #             deps[dep].append(n)
-
-    #     return tuple(args), tuple(kwds), vals, dict(deps)
-
     def iresolve_args(self, args: Iterable[ParamResolver], ctx: "InjectorContext"):
         for r in args:
             yield r.resolve(ctx)
@@ -590,6 +560,8 @@ class AsyncFactoryResolver(FactoryResolver[_T]):
         else:
             async def fn():
                 nonlocal self, func, kwds
+                # future = asyncio.Future()
+                # future.
                 return await func(**(await self.ikwds(kwds)))
         return fn
 
@@ -598,6 +570,7 @@ class AsyncFactoryResolver(FactoryResolver[_T]):
             async def fn():
                 nonlocal self, func, args, kwds, vals
                 _args, _kwds = await asyncio.gather(self.iargs(args), self.ikwds(kwds))
+                return func(*_args, **vals, **_kwds)
                 return await func(*_args, **vals, **_kwds)
         else:
             async def fn():

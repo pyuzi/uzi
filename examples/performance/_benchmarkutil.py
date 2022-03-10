@@ -53,36 +53,42 @@ class Benchmark(dict[str, Timer]):
         self.ops = int(ops)
 
 
-    def run(self, func=None, key=None, /, **kw):
+    def run(self, func=None, key=None, pre=None, /, **kw):
         if not func is None:
-            kw = { func.__name__ if key is None else key: func }
+            if kw:
+                pre = func
+            else:
+                kw = { func.__name__ if key is None else key: func }
 
         ops = self.ops
         ns = f'.{self.name}'.rstrip('.')
         ns = f'{self.name}'
 
         for k, fn in kw.items():    
+            pre and pre(k, self)
             with Timer(ops) as tm:
                 for __ in range(ops):
                     fn()
-
             # self[f'{k}{ns}'] = tm
             self[f'{ns}{k}'] = tm
         return self
 
-    async def arun(self, func=None, key=None, /, **kw):
+    async def arun(self, func=None, key=None, pre=None, /, **kw):
         if not func is None:
-            kw = { func.__name__ if key is None else key: func }
+            if kw:
+                pre = func
+            else:
+                kw = { func.__name__ if key is None else key: func }
 
         ops = self.ops
         ns = f'.{self.name}'.rstrip('.')
         ns = f'{self.name}'
 
         for k, fn in kw.items():    
+            pre and pre(k, self)
             with Timer(ops) as tm:
                 for __ in range(ops):
                     await fn()
-
             # self[f'{k}{ns}'] = tm
             self[f'{ns}{k}'] = tm
         return self
@@ -96,10 +102,10 @@ class Benchmark(dict[str, Timer]):
 
         klen = max(min(max(map(len, self)), 32), 2) + 2
 
-        res.append(f'   {"TEST".ljust(klen)} {f"TIME".rjust(8)} {"OPS/SEC".rjust(12)}')
+        recs = {}
 
         for k, (t, o) in self.items():
-            res.append(f' - {k.ljust(klen)} {f"{round(t, 3):,}".rjust(8)} {f"{round(o):,}".rjust(12)}')
+            recs[k] = f' - {k.ljust(klen)} {f"{round(t, 3):,}".rjust(8)} {f"{round(o):,}".rjust(12)}'
             for x, (xt, xo) in self.items():
                 if o > xo:
                     comp[k][x] = f'{round(o/xo, 2):,}+'
@@ -107,14 +113,22 @@ class Benchmark(dict[str, Timer]):
                     comp[k][x] = f'{round(xo/o, 2):,}-'
                 elif x == k:
                     comp[k][x] = f'... '
+                    continue
                 else:
                     comp[k][x] = f'{round(xo/o, 2):,} '
+                x_ = x
+            # line = f' - {k.ljust(klen)} {f"{round(t, 3):,}".rjust(8)} {f"{round(o):,}".rjust(12)}'
+            # if bi:
+            #     line = f"{line} {comp}"
+            # res.append()
 
-        res.append('')    
+        # res.append('')    
 
-        res.append(' '.join([''.ljust(klen+4), *(k.rjust(klen) for k in comp)]))
+        res.append(f'   {"TEST".ljust(klen)} {f"TIME".rjust(8)} {"OPS/SEC".rjust(12)} {" ".join(k.rjust(klen) for k in comp)}')
+       
+        # res.append(' '.join([''.ljust(klen+4), *(k.rjust(klen) for k in comp)]))
         for k, r in comp.items():
-            res.append(' '.join([f'   {k.ljust(klen)}:', *(v.rjust(klen) for v in r.values())]))
+            res.append(' '.join([recs[k], *(v.rjust(klen) for v in r.values())]))
 
 
         time = round(sum((v.took for v in self.values())), 3)

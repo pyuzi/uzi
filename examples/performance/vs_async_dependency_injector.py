@@ -9,23 +9,37 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(2e4)
+N = int(2.5e3)
 
 res: dict[str, tuple[float, float]] = {}
 
 
 class A(object):
+    
+    n = 0
+
     def __init__(self):
         pass
 
 
 class B(object):
+    
+    n = 0
+    
     def __init__(self, a: A):
         assert isinstance(a, A)
+        self.a = a
+        self.__class__.n += 1
+        # print(f'{self.__class__.__name__}.new({self.n})')
+
 
     @classmethod
     async def make(cls, a: A):
-        return await asyncio.sleep(0, cls(a))
+        # print(f'{cls.__name__}.making...')
+        await asyncio.sleep(.00001)
+        rv = cls(a)
+        # print(f'{cls.__name__}.done({rv.n})')
+        return rv
 
 
 
@@ -34,24 +48,23 @@ class C(object):
     def __init__(self, a: A, b: B):
         assert isinstance(a, A)
         assert isinstance(b, B)
-
-    @classmethod
-    async def make(cls, a: A, b: B):
-        return await asyncio.sleep(0, cls(a, b))
-
+        # assert isinstance(bb, B)
+        # assert b is bb
+        self.a = a
+        self.b = b
 
 
 class Test(object):
 
-    @classmethod
-    async def make(cls, a: A, b: B, c: C):
-        return await asyncio.sleep(0, cls(a, b, c))
-
+   
     def __init__(self, a: A, b: B, c: C):
 
         assert isinstance(a, A)
         assert isinstance(b, B)
         assert isinstance(c, C)
+        # assert all(isinstance(_, C) for _ in (c, cc, ccc))
+        # assert not (c is cc or c is ccc or cc is ccc)
+        # assert b is c.b
 
         self.a = a
         self.b = b
@@ -62,9 +75,9 @@ class Test(object):
 ioc = Injector()
 
 ioc.factory(A)
-ioc.factory(B).using(B.make)#.singleton()
-ioc.factory(C).using(C.make)#.singleton()
-ioc.factory(Test).using(Test.make)  # .singleton()
+ioc.factory(B).using(B.make).asynchronous()#.singleton()
+ioc.factory(C)#.using(C.make)#.singleton()
+ioc.factory(Test)#.using(Test.make)  # .singleton()
 
 # Singleton = providers.Singleton 
 Singleton = providers.Factory 
@@ -72,9 +85,9 @@ Singleton = providers.Factory
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
     b = Singleton(B.make, a)
-    c = Singleton(C.make, a, b)
+    c = Singleton(C, a, b)
     test = providers.Factory(
-        Test.make,
+        Test,
         a=a,
         b=b,
         c=c,
@@ -107,19 +120,28 @@ c.wire([__name__])
 
 async def main():
     with context(ioc) as ctx:
-        ls = [
-            await Benchmark("B.", N).arun(di=Container.b, laza=lambda x=ctx[B]: x.get()),
-            await Benchmark("C.", N).arun(di=Container.c, laza=lambda: ctx[C].get()),
-            await Benchmark("Test.", N).arun(di=Container.test, laza=lambda: ctx[Test].get()),
-        ]
-
-        bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
-        bench |= reduce(or_, ls)
+        ls = []
+       
+        pre =None # lambda k, b: print(f'----------------{k}--------------')
+        bench = await Benchmark("B.", N).arun(pre, di=Container.b, laza=lambda x=ctx[B]: x())
+        ls.append(bench)
         print(bench, "\n")
 
-        b = await Benchmark("inject.", N).arun(di=_inj_di, laza=_inj_laza)
-        print(b, "\n")
+        bench = await Benchmark("C.", N).arun(pre, di=Container.c, laza=lambda: ctx[C]())
+        ls.append(bench)
+        print(bench, "\n")
+
+        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, laza=lambda: ctx[Test]())
+        ls.append(bench)
+        print(bench, "\n")
+
+        # bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
+        # bench |= reduce(or_, ls)
+        # print(bench, "\n")
+
+        # b = await Benchmark("inject.", N).arun(pre, di=_inj_di, laza=_inj_laza)
+        # print(b, "\n")
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    asyncio.run(main(), debug=True)

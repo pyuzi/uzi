@@ -165,14 +165,11 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
 
     def make(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
         func = self.find(key, *fallbacks, default=None)
-        if func is None:
-            if default is Missing:
-                raise InjectionLookupError(key, self)
-            return default
-        elif (val := func.value) is Missing:
-            return func.get()
-        else:
-            return val
+        if not func is None:
+            return func()
+        elif default is Missing:
+            raise InjectionLookupError(key, self)
+        return default
         
     async def amake(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
         func = self.find(key, *fallbacks, default=None)

@@ -34,18 +34,18 @@ class ProviderVar(t.Generic[_T]):
     value: t.Union[_T, t.Literal[Missing]] # type: ignore
     is_variable: bool = True
 
-    def get(self) -> _T: 
+    def _get(self) -> _T: 
         return self.value
 
     def __await__(self):
         if True is self.is_async:
-            value = yield from ensure_future(self.get())
+            value = yield from ensure_future(self._get())
             return value
         else:
-            return self.get()
+            return self._get()
     
-    # def __call__(self):
-    #     return self.get()
+    def __call__(self):
+        return self._get()
         
 
 class ValueProviderVar(ProviderVar[_T]):
@@ -71,16 +71,16 @@ class ValueProviderVar(ProviderVar[_T]):
 
 class FactoryProviderVar(ProviderVar[_T]):
     if t.TYPE_CHECKING:
-        def get(self) -> _T: ...
+        def _get(self) -> _T: ...
         
-    __slots__ = 'get', 'is_async'
+    __slots__ = '_get', 'is_async'
     
     value = Missing
 
     def __new__(cls, func: Callable[[], _T], ctx: 'InjectorContext'=None, *, is_async: bool=False):
         self = _object_new(cls)
         
-        _object_setattr(self, 'get', func)
+        _object_setattr(self, '_get', func)
         _object_setattr(self, 'is_async', is_async)
         return self
     
@@ -134,13 +134,13 @@ class SingletonProviderVar(ProviderVar[_T]):
     def __await__(self):
         if Missing is self.value:
             if True is self.is_async:
-                value = yield from ensure_future(self.get())
+                value = yield from ensure_future(self._get())
                 return value
             else:
-                return self.get()
+                return self._get()
         return self.value
 
-    def get(self) -> _T: 
+    def _get(self) -> _T: 
         if self.value is Missing:
             self.value = self.func()            
         return self.value
@@ -152,7 +152,7 @@ class LockedSingletonProviderVar(SingletonProviderVar[_T], locked_type=True):
 
     __slots__ = ()
 
-    def get(self) -> _T: 
+    def _get(self) -> _T: 
         if self.value is Missing:
             with self.lock:
                 if self.value is Missing:
@@ -168,7 +168,7 @@ class AsyncSingletonProviderVar(SingletonProviderVar[_T], async_type=True):
     lock: AbstractAsyncContextManager
     is_async = True
 
-    async def get(self) -> _T: 
+    async def _get(self) -> _T: 
         if self.value is Missing:
             self.value = await self.func()            
         return self.value
@@ -178,7 +178,7 @@ class AsyncSingletonProviderVar(SingletonProviderVar[_T], async_type=True):
 class AsyncLockedSingletonProviderVar(AsyncSingletonProviderVar[_T], async_locked_type=True):
     __slots__ = ()
 
-    async def get(self) -> _T: 
+    async def _get(self) -> _T: 
         if self.value is Missing:
             async with self.lock:
                  if self.value is Missing:
@@ -236,13 +236,13 @@ class ResourceProviderVar(ProviderVar[_T]):
     def __await__(self):
         if Missing is self.value:
             if True is self.is_async:
-                value = yield from ensure_future(self.get())
+                value = yield from ensure_future(self._get())
                 return value
             else:
-                return self.get()
+                return self._get()
         return self.value
 
-    def get(self) -> _T: 
+    def _get(self) -> _T: 
         if self.value is Missing:
             self.value = self.ctx.enter(self.func())            
         return self.value
@@ -253,7 +253,7 @@ class LockedResourceProviderVar(ResourceProviderVar[_T], locked_type=True):
 
     __slots__ = ()
 
-    def get(self) -> _T: 
+    def _get(self) -> _T: 
         if self.value is Missing:
             with self.lock:
                 if self.value is Missing:
@@ -268,7 +268,7 @@ class AsyncResourceProviderVar(ResourceProviderVar[_T], async_type=True):
     lock: AbstractAsyncContextManager
     is_async = True
 
-    async def get(self) -> _T: 
+    async def _get(self) -> _T: 
         if self.value is Missing:
             if True is self.is_awaitable:
                 self.value = await self.ctx.enter(await self.func()) 
@@ -282,7 +282,7 @@ class AsyncResourceProviderVar(ResourceProviderVar[_T], async_type=True):
 class AsyncLockedResourceProviderVar(AsyncResourceProviderVar[_T], async_locked_type=True):
     __slots__ = ()
 
-    async def get(self) -> _T: 
+    async def _get(self) -> _T: 
         if self.value is Missing:
             async with self.lock:
                 if self.value is Missing:
@@ -339,13 +339,13 @@ class AwaitableResourceProviderVar(ResourceProviderVar[_T]):
     def __await__(self):
         if Missing is self.value:
             if True is self.is_async:
-                value = yield from ensure_future(self.get())
+                value = yield from ensure_future(self._get())
                 return value
             else:
-                return self.get()
+                return self._get()
         return self.value
 
-    def get(self) -> _T: 
+    def _get(self) -> _T: 
         if self.value is Missing:
             self.value = self.ctx.enter(self.func())            
         return self.value

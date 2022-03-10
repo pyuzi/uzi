@@ -566,7 +566,7 @@ class DepMarkerProvider(Provider):
                         return marker.__eval__(await func)
                     return FactoryProviderVar(afunc, ctx, is_async=True)
                 else:
-                    return FactoryProviderVar(lambda: marker.__eval__(func.get()))
+                    return FactoryProviderVar(lambda: marker.__eval__(func()))
 
         elif flag is Dep.SKIP_SELF:
             def run(ctx: 'InjectorContext'):
@@ -579,7 +579,7 @@ class DepMarkerProvider(Provider):
                         return marker.__eval__(await func)
                     return FactoryProviderVar(afunc, ctx, is_async=True)
                 else:
-                    return FactoryProviderVar(lambda: marker.__eval__(func.get()))
+                    return FactoryProviderVar(lambda: marker.__eval__(func()))
         else:
             def run(ctx: 'InjectorContext'):
                 func: ProviderVar = ctx[dep] 
@@ -591,7 +591,7 @@ class DepMarkerProvider(Provider):
                         return marker.__eval__(await func)
                     return FactoryProviderVar(afunc, ctx, is_async=True)
                 else:
-                    return FactoryProviderVar(lambda: marker.__eval__(func.get()))
+                    return FactoryProviderVar(lambda: marker.__eval__(func()))
                 
 
         return run, {dep}
@@ -647,8 +647,8 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
 
-    _sync_resolver_class: t.ClassVar[type[FactoryResolver]] = FactoryResolver
-    _async_resolver_class: t.ClassVar[type[AsyncFactoryResolver]] = AsyncFactoryResolver
+    _resolver_class: t.ClassVar[type[FactoryResolver]] = FactoryResolver
+    # _async_resolver_class: t.ClassVar[type[AsyncFactoryResolver]] = AsyncFactoryResolver
 
     def __init__(self, using: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         super().__init__()
@@ -665,12 +665,12 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self.__set_attr(_uses=value)
         self._is_registered or self._register()
 
-    @property
-    def _var_factory(self):
-        if self.is_shared:
-            return SingletonProviderVar
-        else:
-            return FactoryProviderVar
+    # @property
+    # def _var_factory(self):
+    #     if self.is_shared:
+    #         return SingletonProviderVar
+    #     else:
+    #         return FactoryProviderVar
     
     def args(self, *args) -> Self:
         self.__set_attr(arguments=self.arguments.replace(args))
@@ -727,16 +727,15 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature if self.arguments else self._blank_signature
 
-    def _iter_decorators(self):
-        yield from self.decorators
+    def _collect_decorators(self):
+        return self.decorators
 
     def _onfreeze(self):
         if None is self.is_async:
-            self.__set_attr(is_async=self._is_awaitable_factory())
+            self.__set_attr(is_async=self._is_async_factory())
+        self.__set_attr(_all_decorators=tuple(self._collect_decorators()))
 
-        self.__set_attr(_all_decorators=(*self._iter_decorators(), self._var_factory))
-
-    def _is_awaitable_factory(self) -> bool:
+    def _is_async_factory(self) -> bool:
         return iscoroutinefunction(self.uses)
 
     def _provides_fallback(self):
@@ -745,16 +744,11 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
         return self._create_resolver()(injector, token)
 
-    def _get_resolver_class(self):
-        if True is self.is_async:
-            return  self._async_resolver_class
-        else:
-            return  self._sync_resolver_class
-
     def _create_resolver(self):
-        return self._get_resolver_class()(
+        return self._resolver_class(
                 self.uses, 
                 self.get_signature(),
+                is_async=self.is_async,
                 arguments=self.arguments, 
                 decorators=self._all_decorators
             )
@@ -768,19 +762,19 @@ class Callable(Factory[T_Injected]):
     is_partial: bool = False
     is_shared: t.ClassVar[bool] = False
 
-    @property
-    def _sync_resolver_class(self):
-        if True is self.is_partial:
-            return PartialFactoryResolver
-        else:
-            return CallableFactoryResolver
+    # @property
+    # def _sync_resolver_class(self):
+    #     if True is self.is_partial:
+    #         return PartialFactoryResolver
+    #     else:
+    #         return CallableFactoryResolver
 
-    @property
-    def _async_resolver_class(self):
-        if True is self.is_partial:
-            return AsyncPartialFactoryResolver
-        else:
-            return AsyncCallableFactoryResolver
+    # @property
+    # def _async_resolver_class(self):
+    #     if True is self.is_partial:
+    #         return AsyncPartialFactoryResolver
+    #     else:
+    #         return AsyncCallableFactoryResolver
 
     def partial(self, is_partial: bool = True) -> Self:
         self.__set_attr(is_partial=is_partial)

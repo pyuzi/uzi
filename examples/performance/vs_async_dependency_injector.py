@@ -34,7 +34,7 @@ class B(object):
 
 
     @classmethod
-    async def make(cls, a: A):
+    async def make(cls, a: A, /):
         # print(f'{cls.__name__}.making...')
         await asyncio.sleep(.000001)
         rv = cls(a)
@@ -45,7 +45,7 @@ class B(object):
 
 class C(object):
 
-    def __init__(self, a: A, b: B):
+    def __init__(self, a: A, /, b: B):
         assert isinstance(a, A)
         assert isinstance(b, B)
         # assert isinstance(bb, B)

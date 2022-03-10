@@ -17,17 +17,10 @@ from laza.common.typing import (Self, UnionType, get_args, get_origin,
 from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, isinjectable)
 from .functools import (
-    AsyncCallableFactoryResolver,
-    AsyncFactoryResolver,
-    AsyncPartialFactoryResolver,
-    CallableFactoryResolver, 
     FactoryResolver,
-    PartialFactoryResolver,
     decorators
 )
-from .vars import (
-    ProviderVar, ValueProviderVar, FactoryProviderVar, SingletonProviderVar, ResourceProviderVar
-)
+
 
 
 if t.TYPE_CHECKING:
@@ -165,7 +158,7 @@ class ProviderType(ABCMeta):
         return cls
 
 
-_missing_or_none = frozenset([Missing, None])
+_missing_or_none = frozenset([Missing, None, ...])
 
 
 
@@ -440,8 +433,12 @@ class Value(Provider[T_UsingValue, T_Injected]):
             ...
 
     def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
-        var = ValueProviderVar(self.uses, is_async=self.is_async)
-        return lambda ctx: var, None
+        value = self.uses
+        def make():
+            nonlocal value
+            return value
+
+        return lambda ctx: make, None
 
 
 
@@ -466,7 +463,14 @@ class InjectorContextProvider(Provider[T_UsingValue, T_Injected]):
     uses: t.ClassVar = None
 
     def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
-        return lambda ctx: ValueProviderVar(ctx, ctx), None
+        def run(ctx: 'InjectorContext'):
+            def make():
+                nonlocal ctx
+                return ctx
+            make.is_async = False
+            return make
+
+        return run, None
 
 
 
@@ -553,45 +557,65 @@ class DepMarkerProvider(Provider):
         flag = marker.__injector__
         default = marker.__default__
         if not (inject_default := isinstance(default, InjectionMarker)):
-            default = marker.__hasdefault__ and ValueProviderVar(default) or None
+            default = marker.__hasdefault__ and (lambda: default) or None
+            if default:
+                default.is_async = False
 
         if flag is Dep.ONLY_SELF:
             def run(ctx: 'InjectorContext'):
-                func: ProviderVar = ctx.get(dep)
+                func = ctx.get(dep)
                 if None is func:
                     return ctx[default] if inject_default is True else default
-                elif True is func.is_async:
-                    async def afunc():
+                elif True is getattr(func, 'is_async', False):
+                    async def make():
                         nonlocal func, marker
-                        return marker.__eval__(await func)
-                    return FactoryProviderVar(afunc, ctx, is_async=True)
+                        return marker.__eval__(await func())
+                    make.is_async = True
+                    return make
                 else:
-                    return FactoryProviderVar(lambda: marker.__eval__(func()))
+                    async def make():
+                        nonlocal func, marker
+                        return marker.__eval__(func())
+
+                    make.is_async = False
+                    return make
 
         elif flag is Dep.SKIP_SELF:
             def run(ctx: 'InjectorContext'):
-                func: ProviderVar = ctx.parent[dep] 
+                func = ctx.parent[dep] 
                 if None is func:
                     return ctx[default] if inject_default is True else default
-                elif True is func.is_async:
-                    async def afunc():
+                elif True is getattr(func, 'is_async', False):
+                    async def make():
                         nonlocal func, marker
-                        return marker.__eval__(await func)
-                    return FactoryProviderVar(afunc, ctx, is_async=True)
+                        return marker.__eval__(await func())
+                    make.is_async = True
+                    return make
                 else:
-                    return FactoryProviderVar(lambda: marker.__eval__(func()))
+                    async def make():
+                        nonlocal func, marker
+                        return marker.__eval__(func())
+
+                    make.is_async = False
+                    return make
         else:
             def run(ctx: 'InjectorContext'):
-                func: ProviderVar = ctx[dep] 
+                func = ctx[dep] 
                 if None is func:
                     return ctx[default] if inject_default is True else default
-                elif True is func.is_async:
-                    async def afunc():
+                elif True is getattr(func, 'is_async', False):
+                    async def make():
                         nonlocal func, marker
-                        return marker.__eval__(await func)
-                    return FactoryProviderVar(afunc, ctx, is_async=True)
+                        return marker.__eval__(await func())
+                    make.is_async = True
+                    return make
                 else:
-                    return FactoryProviderVar(lambda: marker.__eval__(func()))
+                    async def make():
+                        nonlocal func, marker
+                        return marker.__eval__(func())
+
+                    make.is_async = False
+                    return make
                 
 
         return run, {dep}
@@ -664,13 +688,6 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
             raise ValueError(f'must be a `Callable` not `{value}`')
         self.__set_attr(_uses=value)
         self._is_registered or self._register()
-
-    # @property
-    # def _var_factory(self):
-    #     if self.is_shared:
-    #         return SingletonProviderVar
-    #     else:
-    #         return FactoryProviderVar
     
     def args(self, *args) -> Self:
         self.__set_attr(arguments=self.arguments.replace(args))
@@ -680,6 +697,14 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self.__set_attr(arguments=self.arguments.replace(kwargs=kwargs))
         return self
         
+    # def args(self, *args) -> Self:
+    #     self.__set_attr(arguments=self.arguments.replace((a if isinstance(a, InjectionMarker) else Value(..., a) for a in args)))
+    #     return self
+
+    # def kwargs(self, **kwargs) -> Self:
+    #     self.__set_attr(arguments=self.arguments.replace(kwargs={ k:v if isinstance(v, InjectionMarker) else Value(..., v) for k, v in kwargs.items()}))
+    #     return self
+
     def singleton(self, is_singleton: bool = True) -> Self:
         self.__set_attr(is_shared=is_singleton)
         return self
@@ -762,20 +787,6 @@ class Callable(Factory[T_Injected]):
     is_partial: bool = False
     is_shared: t.ClassVar[bool] = False
 
-    # @property
-    # def _sync_resolver_class(self):
-    #     if True is self.is_partial:
-    #         return PartialFactoryResolver
-    #     else:
-    #         return CallableFactoryResolver
-
-    # @property
-    # def _async_resolver_class(self):
-    #     if True is self.is_partial:
-    #         return AsyncPartialFactoryResolver
-    #     else:
-    #         return AsyncCallableFactoryResolver
-
     def partial(self, is_partial: bool = True) -> Self:
         self.__set_attr(is_partial=is_partial)
         return self
@@ -792,13 +803,6 @@ class Resource(Factory[T_Injected]):
     is_async: bool = None
     is_awaitable: bool = None
     is_shared: t.ClassVar[bool] = True
-    
-    _var_factory: t.ClassVar = ResourceProviderVar
-    
-    @property
-    def _var_factory(self) -> None:
-        # if self.is_awaitable:
-        return lambda *a, is_awaitable=self.is_awaitable, **kw: ResourceProviderVar(*a, is_awaitable=is_awaitable, **kw)
 
     def awaitable(self, is_awaitable=True):
         self.__set_attr(is_awaitable=is_awaitable)

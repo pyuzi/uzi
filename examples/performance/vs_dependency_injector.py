@@ -8,7 +8,7 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(0.25e6)
+N = int(.1e6)
 
 res: dict[str, tuple[float, float]] = {}
 
@@ -19,18 +19,18 @@ class A(object):
 
 
 class B(object):
-    def __init__(self, a: A):
+    def __init__(self, a: A, /):
         assert isinstance(a, A)
 
 
 class C(object):
-    def __init__(self, a: A, b: B):
+    def __init__(self, a: A, /, b: B):
         assert isinstance(a, A)
         assert isinstance(b, B)
 
 
 class Test(object):
-    def __init__(self, a: A, b: B, c: C):
+    def __init__(self, a: A, /, b: B, c: C):
 
         assert isinstance(a, A)
         assert isinstance(b, B)
@@ -46,7 +46,7 @@ ioc = Injector()
 ioc.factory(A)
 ioc.factory(B)#.singleton()
 ioc.factory(C)#.singleton()
-ioc.factory(Test)  # .singleton()
+ioc.factory(Test).args(A())  # .singleton()
 
 
 # Singleton = providers.Singleton 
@@ -55,10 +55,10 @@ Singleton = providers.Factory
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
     b = Singleton(B, a)
-    c = Singleton(C, a, b)
+    c = Singleton(C, a, b=b)
     test = providers.Factory(
         Test,
-        a=a,
+        A(),
         b=b,
         c=c,
     )
@@ -91,19 +91,34 @@ c.wire([__name__])
 
 def main():
     with context(ioc) as ctx:
-        ls = [
-            Benchmark("A.", N).run(di=Container.a, laza=lambda x=ctx[A]: x()),
-            Benchmark("B.", N).run(di=Container.b, laza=lambda x=ctx[B]: x()),
-            Benchmark("C.", N).run(di=Container.c, laza=lambda x=ctx[C]: x()),
-            Benchmark("Test.", N).run(di=Container.test, laza=lambda x=ctx[Test]: x()),
-        ]
+       
+
+        ls = []
+       
+        
+        bench = Benchmark("A.", N).run(di=Container.a, laza=ctx[A])
+        ls.append(bench)
+        print(bench, "\n")
+
+        bench = Benchmark("B.", N).run( di=Container.b, laza=ctx[B])
+        ls.append(bench)
+        print(bench, "\n")
+
+        bench = Benchmark("C.", N).run(di=Container.c, laza=ctx[C])
+        ls.append(bench)
+        print(bench, "\n")
+
+        bench = Benchmark("Test.", N).run(di=Container.test, laza=ctx[Test])
+        ls.append(bench)
+        print(bench, "\n")
+
 
         bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
         bench |= reduce(or_, ls)
         print(bench, "\n")
 
-        b = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
-        print(b, "\n")
+        # b = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
+        # print(b, "\n")
 
 
 if __name__ == '__main__':

@@ -3,6 +3,8 @@
 from setuptools import setup, find_namespace_packages
 from pathlib import Path
 
+from Cython.Build import cythonize
+
 
 setup(
     name="laza-di",
@@ -20,9 +22,10 @@ setup(
         "Programming Language :: Python :: 3.10",
     ],
     packages=find_namespace_packages(include=['laza.di']),
+    ext_modules=cythonize('laza/di/**/*.pyx'),
     include_package_data=True,
     python_requires="~=3.9",
-    zip_safe=True,
+    zip_safe=False,
     install_requires=[
         "blinker ~=1.4",
         "laza-common"

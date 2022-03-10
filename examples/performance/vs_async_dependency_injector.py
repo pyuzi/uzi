@@ -9,7 +9,7 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(2.5e3)
+N = int(7.5e3)
 
 res: dict[str, tuple[float, float]] = {}
 
@@ -29,14 +29,14 @@ class B(object):
     def __init__(self, a: A):
         assert isinstance(a, A)
         self.a = a
-        self.__class__.n += 1
+        # self.__class__.n += 1
         # print(f'{self.__class__.__name__}.new({self.n})')
 
 
     @classmethod
     async def make(cls, a: A):
         # print(f'{cls.__name__}.making...')
-        await asyncio.sleep(.00001)
+        await asyncio.sleep(.000001)
         rv = cls(a)
         # print(f'{cls.__name__}.done({rv.n})')
         return rv
@@ -75,7 +75,7 @@ class Test(object):
 ioc = Injector()
 
 ioc.factory(A)
-ioc.factory(B).using(B.make).asynchronous()#.singleton()
+ioc.factory(B).using(B.make)#.singleton()
 ioc.factory(C)#.using(C.make)#.singleton()
 ioc.factory(Test)#.using(Test.make)  # .singleton()
 
@@ -123,15 +123,15 @@ async def main():
         ls = []
        
         pre =None # lambda k, b: print(f'----------------{k}--------------')
-        bench = await Benchmark("B.", N).arun(pre, di=Container.b, laza=lambda x=ctx[B]: x())
+        bench = await Benchmark("B.", N).arun(pre, di=Container.b, laza=ctx[B])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = await Benchmark("C.", N).arun(pre, di=Container.c, laza=lambda: ctx[C]())
+        bench = await Benchmark("C.", N).arun(pre, di=Container.c, laza=ctx[C])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, laza=lambda: ctx[Test]())
+        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, laza=ctx[Test])
         ls.append(bench)
         print(bench, "\n")
 
@@ -144,4 +144,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    asyncio.run(main(), debug=True)
+    import uvloop
+
+    # uvloop.install()
+    
+    asyncio.run(main(), debug=False)

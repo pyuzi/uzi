@@ -22,7 +22,7 @@ setup(
         "Programming Language :: Python :: 3.10",
     ],
     packages=find_namespace_packages(include=['laza.di']),
-    ext_modules=cythonize('laza/di/**/*.pyx'),
+    # ext_modules=cythonize('laza/di/**/*.pyx'),
     include_package_data=True,
     python_requires="~=3.9",
     zip_safe=False,

@@ -13,7 +13,7 @@ from laza.common.functools import calling_frame, export
 from laza.common.promises import Promise
 from laza.common.typing import Self
 
-from . import Injectable, InjectionMarker, isinjectable
+from . import Injectable, InjectionMarker, is_injectable
 from .containers import Container, InjectorContainer
 from .ctx import InjectorContext, context_partial
 from .providers import (
@@ -168,7 +168,7 @@ class Injector(ProviderRegistry):
     def is_provided(self, obj: Injectable, *, onlyself=False) -> bool:
         self.__boot.settle()
         if not (isinstance(obj, InjectionMarker) or obj in self.__bindings):
-            if isinjectable(obj):
+            if is_injectable(obj):
                 provider = self.__resolver.resolve(obj)
                 if provider is None:
                     if not onlyself and self.__parent:

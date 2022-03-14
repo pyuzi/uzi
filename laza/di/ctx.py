@@ -25,7 +25,7 @@ TContextBinding = Callable[
 ]
 
 
-class InjectionLookupError(LookupError):
+class InjectorLookupError(LookupError):
     
     key: Injectable
     injector: 'InjectorContext'
@@ -155,27 +155,33 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
     def find(self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default) -> t.Union['ProviderVar[T_Injected]', T_Default]: ...
     def find(self, *keys, default=Missing):
         for key in keys:
-            if not (rv := self[key]) is None:
-                return rv
+            rv = self[key]
+            if rv is None:
+                continue
+            return rv
         
         if default is Missing:
-            raise InjectionLookupError(key, self)
+            raise InjectorLookupError(key, self)
 
         return default
 
     def make(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
-        func = self.find(key, *fallbacks, default=None)
+        if fallbacks:
+            func = self.find(key, *fallbacks, default=None)
+        else:
+            func = self[key]
+
         if not func is None:
             return func()
         elif default is Missing:
-            raise InjectionLookupError(key, self)
+            raise InjectorLookupError(key, self)
         return default
         
     async def amake(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
         func = self.find(key, *fallbacks, default=None)
         if func is None:
             if default is Missing:
-                raise InjectionLookupError(key, self)
+                raise InjectorLookupError(key, self)
             return default
         else:
             return await func

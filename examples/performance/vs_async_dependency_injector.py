@@ -9,7 +9,8 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(7.5e3)
+N = int(2e4)
+# N = 1
 
 res: dict[str, tuple[float, float]] = {}
 
@@ -35,10 +36,8 @@ class B(object):
 
     @classmethod
     async def make(cls, a: A, /):
-        # print(f'{cls.__name__}.making...')
-        await asyncio.sleep(.000001)
+        await asyncio.sleep(0)
         rv = cls(a)
-        # print(f'{cls.__name__}.done({rv.n})')
         return rv
 
 
@@ -53,11 +52,19 @@ class C(object):
         self.a = a
         self.b = b
 
+    @classmethod
+    async def make(cls, a: A, b: B):
+        await asyncio.sleep(0)
+        rv = cls(a, b)
+        return rv
+
+
+
 
 class Test(object):
 
    
-    def __init__(self, a: A, b: B, c: C):
+    def __init__(self, a: A, b: B, /, c: C):
 
         assert isinstance(a, A)
         assert isinstance(b, B)
@@ -70,14 +77,21 @@ class Test(object):
         self.b = b
         self.c = c
 
+    @classmethod
+    async def make(cls, a: A, b: B, /, c: C):
+        await asyncio.sleep(0)
+        rv = cls(a, b, c)
+        return rv
+
+
 
 
 ioc = Injector()
 
 ioc.factory(A)
 ioc.factory(B).using(B.make)#.singleton()
-ioc.factory(C)#.using(C.make)#.singleton()
-ioc.factory(Test)#.using(Test.make)  # .singleton()
+ioc.factory(C).using(C.make)#.singleton()
+ioc.factory(Test).using(Test.make)  # .singleton()
 
 # Singleton = providers.Singleton 
 Singleton = providers.Factory 
@@ -85,11 +99,11 @@ Singleton = providers.Factory
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
     b = Singleton(B.make, a)
-    c = Singleton(C, a, b)
+    c = Singleton(C.make, a, b=b)
     test = providers.Factory(
-        Test,
-        a=a,
-        b=b,
+        Test.make,
+        a,
+        b,
         c=c,
     )
 
@@ -127,6 +141,7 @@ async def main():
         ls.append(bench)
         print(bench, "\n")
 
+
         bench = await Benchmark("C.", N).arun(pre, di=Container.c, laza=ctx[C])
         ls.append(bench)
         print(bench, "\n")
@@ -134,6 +149,11 @@ async def main():
         bench = await Benchmark("Test.", N).arun(pre, di=Container.test, laza=ctx[Test])
         ls.append(bench)
         print(bench, "\n")
+
+
+        # fut = ctx[Test]()
+        # print(f'{await fut=}')
+        # print(f'{await fut=}')
 
         # bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
         # bench |= reduce(or_, ls)
@@ -146,6 +166,6 @@ async def main():
 if __name__ == '__main__':
     import uvloop
 
-    # uvloop.install()
+    uvloop.install()
     
     asyncio.run(main(), debug=False)

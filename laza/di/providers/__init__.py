@@ -15,7 +15,7 @@ from laza.common.typing import (Self, UnionType, get_args, get_origin,
                                 typed_signature)
 
 from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
-                T_Injected, isinjectable)
+                T_Injected, is_injectable)
 from .functools import (
     FactoryResolver,
     decorators
@@ -50,6 +50,12 @@ T_UsingCallable = t.Union[T_UsingType, T_UsingFunc]
 T_UsingAny = t.Union[T_UsingCallable, T_UsingAlias, T_UsingValue]
 
 TContextBinding =  abc.Callable[['InjectorContext', t.Optional[Injectable]], abc.Callable[..., T_Injected]]
+
+
+_missing_or_none = frozenset([Missing, None, ...])
+
+
+
 
 def _fluent_decorator(default=Missing, *, fluent: bool = False):
     def decorator(func: _T_Fn) -> _T_Fn:
@@ -158,11 +164,6 @@ class ProviderType(ABCMeta):
         return cls
 
 
-_missing_or_none = frozenset([Missing, None, ...])
-
-
-
-
 
 @export()
 @InjectionMarker.register
@@ -234,7 +235,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
     def provides(self, val):
         if self._is_registered:
             raise AttributeError(f"{self} already registered.")
-        elif not isinjectable(val):
+        elif not is_injectable(val):
             raise ValueError(f'{self.__class__.__name__}.provides must be an `Injectable` not `{val!r}`')
         else:
             self.__set_attr(_provides=val)
@@ -437,7 +438,7 @@ class Value(Provider[T_UsingValue, T_Injected]):
         def make():
             nonlocal value
             return value
-
+        
         return lambda ctx: make, None
 
 
@@ -505,7 +506,7 @@ class UnionProvider(Provider[_T_Using, T_Injected]):
 
     def _iter_injectable(self, injector: 'Injector', token: Injectable) -> tuple[Injectable]:
         for a in self.get_all_args(token):
-            if isinjectable(a) and injector.is_provided(a):
+            if is_injectable(a) and injector.is_provided(a):
                 yield a
                 
     def _is_bind_type(self, obj: T_Injectable):
@@ -767,10 +768,11 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         return self._uses
 
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
-        return self._create_resolver()(injector, token)
+        return self._create_resolver(injector)()
 
-    def _create_resolver(self):
+    def _create_resolver(self, injector: "Injector"):
         return self._resolver_class(
+                injector,
                 self.uses, 
                 self.get_signature(),
                 is_async=self.is_async,

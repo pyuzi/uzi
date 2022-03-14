@@ -27,9 +27,18 @@ _logger = getLogger(__name__)
 
 
 @export()
-def isinjectable(obj):
+def is_injectable(obj):
     return isinstance(obj, Injectable)
 
+
+
+@export()
+def is_injectable_annotation(obj):
+    """Returns `True` if the given type is injectable.  
+    """
+    return is_injectable(obj)
+
+    
 
 class _PrivateABCMeta(ABCMeta):
     def register(self, subclass):
@@ -77,7 +86,7 @@ class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
         ...
 
     def __new__(cls: type[Self], inject: T_Injectable, metadata: dict = (), /):
-        if not isinjectable(inject):
+        if not is_injectable(inject):
             raise TypeError(
                 f"`dependency` must be an Injectable not "
                 f"`{inject.__class__.__name__}`"

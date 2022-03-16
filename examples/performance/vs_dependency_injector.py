@@ -1,5 +1,5 @@
 """Dependency Injector Factory providers benchmark."""
-
+import time
 from functools import reduce
 from operator import or_
 
@@ -8,15 +8,15 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(.1e6)
+N = int(.1e3)
 
 res: dict[str, tuple[float, float]] = {}
 
 
 class A(object):
     def __init__(self):
-        pass
-
+        # time.sleep(0.0000001)
+        return
 
 class B(object):
     def __init__(self, a: A, /):

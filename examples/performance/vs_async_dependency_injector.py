@@ -1,6 +1,7 @@
 """Dependency Injector Factory providers benchmark."""
 
 import asyncio
+import time
 from functools import reduce
 from operator import or_
 
@@ -10,7 +11,9 @@ from laza.di import Injector, context, inject
 from _benchmarkutil import Benchmark
 
 N = int(2e4)
-# N = 1
+N = 100
+
+ST = 0# .000000001
 
 res: dict[str, tuple[float, float]] = {}
 
@@ -20,8 +23,9 @@ class A(object):
     n = 0
 
     def __init__(self):
-        pass
-
+        # print(f'{self.__class__.__name__}.new()')
+        # time.sleep(ST/2)
+        return
 
 class B(object):
     
@@ -31,12 +35,12 @@ class B(object):
         assert isinstance(a, A)
         self.a = a
         # self.__class__.n += 1
-        # print(f'{self.__class__.__name__}.new({self.n})')
 
 
     @classmethod
     async def make(cls, a: A, /):
-        await asyncio.sleep(0)
+        # print(f'{cls.__name__}.make()')
+        # await asyncio.sleep(ST)
         rv = cls(a)
         return rv
 
@@ -54,7 +58,8 @@ class C(object):
 
     @classmethod
     async def make(cls, a: A, b: B):
-        await asyncio.sleep(0)
+        # print(f'{cls.__name__}.make()')
+        # await asyncio.sleep(ST)
         rv = cls(a, b)
         return rv
 
@@ -65,6 +70,7 @@ class Test(object):
 
    
     def __init__(self, a: A, b: B, /, c: C):
+        # time.sleep(ST)
 
         assert isinstance(a, A)
         assert isinstance(b, B)
@@ -79,7 +85,7 @@ class Test(object):
 
     @classmethod
     async def make(cls, a: A, b: B, /, c: C):
-        await asyncio.sleep(0)
+        # await asyncio.sleep(0)
         rv = cls(a, b, c)
         return rv
 
@@ -132,7 +138,16 @@ async def _inj_di(
 c = Container()
 c.wire([__name__])
 
+
+
 async def main():
+    # print('init...')
+    # aw = c.c()
+    # await asyncio.sleep(1)
+    # print('created...')
+    # await aw
+    # print('done...')
+
     with context(ioc) as ctx:
         ls = []
        
@@ -151,7 +166,13 @@ async def main():
         print(bench, "\n")
 
 
-        # fut = ctx[Test]()
+        print('----------------------------------------')
+        fut = c.test()
+         # ctx[Test]()
+        await asyncio.sleep(1.25)
+        print(f'{fut}')
+        print('----------------------------------------')
+        print(f'{await fut}')
         # print(f'{await fut=}')
         # print(f'{await fut=}')
 
@@ -166,6 +187,7 @@ async def main():
 if __name__ == '__main__':
     import uvloop
 
-    uvloop.install()
-    
+    # uvloop.install()
+
+  
     asyncio.run(main(), debug=False)

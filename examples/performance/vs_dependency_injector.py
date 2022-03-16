@@ -8,7 +8,8 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(.1e3)
+N = int(.1e5)
+# N = 1
 
 res: dict[str, tuple[float, float]] = {}
 
@@ -30,7 +31,7 @@ class C(object):
 
 
 class Test(object):
-    def __init__(self, a: A, /, b: B, c: C):
+    def __init__(self, a: A, /, b: B, c: C, x: str=None, y:str=None, z: str=None):
 
         assert isinstance(a, A)
         assert isinstance(b, B)
@@ -46,7 +47,7 @@ ioc = Injector()
 ioc.factory(A)
 ioc.factory(B)#.singleton()
 ioc.factory(C)#.singleton()
-ioc.factory(Test).args(A())  # .singleton()
+ioc.factory(Test).args(A()).kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
 # Singleton = providers.Singleton 
@@ -61,6 +62,9 @@ class Container(containers.DeclarativeContainer):
         A(),
         b=b,
         c=c,
+        x='ex',
+        y='why',
+        z='zee'
     )
 
 

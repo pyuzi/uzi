@@ -167,12 +167,12 @@ async def main():
 
 
         print('----------------------------------------')
-        fut = c.test()
-         # ctx[Test]()
-        await asyncio.sleep(1.25)
+        # fut = c.test()
+        fut = ctx[Test]()
+        # await asyncio.sleep(1.25)
         print(f'{fut}')
         print('----------------------------------------')
-        print(f'{await fut}')
+        # print(f'{await fut}')
         # print(f'{await fut=}')
         # print(f'{await fut=}')
 

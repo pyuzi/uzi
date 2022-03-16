@@ -66,6 +66,7 @@ class Benchmark(dict[str, Timer]):
 
         for k, fn in kw.items():    
             pre and pre(k, self)
+            fn()
             with Timer(ops) as tm:
                 for __ in range(ops):
                     fn()
@@ -86,6 +87,7 @@ class Benchmark(dict[str, Timer]):
 
         for k, fn in kw.items():    
             pre and pre(k, self)
+            fn()
             with Timer(ops) as tm:
                 for __ in range(ops):
                     await fn()

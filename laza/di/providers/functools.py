@@ -64,7 +64,7 @@ _object_setattr = object.__setattr__
 @abstractclass
 class decorators:
     @staticmethod
-    def singleton(func: Callable, ctx: "InjectorContext"):
+    def singleton(func: Callable, ctx: "InjectorContext", *, is_async: bool=False):
         lock = ctx.lock()
         value = Missing
         if lock is None:
@@ -88,7 +88,7 @@ class decorators:
         return run
 
     @staticmethod
-    def resource(func: Callable, ctx: "InjectorContext"):
+    def resource(func: Callable, ctx: "InjectorContext", *, is_async: bool=False):
         lock = ctx.lock()
         value = Missing
 
@@ -113,7 +113,7 @@ class decorators:
         return run
 
     @staticmethod
-    def contextmanager(cm, ctx: "InjectorContext"):
+    def contextmanager(cm, ctx: "InjectorContext", *, is_async: bool=False):
         lock = ctx.lock()
         value = Missing
 
@@ -141,7 +141,7 @@ class decorators:
 
 
 def _is_aync_provider(obj) -> bool:
-    return getattr(obj, 'is_async', False) is True 
+    return getattr(obj, 'is_async', False) is True
 
 
 
@@ -205,10 +205,6 @@ class ParamResolver:
        
         return self
 
-    # @property
-    # def name(self) -> str:
-    #     return self.parameter.
-
     @property
     def value_factory(self) -> None:
         try:
@@ -216,7 +212,7 @@ class ParamResolver:
         except AttributeError as e:
             if not self.has_value:
                 raise AttributeError(f'`value`') from e
-            self._value_factory = lambda: self.value # AwaitValue(self.value)
+            self._value_factory = lambda: self.value
             return self._value_factory
 
     @property
@@ -225,50 +221,13 @@ class ParamResolver:
             return self._default_factory 
         except AttributeError as e:
             if self.has_default is True:
-
-                self._default_factory = lambda: self.default # AwaitValue(self.default)
-                # self._default_factory.is_async = self.is_async
+                self._default_factory = lambda: self.default 
             elif self.has_dependency is True:
                 self._default_factory = Missing
             else:
                 raise AttributeError(f'`default_factory`')
             return self._default_factory
 
-    # TODO: Remove tbis method.
-    def check_dependency(self, injector: "Injector"):
-        if False is self.has_dependency is self.has_value:
-            dep = self.dependency
-            self.has_dependency = not dep is _EMPTY and injector.is_provided(dep)
-        return self.has_dependency
-
-    # def check_is_aync(self, ctx: 'InjectorContext'):
-
-
-    #     if False is self.has_dependency is self.has_value:
-    #         dep = self.dependency
-    #         self.has_dependency = not dep is _EMPTY and injector.is_provided(dep)
-    #     return self.has_dependency
-
-    def resolve(self, ctx: "InjectorContext", *, as_awaitable: bool = False) -> t.Union[Callable, None]:
-        if self.has_value is True:
-            return self.value_factory, False
-        elif self.has_dependency is True:
-            res = ctx.find(self.dependency, default=self.default_factory)
-            return res, _is_aync_provider(res) # AwaitCall(res) if as_awaitable is True else res
-       
-        raise TypeError(f'Param not resolvable')
-
-
-
-    # def __repr__(self):
-    #     value, annotation, default = (
-    #         "..." if x is _EMPTY else x
-    #         for x in (self.value, self.annotation, self.default)
-    #     )
-    #     if isinstance(annotation, type):
-    #         annotation = annotation.__name__
-
-    #     return f'<{self.__class__.__name__}: {"Any" if annotation == "..." else annotation} ={default}, value={value}>'
 
 
 
@@ -374,13 +333,12 @@ class FactoryResolver:
         kwds = []
         vals = {}
         deps = set()
-        injector = self.injector
 
         skip_pos = False
         for n, p, r in self.iter_param_resolvers(arguments):
             if p.kind in _POSITIONAL_KINDS:
                 if skip_pos is False:
-                    if r.check_dependency(injector):
+                    if self._check_param_dependency(r):
                         args.append(r)
                         deps.add(r)
                     elif r.has_value:
@@ -390,7 +348,7 @@ class FactoryResolver:
                 continue
             elif r.has_value:
                 vals[n] = r.value
-            elif r.check_dependency(injector):
+            elif self._check_param_dependency(r):
                 kwds.append(r)
                 deps.add(r)
 
@@ -398,6 +356,13 @@ class FactoryResolver:
         self.kwds = tuple(kwds)
         self.vals = frozendict(vals)
         self.deps = frozenset(deps)
+
+    def _check_param_dependency(self, p: ParamResolver):
+        if False is p.has_dependency is p.has_value:
+            dep = p.dependency
+            p.has_dependency = not dep is _EMPTY and self.injector.is_provided(dep)
+        return p.has_dependency
+
 
     def evaluate_awaitables(self, ctx: "InjectorContext"):
         assert self.has_aws is None
@@ -415,8 +380,6 @@ class FactoryResolver:
 
         self.has_aws = not not (self.aw_kwds or self.aw_args)
 
-        # assert not hasattr(self, 'aw_args') or hasattr(self, 'aw_args')
-        # self.aws = frozenset({dep for dep in self.deps if })
 
     def resolve_args(self, ctx: "InjectorContext"):
         aw_args = self.aw_args
@@ -444,7 +407,7 @@ class FactoryResolver:
        
 
     def _decorate(self, func, ctx: "InjectorContext"):
-        is_async = self.is_async
+        is_async = self.is_async or self.has_aws
         for fn in self.decorators:
             func = fn(func, ctx, is_async=is_async)
         return func
@@ -454,7 +417,7 @@ class FactoryResolver:
             self.has_aws = False
 
         def provider(ctx: "InjectorContext"):
-            return self._decorate(self.plain_wrap_func(ctx), ctx)
+            return self._decorate(self.plain_wrapper(ctx), ctx)
 
         return provider
 
@@ -463,7 +426,7 @@ class FactoryResolver:
         def provider(ctx: "InjectorContext"):
             nonlocal self
             self.has_aws is None and self.evaluate_awaitables(ctx)
-            return self._decorate(self.arg_wrap_func(ctx), ctx)
+            return self._decorate(self.arg_wrapper(ctx), ctx)
 
         return provider
 
@@ -472,7 +435,7 @@ class FactoryResolver:
         def provider(ctx: "InjectorContext"):
             nonlocal self
             self.has_aws is None and self.evaluate_awaitables(ctx)
-            return self._decorate(self.kwd_wrap_func(ctx), ctx)
+            return self._decorate(self.kwd_wrapper(ctx), ctx)
 
         return provider
 
@@ -481,41 +444,39 @@ class FactoryResolver:
         def provider(ctx: "InjectorContext"):
             nonlocal self
             self.has_aws is None and self.evaluate_awaitables(ctx)
-            return self._decorate(self.arg_kwd_wrap_func(ctx), ctx)
+            return self._decorate(self.arg_kwd_wrapper(ctx), ctx)
 
         return provider
 
-    def plain_wrap_func(self, ctx: 'InjectorContext'):
-        if 0: #self.is_async:
-            return AwaitPlainFactory()
-        else:
-            return self.factory
+    def plain_wrapper(self, ctx: 'InjectorContext'):
+        if self.is_async:
             def make():
                 nonlocal self
                 return self.factory()
             make.is_async = True
             return make
+        else:
+            return self.factory
 
-    def arg_wrap_func(self: Self, ctx: 'InjectorContext'):
+    def arg_wrapper(self: Self, ctx: 'InjectorContext'):
         args, aw_args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
-        if aw_args: # or self.is_async:
-            return AwaitArgsFactory(func, vals, args, aw_args=aw_args, aw_call=self.is_async)
+        if aw_args: 
+            return AwaitFactory(func, vals, args=args, aw_args=aw_args, aw_call=self.is_async)
         else:
             def make():
                 nonlocal func, args, vals
                 return func(*args, **vals)
-
             make.is_async = self.is_async
         return make
 
-    def kwd_wrap_func(self: Self, ctx: 'InjectorContext'):
+    def kwd_wrapper(self: Self, ctx: 'InjectorContext'):
         kwds, aw_kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
-        if aw_kwds: # or self.is_async:
-            return AwaitKwdsFactory(func, vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.is_async)
+        if aw_kwds: 
+            return AwaitFactory(func, vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.is_async)
         else:
             def make():
                 nonlocal func, kwds, vals
@@ -523,19 +484,18 @@ class FactoryResolver:
             make.is_async = self.is_async
         return make
 
-    def arg_kwd_wrap_func(self: Self, ctx: 'InjectorContext'):
+    def arg_kwd_wrapper(self: Self, ctx: 'InjectorContext'):
         args, aw_args = self.resolve_args(ctx)
         kwds, aw_kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
         
-        if aw_kwds or aw_args: # or self.is_async:
-            return AwaitArgsKwdsFactory(func, vals, args, kwds, aw_args=aw_args, aw_kwds=aw_kwds, aw_call=self.is_async)
+        if aw_kwds or aw_args:
+            return AwaitFactory(func, vals, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds, aw_call=self.is_async)
         else:
             def make():
                 nonlocal func, args, kwds, vals
                 return func(*args, **vals, **kwds)
-
             make.is_async = self.is_async
         return make
 
@@ -545,19 +505,6 @@ class FactoryResolver:
 class CallableFactoryResolver(FactoryResolver):
 
     __slots__ = ()
-
-    # def iargs(self, args, a=()):
-    #     if self.is_partial:
-    #         yield from self._iargs(args)
-    #         yield from a
-    #     else:
-    #         yield from a
-    #         yield from super().iargs(args[len(a):])
-
-    def iargs(self, args, a=()):
-        return a + tuple(self._iargs(args[len(a) :]))
-        # yield from a
-        # yield from self._iargs(args[len(a):])
 
     def plain_wrap_func(self, func):
         return lambda: func
@@ -604,22 +551,6 @@ class CallableFactoryResolver(FactoryResolver):
 
 
 
-class Args(Sequence):
-    __slots__ = 'args', 
-
-    def __getiem__(self, index):
-        pass
-
-
-class Kwargs(dict):
-    __slots__ = 'args', 
-
-    def __init__(self, ):
-        pass
-
-    def __getiem__(self, index):
-        pass
-
 
 _blank_slice = slice(None, None, None)
 
@@ -631,27 +562,9 @@ __base_positional_deps = (tuple[Callable[[], _T]], t.Generic[_T]) if t.TYPE_CHEC
 
 class _PositionalDeps(*__base_positional_deps):
 
-    # __slots__ = '_is_async',
-
-    # __blank: '_PositionalDeps[_T]'
-
-    # def __new__(cls, iterable: t.Union[Self, Iterable]=_tuple_blank) -> Self:
-    #     if cls is iterable.__class__:
-    #         return iterable
-    #     elif not iterable and isinstance(iterable, Collection):
-    #         return cls.__blank
-    #     else:
-    #         return cls.__raw_new__(iterable)
+    __slots__ = ()
     
     __raw_new__ = classmethod(tuple.__new__)
-
-    @property
-    def is_async(self):
-        try:
-            return self._is_async
-        except AttributeError:
-            self._is_async = None
-            return None
 
     def __reduce__(self):
         return tuple, (tuple(self),) 
@@ -660,24 +573,6 @@ class _PositionalDeps(*__base_positional_deps):
         return self[:]
 
     __copy__ = copy
-
-    def future(self, *, loop: asyncio.AbstractEventLoop=None):
-        loop = get_running_loop() if loop is None else loop 
-
-        if self.is_async is False:
-            return _FuturePositionalDeps(self, loop=loop)
-
-        aws = []
-        i = 0
-        deps = [
-            v 
-            for fn, aw in (self.iter_raw())
-            if (aw is False and (i := i+1) and ((v := fn()) or True)) 
-                or aws.append(i) 
-                or ((i := i+1) and (v := ensure_future(fn(), loop=loop)))
-        ]
-        self._is_async = not not aws
-        return _FuturePositionalDeps(deps, aws, loop=loop)
 
     @t.overload
     def __getitem__(self, index: int) -> tuple[_T, bool]: ...
@@ -692,11 +587,8 @@ class _PositionalDeps(*__base_positional_deps):
             return item()
 
     def __iter__(self) -> 'Iterator[tuple[_T, bool]]':
-        i = 0
-        x = len(self)
-        while x > i:
-            yield self[i]
-            i += 1
+        for f in self.iter_raw():
+            yield f()
             
     if t.TYPE_CHECKING:
         def get_raw(index: int) -> Callable[[], _T]: ...
@@ -706,16 +598,8 @@ class _PositionalDeps(*__base_positional_deps):
         iter_raw = tuple.__iter__
 
 
-# _PositionalDeps.___PositionalDeps_blank = _tuple_new(_PositionalDeps)
-
-
-
-
-
-__base_keyword_deps = (dict[str, Callable[[], _T]], t.Generic[_T]) if t.TYPE_CHECKING else (dict,)
    
-   
-class _KeywordDeps(*__base_keyword_deps):
+class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
     __slots__ = '_is_async',
 
@@ -733,22 +617,6 @@ class _KeywordDeps(*__base_keyword_deps):
         except AttributeError:
             self._is_async = None
             return None
-
-    def future(self, *, loop: asyncio.AbstractEventLoop=None):
-        loop = get_running_loop() if loop is None else loop 
-        if self.is_async is False:
-            return _FutureKeywordDeps(self, loop=loop)
-
-        aws = []
-        deps = { 
-            n: v
-            for n, (fn, aw) in self.raw_items()
-            if (aw is False and ((v := fn()) or True)) 
-                or aws.append(n) 
-                or (v := ensure_future(fn(), loop=loop))
-        }
-        self._is_async = not not aws
-        return _FutureKeywordDeps(deps, aws, loop=loop)
 
     def __getitem__(self, name: str):
         return self.get_raw(name)()
@@ -785,62 +653,6 @@ class _KeywordDeps(*__base_keyword_deps):
 
 
 
-class _FuturePositionalDeps:
-    # __slots__ = 'deps', '_loop', 
-    _deps: _PositionalDeps[_T]
-    _result = Missing
-    _used = False
-    _asyncio_future_blocking = False
-    
-    def __init__(self, deps: list, aws: list=(), *, loop: AbstractEventLoop):
-        self._loop = loop 
-        self._deps = deps
-        self._aws = aws
-   
-    def __await__(self):
-        if self._used is False:
-            self._used = True
-            result = self._deps
-            for k in self._aws:
-                result[k] = yield from result[k]
-            return result
-        else:
-            raise RuntimeError(f'cannot reuse already awaited {self.__class__.__name__}')
-    
-    __iter__ = __await__
-
-
-
-
-
-class _FutureKeywordDeps:
-
-    _deps: _KeywordDeps[_T]
-    # _result = Missing
-    _aws = None
-    _used = False
-    _asyncio_future_blocking = False
-    _loop: AbstractEventLoop
-
-    def __init__(self, deps: _KeywordDeps, aws: list=(), *, loop: AbstractEventLoop):
-        self._loop = loop
-        self._deps = deps
-        self._aws = aws
-
-    def __await__(self):
-        if self._used is False:
-            self._used = True
-            result = self._deps
-            for k in self._aws:
-                result[k] = yield from result[k]
-            return result
-        else:
-            raise RuntimeError(f'cannot reuse already awaited {self.__class__.__name__}')
-    
-    __iter__ = __await__
-
-
-
 
 
 class AwaitFactory:
@@ -852,13 +664,9 @@ class AwaitFactory:
     _kwds: _KeywordDeps
     _vals: Mapping
 
-    # _asyncio_future_blocking = False
-
     is_async: bool = True
 
-    # def __init_subclass__(cls) -> None:
-    #     cls.__iter__ = cls.__dict__.get('__iter__') or cls.__await__
-    
+
     def __new__(cls, func, vals: Mapping=frozendict(), args: _PositionalDeps=emptydict(), kwds: _KeywordDeps=emptydict(), *, aw_args: tuple[int]=emptydict(), aw_kwds: tuple[str]=emptydict(), aw_call: bool=True, loop: asyncio.AbstractEventLoop=None) -> Self:
         self = _object_new(cls)
         self._loop = get_running_loop() if loop is None else loop 
@@ -871,23 +679,9 @@ class AwaitFactory:
         self._aw_call = aw_call
         return self
 
-    # def __iter__(self):
-    #     it = self.__await__()
-    #     next(it)
-    #     # if not next(it) is None:
-    #     #     raise RuntimeError(f'cannot directly iterate over block future: {self}')
-    #     # print(f'{self}.__iter__()')
-    #     return it
-    
-    def __await__(self):
-        raise NotImplementedError(f'{self.__class__.__name__}.__await__()')
-
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}:{self._func.__module__}.{self._func.__qualname__}()'
 
-    # def __call__(self):
-    #     return self
-        
     def __call__(self):
         if aw_args := self._aw_args:
             _args = self._args
@@ -898,189 +692,14 @@ class AwaitFactory:
         return FactoryFuture(self, aw_args, aw_kwds)
 
 
-class AwaitPlainFactory(AwaitFactory):
-
-    __slots__ = ()
-
-    # def __new__(cls, func, *, aw_call: bool=True, loop: asyncio.AbstractEventLoop=None) -> Self:
-    #     self = _object_new(cls)
-    #     self._loop = get_running_loop() if loop is None else loop 
-    #     self._func = func
-    #     self._aw_call = aw_call
-    #     return self
-
-    def __await__(self):
-        res = ensure_future(self._func(), loop=self._loop)
-        yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-        res = yield from res
-        return res
-
-    def __call__(self):
-        return self._func()
-
-
-
-class AwaitArgsFactory(AwaitFactory):
-
-    __slots__ = ()
-
-    # def __new__(cls, func, vals: Mapping=frozendict(), args: _PositionalDeps=None, *, aw_args: tuple[int]=(), aw_call: bool=True, loop: asyncio.AbstractEventLoop=None) -> Self:
-    #     self = _object_new(cls)
-    #     self._loop = get_running_loop() if loop is None else loop 
-    #     self._func = func
-    #     self._vals = vals
-    #     self._args = args
-    #     self._aw_args = aw_args
-    #     self._aw_call = aw_call
-    #     return self
-
-    def __await__(self):
-        loop = self._loop
-        args = self._args
-        if aw_args := self._aw_args:
-            # f_args = { i: ensure_future(args.get_raw(i), loop=loop) for i in aw_args }
-            f_args = { i: next(it := iter(args.get_raw(i))) or it for i in aw_args }
-
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-
-            for i in f_args:
-                f_args[i] = yield from f_args[i]
-            _args = args
-            args = ((f_args[i] if i in f_args else _args[i] for i in range(len(_args))))
-
-        res = self._func(*args, **self._vals)
-        if self._aw_call:
-            res = ensure_future(res, loop=loop)
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-            res = yield from res
-        return res
 
 
 
 
 
+class FactoryFuture(Future):
 
-
-class AwaitKwdsFactory(AwaitFactory):
-
-    __slots__ = ()
-
-    # def __new__(cls, func, vals: Mapping=frozendict(), kwds: _KeywordDeps=None, *, aw_kwds: tuple[str]=(), aw_call: bool=True, loop: asyncio.AbstractEventLoop=None) -> Self:
-    #     self = _object_new(cls)
-    #     self._loop = get_running_loop() if loop is None else loop 
-    #     self._func = func
-    #     self._vals = vals
-    #     self._kwds = kwds
-    #     self._aw_kwds = aw_kwds
-    #     self._aw_call = aw_call
-    #     return self
-
-    def __await__(self):
-        loop = self._loop
-
-        vals = self._vals
-        if aw_kwds := self._aw_kwds:
-            # f_kwds = { n: ensure_future(d, loop=loop) for n, d in aw_kwds if not n in vals }
-            f_kwds = { n: next(it := iter(d)) or it for n, d in aw_kwds if not n in vals }
-
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-
-            for i in f_kwds:
-                f_kwds[i] = yield from f_kwds[i]
-            res = self._func(**vals, **f_kwds, **self._kwds)
-        else:
-            res = self._func(**vals, **self._kwds)
-        
-        if self._aw_call:
-            res = ensure_future(res, loop=loop)
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-            res = yield from res
-        return res
-
-
-
-
-
-
-
-
-class AwaitArgsKwdsFactory(AwaitFactory):
-    __slots__ = ()
-
-    def __await__(self):
-        loop = self._loop
-
-        aw_args = self._aw_args
-        aw_kwds = self._aw_kwds
-        vals = self._vals
-        if not (aw_kwds or aw_args):
-            res = ensure_future(
-                self._func(*self._args, **vals, **self._kwds),
-                loop=loop
-            )
-
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-            
-            res = yield from res
-            return res
-        elif not aw_args:
-            # f_kwds = { n: ensure_future(d, loop=loop) for n, d in aw_kwds if not n in vals }
-            f_kwds = { n: next(it := iter(d)) or it for n, d in aw_kwds if not n in vals }
-
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-
-            for i, aw in f_kwds.items():
-                f_kwds[i] = yield from aw
-            
-            res = self._func(*self._args, **f_kwds, **vals, **self._kwds)
-        elif not aw_kwds:
-            args = self._args
-            # f_args = { i: ensure_future(args.get_raw(i), loop=loop) for i in aw_args }
-            f_args = { i: next(it := iter(args.get_raw(i))) or it for i in aw_args }
-
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-
-            for i in f_args:
-                f_args[i] = yield from f_args[i]
-            iargs = ((f_args[i] if i in f_args else args[i] for i in range(len(args))))
-            res = self._func(*iargs, **vals, **self._kwds)
-        else:
-            args = self._args
-            # f_args = { i: ensure_future(args.get_raw(i), loop=loop) for i in aw_args }
-            # f_kwds = { n: ensure_future(d, loop=loop) for n, d in aw_kwds if not n in vals }
-
-            f_args = { i: next(it := iter(args.get_raw(i))) or it for i in aw_args }
-            f_kwds = { n: next(it := iter(d)) or it for n, d in aw_kwds if not n in vals }
-            
-            yield # INITIAL_YIELD: used to initialize tasks before we start blocking.
-
-            for i, iaw in f_args.items():
-                f_args[i] = yield from iaw
-                # try:
-                #     while True:
-                #         aw = next(iaw)
-                #         print(aw)
-                #         yield aw
-                # except StopIteration as e:
-                #     f_args[i] = e.value
-
-
-            iargs = ((f_args[i] if i in f_args else args[i] for i in range(len(args))))
-
-            for i in f_kwds:
-                f_kwds[i] = yield from f_kwds[i]
-            res = self._func(*iargs, **vals, **f_kwds, **self._kwds)
-
-        if self._aw_call:
-            res = yield from ensure_future(res, loop=loop)
-        return res
-
-
-
-
-
-class FactoryFuture:
-    __slots__ = '_loop', '_factory', '_aws', '_result', 
+    # __slots__ = '_loop', '_factory', '_aws', '_result', 
 
     _asyncio_future_blocking = False
     _loop: AbstractEventLoop
@@ -1088,31 +707,41 @@ class FactoryFuture:
     _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
     _result: _T
 
-    def __new__(cls: type[Self], factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None) -> Self:
-        self = _object_new(cls)
-        self._loop = get_running_loop() if loop is None else loop
+    # def __new__(cls: type[Self], factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None) -> Self:
+    #     self = _object_new(cls)
+    #     self._loop = get_running_loop() if loop is None else loop
+    #     self._factory = factory
+    #     self._aws = aw_args, aw_kwds
+    #     return self
+    
+    def __init__(self, factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None) -> Self:
+        Future.__init__(self, loop=loop)
         self._factory = factory
         self._aws = aw_args, aw_kwds
-        return self
     
     def __await__(self):
-        factory = self._factory
-        aw_args, aw_kwds = self._aws
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwds = self._aws
 
-        if aw_args:
-            for k, aw in aw_args.items():
-                aw_args[k] = yield from aw
-            _args = factory._args
-            args = ((aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))))
-        else:
-            args = factory._args
+            if aw_args:
+                for k, aw in aw_args.items():
+                    aw_args[k] = yield from aw
+                _args = factory._args
+                args = ((aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))))
+            else:
+                args = factory._args
 
-        if aw_kwds:
-            for k, aw in aw_kwds.items():
-                aw_kwds[k] = yield from aw
-        
-        res = factory._func(*args, **aw_kwds, **factory._kwds, **factory._vals)
-        if factory._aw_call:
-            res = yield from ensure_future(res, loop=self._loop)
-        return res
+            if aw_kwds:
+                for k, aw in aw_kwds.items():
+                    aw_kwds[k] = yield from aw
+            
+            res = factory._func(*args, **aw_kwds, **factory._kwds, **factory._vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+            self.set_result(res) # res
+            return res
+        return self.result()
+
     __iter__ = __await__

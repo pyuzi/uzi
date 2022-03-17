@@ -31,12 +31,13 @@ class C(object):
 
 
 class Test(object):
-    def __init__(self, a: A, /, b: B, c: C, x: str=None, y:str=None, z: str=None):
+    def __init__(self, x, y, z, a: A, /, b: B, c: C, **kw): # x: str=None, y:str=None, z: str=None):
+    # def __init__(self, a: A, /, b: B, c: C, x: str=None, y:str=None, z: str=None):
 
         assert isinstance(a, A)
         assert isinstance(b, B)
         assert isinstance(c, C)
-
+        # assert ('x', 'y', 'z') == tuple(kw)
         self.a = a
         self.b = b
         self.c = c
@@ -47,7 +48,7 @@ ioc = Injector()
 ioc.factory(A)
 ioc.factory(B)#.singleton()
 ioc.factory(C)#.singleton()
-ioc.factory(Test).args(A()).kwargs(x='ex', y='why', z='zee')  # .singleton()
+ioc.factory(Test).args('ex','why','zee', A()) #.kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
 # Singleton = providers.Singleton 
@@ -59,6 +60,7 @@ class Container(containers.DeclarativeContainer):
     c = Singleton(C, a, b=b)
     test = providers.Factory(
         Test,
+        'ex','why','zee', 
         A(),
         b=b,
         c=c,

@@ -698,18 +698,9 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self.__set_attr(arguments=self.arguments.replace(kwargs=kwargs))
         return self
         
-    # def args(self, *args) -> Self:
-    #     self.__set_attr(arguments=self.arguments.replace((a if isinstance(a, InjectionMarker) else Value(..., a) for a in args)))
-    #     return self
-
-    # def kwargs(self, **kwargs) -> Self:
-    #     self.__set_attr(arguments=self.arguments.replace(kwargs={ k:v if isinstance(v, InjectionMarker) else Value(..., v) for k, v in kwargs.items()}))
-    #     return self
-
     def singleton(self, is_singleton: bool = True) -> Self:
         self.__set_attr(is_shared=is_singleton)
         return self
-    
 
     @t.overload
     def using(self) -> abc.Callable[[_T], _T]:
@@ -768,7 +759,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         return self._uses
 
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
-        return self._create_resolver(injector)()
+        return self._create_resolver(injector), None
 
     def _create_resolver(self, injector: "Injector"):
         return self._resolver_class(

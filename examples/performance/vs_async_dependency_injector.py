@@ -10,8 +10,8 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(2e4)
-N = 100
+N = int(2e3)
+N = 1
 
 ST = 0# .000000001
 

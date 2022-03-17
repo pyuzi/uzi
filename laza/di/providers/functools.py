@@ -5,6 +5,7 @@
 
 from email.generator import Generator
 from email.policy import default
+from enum import Enum
 from itertools import starmap
 import typing as t
 from collections import defaultdict
@@ -22,6 +23,8 @@ from laza.common.collections import Arguments, frozendict, orderedset, emptydict
 from laza.common.functools import Missing, export
 from laza.common.typing import Self, typed_signature
 from pytest import yield_fixture
+
+from libs.common.laza.common.collections import frozenorderedset
 
 from .. import Injectable, InjectionMarker, T_Injectable, T_Injected, is_injectable_annotation
 
@@ -145,19 +148,25 @@ def _is_aync_provider(obj) -> bool:
 
 
 
+class _ParamBindType(Enum):
+    awaitable: '_ParamBindType'  = 'awaitable'
+    callable: '_ParamBindType'  = 'callable'
+    value: '_ParamBindType'  = 'value'
 
 
-   
+_PARAM_AWAITABLE = _ParamBindType.awaitable
+_PARAM_CALLABLE = _ParamBindType.callable
+_PARAM_VALUE = _ParamBindType.value
 
 
-class ParamResolver:
+class BoundParam:
 
     __slots__ = (
         "param",
-        "name",
+        "key",
         "value",
         "dependency",
-        "default",
+        # "default",
         "has_value",
         "has_default",
         "has_dependency",
@@ -173,15 +182,17 @@ class ParamResolver:
     default: t.Any
     dependency: Injectable
     is_async: bool
+    has_value: bool
+    has_dependency: bool
+
     # _aw_value: 'AwaitValue'
     # _aw_default: 'AwaitValue'
 
-    def __new__(
-        cls, name: str, value: t.Any = _EMPTY, default=_EMPTY, annotation=_EMPTY
-    ):
+    def __new__(cls, param: Parameter, value: t.Any = _EMPTY, key: t.Union[str, int]=None):
         self = object.__new__(cls)
-        self.name = name
-        self.has_value = self.has_default = self.has_dependency = False
+        self.param = param
+        self.key = key or param.name
+        self.has_value = self.is_async = self.has_default = self.has_dependency = False
        
         if isinstance(value, InjectionMarker):
             self.dependency = value
@@ -190,21 +201,37 @@ class ParamResolver:
             self.has_value = True
             self.value = value
 
-        if isinstance(default, InjectionMarker):
+        if isinstance(param.default, InjectionMarker):
             if self.has_dependency is False:
-                self.dependency = default
+                self.dependency = param.default
                 self.has_dependency = True
-        elif not default is _EMPTY:
-            self.default = default
-            self.has_default = True
+        else:
+            self.has_default = not param.default is _EMPTY
 
-        if False is self.has_dependency is not is_injectable_annotation(annotation):
-            self.dependency = annotation
-            self.has_dependency = isinstance(annotation, InjectionMarker)
-       
+        if False is self.has_dependency:
+            annotation = param.annotation
+            if is_injectable_annotation(annotation):
+                self.dependency = annotation
+                self.has_dependency = isinstance(annotation, InjectionMarker) or None
        
         return self
 
+    @property
+    def name(self):
+        return self.param.name
+        
+    @property
+    def default(self):
+        return self.param.default
+        
+    @property
+    def annotation(self):
+        return self.param.annotation
+        
+    @property
+    def kind(self):
+        return self.param.kind
+        
     @property
     def value_factory(self) -> None:
         try:
@@ -212,7 +239,8 @@ class ParamResolver:
         except AttributeError as e:
             if not self.has_value:
                 raise AttributeError(f'`value`') from e
-            self._value_factory = lambda: self.value
+            value = self.value
+            self._value_factory = lambda: value
             return self._value_factory
 
     @property
@@ -221,7 +249,8 @@ class ParamResolver:
             return self._default_factory 
         except AttributeError as e:
             if self.has_default is True:
-                self._default_factory = lambda: self.default 
+                default = self.default
+                self._default_factory = lambda: default 
             elif self.has_dependency is True:
                 self._default_factory = Missing
             else:
@@ -239,15 +268,16 @@ class FactoryResolver:
         "factory",
         "signature",
         "decorators",
-        "is_async",
         "injector",
-        "has_aws",
         "args",
+        "aws",
+        "aw_call",
         "aw_args",
         "aw_kwds",
         "kwds",
         "deps",
         "vals",
+        "_wrapper_factory",
     )
 
     factory: Callable
@@ -256,14 +286,14 @@ class FactoryResolver:
     signature: Signature
     decorators: list[Callable[[Callable], Callable]]
 
-    aws: frozenset[ParamResolver]
-    deps: frozenset[ParamResolver]
-    args: tuple[ParamResolver]
-    aw_args: orderedset[ParamResolver]
-    kwds: tuple[ParamResolver]
-    aw_kwds: orderedset[ParamResolver]
+    aws: frozenorderedset[BoundParam]
+    deps: frozenset[BoundParam]
+    args: tuple[BoundParam]
+    aw_args: bool
+    kwds: tuple[BoundParam]
+    aw_kwds: bool
     vals: frozendict[str, t.Any]
-    is_async: bool
+    aw_call: bool
 
     def __init__(
         self,
@@ -278,227 +308,207 @@ class FactoryResolver:
         # self = object.__new__(cls)
         self.factory = factory
         self.injector = injector
-        self.is_async = iscoroutinefunction(factory) if is_async is None else is_async
-        self.has_aws = None
+        self.aw_call = iscoroutinefunction(factory) if is_async is None else is_async
         self.signature = signature or typed_signature(factory)
         self.decorators = decorators
-        # self._post_init()
-        self.evaluate(self.parse_arguments(arguments))
-        # return self
+        self._evaluate(self._parse_arguments(arguments))
 
-    # def _post_init(self):
-    #     pass
+    @property
+    def is_async(self):
+        return self.aw_call or self.aw_kwds or self.aw_args
 
     @property
     def dependencies(self):
-        return {d.dependency for d in self.deps}
+        return {
+            p.dependency 
+                for _ in (self.args, self.kwds) 
+                    for p in _ 
+                        if p.has_dependency
+        }
 
-    def __call__(self) -> Callable:
-        if not self.signature.parameters:
-            handler = self.make_plain_handler()
-        elif not self.args:
-            handler = self.make_kwds_handler()
-        elif not self.kwds:
-            handler = self.make_args_resolver()
-        else:
-            handler = self.make_args_kwds_resolver()
-        
-        return handler, self.dependencies
-
-    def parse_arguments(self, arguments: Arguments = None):
+    def _parse_arguments(self, arguments: Arguments = None):
         if arguments:
             bound = self.signature.bind_partial(*arguments.args, **arguments.kwargs)
         else:
             bound = self.signature.bind_partial()
         return bound.arguments
 
-    def iter_param_resolvers(self, arguments: dict):
+    def _iter_bind_params(self, arguments: dict):
+        i = 0
         for n, p in self.signature.parameters.items():
             if p.kind is _VAR_POSITIONAL:
                 p = p.replace(annotation=_EMPTY)
                 for v in arguments.get(n, ()):
-                    yield n, p, self.make_param_resolver(p, v)
+                    yield self._bind_param(p, v)
             elif p.kind is _VAR_KEYWORD:
                 p = p.replace(annotation=_EMPTY)
                 for k, v in arguments.get(n, {}).items():
-                    yield k, p, self.make_param_resolver(p, v)
+                    yield self._bind_param(p, v, key=k)
             else:
-                yield n, p, self.make_param_resolver(p, arguments.get(n, _EMPTY))
+                yield self._bind_param(p, arguments.get(n, _EMPTY))
+            i += 1
 
-    def make_param_resolver(self, param: Parameter, value=_EMPTY):
-        return ParamResolver(param.name, value, param.default, param.annotation)
+    def _bind_param(self, param: Parameter, value=_EMPTY, key=None):
+        return BoundParam(param, value, key=key)
 
-    def evaluate(self, arguments: dict):
+    def _evaluate(self, arguments: dict):
         args = []
         kwds = []
         vals = {}
-        deps = set()
-
+        aw_args = 0
+        aw_kwds = 0
         skip_pos = False
-        for n, p, r in self.iter_param_resolvers(arguments):
+        for p in self._iter_bind_params(arguments):
+            self._evaluate_param_dependency(p)
             if p.kind in _POSITIONAL_KINDS:
                 if skip_pos is False:
-                    if self._check_param_dependency(r):
-                        args.append(r)
-                        deps.add(r)
-                    elif r.has_value:
-                        args.append(r)
+                    if p.has_value or p.has_dependency:
+                        args.append(p)
+                        aw_args += p.is_async
                     else:
                         skip_pos = True
                 continue
-            elif r.has_value:
-                vals[n] = r.value
-            elif self._check_param_dependency(r):
-                kwds.append(r)
-                deps.add(r)
+            elif p.has_value:
+                vals[p.key] = p.value
+            elif p.has_dependency:
+                kwds.append(p)
+                aw_kwds += p.is_async
+
 
         self.args = tuple(args)
         self.kwds = tuple(kwds)
         self.vals = frozendict(vals)
-        self.deps = frozenset(deps)
+        self.aw_args = not not aw_args
+        self.aw_kwds = not not aw_kwds
 
-    def _check_param_dependency(self, p: ParamResolver):
-        if False is p.has_dependency is p.has_value:
-            dep = p.dependency
-            p.has_dependency = not dep is _EMPTY and self.injector.is_provided(dep)
+    def _evaluate_param_dependency(self, p: BoundParam):
+        if not False is p.has_dependency:
+            if bound := self.injector.get_bound(p.dependency):
+                p.has_dependency = True
+                p.is_async = _is_aync_provider(bound)
+            
         return p.has_dependency
 
-
-    def evaluate_awaitables(self, ctx: "InjectorContext"):
-        assert self.has_aws is None
-      
-        self.aw_args = orderedset(
-            d for d in self.args 
-                if not d.has_value and d.has_dependency 
-                    and _is_aync_provider(ctx[d.dependency])
-        )
-        self.aw_kwds = orderedset(
-            d for d in self.kwds 
-                if not d.has_value and d.has_dependency 
-                    and _is_aync_provider(ctx[d.dependency])
-        )
-
-        self.has_aws = not not (self.aw_kwds or self.aw_args)
-
-
     def resolve_args(self, ctx: "InjectorContext"):
-        aw_args = self.aw_args
-        aws = []
-        args = []
-        i = 0
-        for p in self.args:
-            if p.has_value is True:
-                args.append(p.value_factory)
-            else:
-                p in aw_args and aws.append(i)
-                args.append(ctx.find(p.dependency, default=p.default_factory))
-            i += 1
+        return _PositionalDeps(
+            (_PARAM_VALUE, p.value) if p.has_value 
+                else (_PARAM_CALLABLE, ctx.find(p.dependency, default=p.default_factory))
+            for p in self.args
+        )
 
-        return _PositionalDeps(args), tuple(aws)
+    def resolve_aw_args(self, ctx: "InjectorContext"):
+        if self.aw_args:
+            aw = []
+            args = []
+            i = 0
+            for p in self.args:
+                if p.has_value is True:
+                    args.append((_PARAM_VALUE, p.value))
+                else:
+                    func = ctx.find(p.dependency, default=p.default_factory)
+                    if p.is_async:
+                        aw.append(i)
+                        args.append((_PARAM_AWAITABLE, func))
+                    else:
+                        args.append((_PARAM_CALLABLE, func))
+                i += 1
+
+            return _PositionalDeps(args), tuple(aw)
+        else:
+            return self.resolve_args(ctx), ()
 
     def resolve_kwds(self, ctx: "InjectorContext"):
-        aw_kwds = self.aw_kwds
-        aws = []
         return _KeywordDeps(
-            kv for p in self.kwds
-                if (kv := (p.name, ctx.find(p.dependency, default=p.default_factory)))
-                and (not p in aw_kwds or aws.append(kv))
-        ), tuple(aws)
-       
+            (p.key, ctx.find(p.dependency, default=p.default_factory))
+            for p in self.kwds
+        )
 
-    def _decorate(self, func, ctx: "InjectorContext"):
-        is_async = self.is_async or self.has_aws
-        for fn in self.decorators:
-            func = fn(func, ctx, is_async=is_async)
-        return func
+    def resolve_aw_kwds(self, ctx: "InjectorContext"):
+        if self.aw_kwds:
+            aw = []
+            return _KeywordDeps(
+                kv for p in self.kwds
+                    if (kv := (p.key, ctx.find(p.dependency, default=p.default_factory)))
+                    and (not p.is_async or aw.append(kv))
+            ), tuple(aw)
+        else:
+            return self.resolve_kwds(ctx), ()
+  
+    def __call__(self, ctx: 'InjectorContext') -> Callable:
+        return self._get_wrapper(ctx)
 
-    def make_plain_handler(self):
-        if self.has_aws is None:
-            self.has_aws = False
+    def _get_wrapper(self, ctx):
+        try:
+            fn = self._wrapper_factory
+        except AttributeError:
+            self._wrapper_factory = fn = self._evaluate_wrapper()
+        return fn(self, ctx) 
 
-        def provider(ctx: "InjectorContext"):
-            return self._decorate(self.plain_wrapper(ctx), ctx)
-
-        return provider
-
-    def make_args_resolver(self):
-
-        def provider(ctx: "InjectorContext"):
-            nonlocal self
-            self.has_aws is None and self.evaluate_awaitables(ctx)
-            return self._decorate(self.arg_wrapper(ctx), ctx)
-
-        return provider
-
-    def make_kwds_handler(self):
-
-        def provider(ctx: "InjectorContext"):
-            nonlocal self
-            self.has_aws is None and self.evaluate_awaitables(ctx)
-            return self._decorate(self.kwd_wrapper(ctx), ctx)
-
-        return provider
-
-    def make_args_kwds_resolver(self):
-        
-        def provider(ctx: "InjectorContext"):
-            nonlocal self
-            self.has_aws is None and self.evaluate_awaitables(ctx)
-            return self._decorate(self.arg_kwd_wrapper(ctx), ctx)
-
-        return provider
+    def _evaluate_wrapper(self):
+        cls = self.__class__
+        if not self.signature.parameters:
+            return cls.plain_wrapper
+        elif not self.args:
+            if self.aw_kwds:
+                return cls.aw_kwds_wrapper  
+            else:
+                return cls.kwds_wrapper
+        elif not self.kwds:
+            if self.aw_args:
+                return cls.aw_args_wrapper  
+            else:
+                return cls.args_wrapper
+        else:
+            if self.aw_kwds or self.aw_args:
+                return cls.aw_args_kwds_wrapper  
+            else:
+                return cls.args_kwds_wrapper
 
     def plain_wrapper(self, ctx: 'InjectorContext'):
-        if self.is_async:
-            def make():
-                nonlocal self
-                return self.factory()
-            make.is_async = True
-            return make
-        else:
-            return self.factory
+        return self.factory
 
-    def arg_wrapper(self: Self, ctx: 'InjectorContext'):
-        args, aw_args = self.resolve_args(ctx)
+    def args_wrapper(self: Self, ctx: 'InjectorContext'):
+        args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
-        if aw_args: 
-            return AwaitFactory(func, vals, args=args, aw_args=aw_args, aw_call=self.is_async)
-        else:
-            def make():
-                nonlocal func, args, vals
-                return func(*args, **vals)
-            make.is_async = self.is_async
+        def make():
+            nonlocal func, args, vals
+            return func(*args, **vals)
         return make
 
-    def kwd_wrapper(self: Self, ctx: 'InjectorContext'):
-        kwds, aw_kwds = self.resolve_kwds(ctx)
+    def aw_args_wrapper(self: Self, ctx: 'InjectorContext'):
+        args, aw_args = self.resolve_aw_args(ctx)
+        return AwaitFactory(self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call)
+     
+    def kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
-        if aw_kwds: 
-            return AwaitFactory(func, vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.is_async)
-        else:
-            def make():
-                nonlocal func, kwds, vals
-                return func(**vals, **kwds)
-            make.is_async = self.is_async
+        def make():
+            nonlocal func, kwds, vals
+            return func(**vals, **kwds)
         return make
 
-    def arg_kwd_wrapper(self: Self, ctx: 'InjectorContext'):
-        args, aw_args = self.resolve_args(ctx)
-        kwds, aw_kwds = self.resolve_kwds(ctx)
+    def aw_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return AwaitFactory(self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call)
+
+    def args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        args = self.resolve_args(ctx)
+        kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
-        
-        if aw_kwds or aw_args:
-            return AwaitFactory(func, vals, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds, aw_call=self.is_async)
-        else:
-            def make():
-                nonlocal func, args, kwds, vals
-                return func(*args, **vals, **kwds)
-            make.is_async = self.is_async
+        def make():
+            nonlocal func, args, kwds, vals
+            return func(*args, **vals, **kwds)
         return make
 
+    def aw_args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        args, aw_args = self.resolve_aw_args(ctx)
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return AwaitFactory(self.factory, self.vals, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds, aw_call=self.aw_call)
+       
+       
 
 
 
@@ -558,9 +568,10 @@ _blank_slice = slice(None, None, None)
 _tuple_new = tuple.__new__
 _tuple_blank = ()
 
-__base_positional_deps = (tuple[Callable[[], _T]], t.Generic[_T]) if t.TYPE_CHECKING else (tuple,)
+__base_positional_deps = () if t.TYPE_CHECKING else (tuple,)
 
-class _PositionalDeps(*__base_positional_deps):
+
+class _PositionalDeps(tuple[tuple[_ParamBindType, Callable[[], _T]]], t.Generic[_T]):
 
     __slots__ = ()
     
@@ -571,7 +582,6 @@ class _PositionalDeps(*__base_positional_deps):
 
     def copy(self):
         return self[:]
-
     __copy__ = copy
 
     @t.overload
@@ -580,19 +590,21 @@ class _PositionalDeps(*__base_positional_deps):
     def __getitem__(self, slice: slice) -> Self: ...
 
     def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
-        item = self.get_raw(index)
-        if index.__class__ is slice:
-            return self.__raw_new__(item)
-        else:
-            return item()
+        bt, item = self.get_raw(index)
+        if bt is _PARAM_VALUE:
+            return item
+        return item()
 
     def __iter__(self) -> 'Iterator[tuple[_T, bool]]':
-        for f in self.iter_raw():
-            yield f()
+        for bt, yv in self.iter_raw():
+            if bt is _PARAM_VALUE:
+                yield yv
+            else:
+                yield yv()
             
     if t.TYPE_CHECKING:
-        def get_raw(index: int) -> Callable[[], _T]: ...
-        def iter_raw() -> Iterator[Callable[[], _T]]: ...
+        def get_raw(index: int) -> tuple[_ParamBindType, Callable[[], _T]]: ...
+        def iter_raw() -> Iterator[tuple[_ParamBindType, Callable[[], _T]]]: ...
     else:
         get_raw = tuple.__getitem__
         iter_raw = tuple.__iter__
@@ -601,7 +613,7 @@ class _PositionalDeps(*__base_positional_deps):
    
 class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
-    __slots__ = '_is_async',
+    __slots__ = ()
 
     def __reduce__(self):
         return tuple, (tuple(self),) 
@@ -609,14 +621,6 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
     def copy(self):
         return self[:]
     __copy__ = copy
-
-    @property
-    def is_async(self):
-        try:
-            return self._is_async
-        except AttributeError:
-            self._is_async = None
-            return None
 
     def __getitem__(self, name: str):
         return self.get_raw(name)()
@@ -644,7 +648,6 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
         raw_items = dict[str, Callable[[], _T]].items
         raw_values = dict[str, Callable[[], _T]].values
 
-    
     iter_raw = dict.__iter__
     get_raw = dict.__getitem__
     raw_items = dict.items
@@ -657,19 +660,17 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
 class AwaitFactory:
 
-    __slots__ = '_loop', '_func', '_args', '_kwds', '_vals', '_aw_args', '_aw_kwds', '_aw_call'
+    __slots__ = '_func', '_args', '_kwds', '_vals', '_aw_args', '_aw_kwds', '_aw_call'
 
     _func: Callable
     _args: _PositionalDeps
     _kwds: _KeywordDeps
     _vals: Mapping
 
-    is_async: bool = True
+    # is_async: bool = True
 
-
-    def __new__(cls, func, vals: Mapping=frozendict(), args: _PositionalDeps=emptydict(), kwds: _KeywordDeps=emptydict(), *, aw_args: tuple[int]=emptydict(), aw_kwds: tuple[str]=emptydict(), aw_call: bool=True, loop: asyncio.AbstractEventLoop=None) -> Self:
+    def __new__(cls, func, vals: Mapping=frozendict(), args: _PositionalDeps=emptydict(), kwds: _KeywordDeps=emptydict(), *, aw_args: tuple[int]=emptydict(), aw_kwds: tuple[str]=emptydict(), aw_call: bool=True) -> Self:
         self = _object_new(cls)
-        self._loop = get_running_loop() if loop is None else loop 
         self._func = func
         self._vals = vals
         self._args = args
@@ -699,21 +700,11 @@ class AwaitFactory:
 
 class FactoryFuture(Future):
 
-    # __slots__ = '_loop', '_factory', '_aws', '_result', 
-
     _asyncio_future_blocking = False
     _loop: AbstractEventLoop
     _factory: AwaitFactory
     _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
-    _result: _T
 
-    # def __new__(cls: type[Self], factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None) -> Self:
-    #     self = _object_new(cls)
-    #     self._loop = get_running_loop() if loop is None else loop
-    #     self._factory = factory
-    #     self._aws = aw_args, aw_kwds
-    #     return self
-    
     def __init__(self, factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None) -> Self:
         Future.__init__(self, loop=loop)
         self._factory = factory

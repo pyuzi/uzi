@@ -178,6 +178,13 @@ class Injector(ProviderRegistry):
                 return False
         return True
 
+    def get_bound(self, obj: Injectable, *, onlyself=False):
+        self.__boot.settle()
+        res = self.__bindings[obj]
+        if res is None and not onlyself and is_injectable(obj) and self.__parent:
+            return self.__parent.is_provided(obj)
+        return res
+
     def create_context(self, current: InjectorContext) -> InjectorContext:
         if parent := self.__parent:
             if not current.injector is parent:

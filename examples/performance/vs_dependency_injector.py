@@ -8,7 +8,7 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(.1e5)
+N = int(5e4)
 # N = 1
 
 res: dict[str, tuple[float, float]] = {}
@@ -64,9 +64,9 @@ class Container(containers.DeclarativeContainer):
         A(),
         b=b,
         c=c,
-        x='ex',
-        y='why',
-        z='zee'
+        # x='ex',
+        # y='why',
+        # z='zee'
     )
 
 

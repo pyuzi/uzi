@@ -11,7 +11,7 @@ from laza.di import Injector, context, inject
 from _benchmarkutil import Benchmark
 
 N = int(2e3)
-N = 1
+# N = 1
 
 ST = 0# .000000001
 
@@ -187,7 +187,7 @@ async def main():
 if __name__ == '__main__':
     import uvloop
 
-    # uvloop.install()
+    uvloop.install()
 
   
     asyncio.run(main(), debug=False)

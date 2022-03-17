@@ -7,6 +7,7 @@ from email.generator import Generator
 from email.policy import default
 from enum import Enum
 from itertools import starmap
+from threading import Lock
 import typing as t
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence, Collection, Iterator, Mapping, ItemsView, ValuesView
@@ -262,7 +263,7 @@ class BoundParam:
 
 
 @export
-class FactoryResolver:
+class FactoryBinding:
 
     __slots__ = (
         "factory",
@@ -303,14 +304,12 @@ class FactoryResolver:
         *,
         is_async: bool = None,
         arguments: Arguments = None,
-        decorators: Sequence = (),
     ):
         # self = object.__new__(cls)
         self.factory = factory
         self.injector = injector
         self.aw_call = iscoroutinefunction(factory) if is_async is None else is_async
         self.signature = signature or typed_signature(factory)
-        self.decorators = decorators
         self._evaluate(self._parse_arguments(arguments))
 
     @property
@@ -447,7 +446,10 @@ class FactoryResolver:
     def _evaluate_wrapper(self):
         cls = self.__class__
         if not self.signature.parameters:
-            return cls.plain_wrapper
+            if self.aw_call:
+                return cls.aw_plain_wrapper
+            else:
+                return cls.plain_wrapper
         elif not self.args:
             if self.aw_kwds:
                 return cls.aw_kwds_wrapper  
@@ -465,6 +467,9 @@ class FactoryResolver:
                 return cls.args_kwds_wrapper
 
     def plain_wrapper(self, ctx: 'InjectorContext'):
+        return self.factory
+
+    def aw_plain_wrapper(self, ctx: 'InjectorContext'):
         return self.factory
 
     def args_wrapper(self: Self, ctx: 'InjectorContext'):
@@ -511,8 +516,122 @@ class FactoryResolver:
        
 
 
+class SingletonFactoryBinding(FactoryBinding):
 
-class CallableFactoryResolver(FactoryResolver):
+    __slots__ = 'thread_safe',
+
+    @t.overload
+    def __init__(
+        self,
+        injector: 'Injector',
+        factory: Callable,
+        signature: Signature = None,
+        *,
+        is_async: bool = None,
+        arguments: Arguments = None,
+        thread_safe: bool=False,
+    ): ...
+
+    def __init__(self, *args, thread_safe: bool=False, **kwds):
+        self.thread_safe = thread_safe
+        super().__init__(*args, **kwds)
+
+    def plain_wrapper(self, ctx: 'InjectorContext'):
+        func = self.factory
+        value = Missing
+        lock = Lock() if self.thread_safe else None
+        def make():
+            nonlocal func, value
+            if value is Missing:
+                lock and lock.acquire(blocking=True)
+                try:
+                    if value is Missing:
+                        value = func()
+                finally:
+                    lock and lock.release()
+            return value
+        return make
+
+    def aw_plain_wrapper(self, ctx: 'InjectorContext'):
+        return
+
+    def args_wrapper(self: Self, ctx: 'InjectorContext'):
+        args = self.resolve_args(ctx)
+        vals = self.vals
+        func = self.factory
+
+        value = Missing
+        lock = Lock() if self.thread_safe else None
+        def make():
+            nonlocal func, value, args, vals
+            if value is Missing:
+                lock and lock.acquire(blocking=True)
+                try:
+                    if value is Missing:
+                        value = func(*args, **vals)
+                finally:
+                    lock and lock.release()
+            return value
+        return make
+
+    def aw_args_wrapper(self: Self, ctx: 'InjectorContext'):
+        args, aw_args = self.resolve_aw_args(ctx)
+        return AwaitFactory(self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call)
+     
+    def kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        kwds = self.resolve_kwds(ctx)
+        vals = self.vals
+        func = self.factory
+
+        value = Missing
+        lock = Lock() if self.thread_safe else None
+        def make():
+            nonlocal func, value, kwds, vals
+            if value is Missing:
+                lock and lock.acquire(blocking=True)
+                try:
+                    if value is Missing:
+                        value = func(**kwds, **vals)
+                finally:
+                    lock and lock.release()
+            return value
+        return make
+
+    def aw_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return AwaitFactory(self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call)
+
+    def args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        args = self.resolve_args(ctx)
+        kwds = self.resolve_kwds(ctx)
+        vals = self.vals
+        func = self.factory
+
+        value = Missing
+        lock = Lock() if self.thread_safe else None
+        def make():
+            nonlocal func, value, args, kwds, vals
+            if value is Missing:
+                lock and lock.acquire(blocking=True)
+                try:
+                    if value is Missing:
+                        value = func(*args, **kwds, **vals)
+                finally:
+                    lock and lock.release()
+            return value
+        return make
+
+    def aw_args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        args, aw_args = self.resolve_aw_args(ctx)
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return AwaitFactory(self.factory, self.vals, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds, aw_call=self.aw_call)
+       
+       
+
+
+
+
+class CallableFactoryResolver(FactoryBinding):
 
     __slots__ = ()
 

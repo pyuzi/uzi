@@ -17,7 +17,7 @@ from laza.common.typing import (Self, UnionType, get_args, get_origin,
 from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, is_injectable)
 from .functools import (
-    FactoryResolver,
+    FactoryBinding,
     decorators
 )
 
@@ -672,7 +672,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
 
-    _resolver_class: t.ClassVar[type[FactoryResolver]] = FactoryResolver
+    _resolver_class: t.ClassVar[type[FactoryBinding]] = FactoryBinding
     # _async_resolver_class: t.ClassVar[type[AsyncFactoryResolver]] = AsyncFactoryResolver
 
     def __init__(self, using: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:

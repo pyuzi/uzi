@@ -390,7 +390,7 @@ class FactoryBinding:
                         args.append(p)
                         p.is_async and aw_args.append(i)
                         pos_vals += p.has_value
-                        pos_deps += p.has_dependency and not p.has_value
+                        pos_deps += not not p.has_dependency and not p.has_value
                     else:
                         skip_pos = True
                     i += 1
@@ -437,25 +437,6 @@ class FactoryBinding:
 
     def resolve_aw_args(self, ctx: "InjectorContext"):
         return self.resolve_args(ctx), self.aw_args
-        # if self.aw_args:
-        #     aw = []
-        #     args = []
-        #     i = 0
-        #     for p in self.args:
-        #         if p.has_value is True:
-        #             args.append((_PARAM_VALUE, p.value))
-        #         else:
-        #             func = ctx.find(p.dependency, default=p.default_factory)
-        #             if p.is_async:
-        #                 aw.append(i)
-        #                 args.append((_PARAM_AWAITABLE, func))
-        #             else:
-        #                 args.append((_PARAM_CALLABLE, func))
-        #         i += 1
-
-        #     return _PositionalArgs(args), tuple(aw)
-        # else:
-        #     return self.resolve_args(ctx), ()
 
     def resolve_kwds(self, ctx: "InjectorContext"):
         return _KeywordDeps(

@@ -13,6 +13,7 @@ from collections.abc import (
     Callable,
     Collection,
     ItemsView,
+    KeyView,
     Iterable,
     Iterator,
     Mapping,
@@ -466,8 +467,6 @@ class FactoryBinding:
         cls = self.__class__
         if not self.signature.parameters:
             if self.aw_call:
-                return cls.aw_plain_wrapper
-            elif self.aw_call:
                 return cls.async_plain_wrapper
             else:
                 return cls.plain_wrapper
@@ -499,9 +498,6 @@ class FactoryBinding:
     def async_plain_wrapper(self, ctx: "InjectorContext"):
         return self.plain_wrapper(ctx)
 
-    def aw_plain_wrapper(self, ctx: "InjectorContext"):
-        return self.factory
-
     def args_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
         vals = self.vals
@@ -527,6 +523,8 @@ class FactoryBinding:
         vals = self.vals
         func = self.factory
 
+        kwds = _KeyWordArgs(self.vals, kwds)
+        vals = {}
         def make():
             nonlocal func, kwds, vals
             return func(**vals, **kwds)
@@ -548,6 +546,8 @@ class FactoryBinding:
         vals = self.vals
         func = self.factory
 
+        kwds = _KeyWordArgs(self.vals, kwds)
+        vals = {}
         def make():
             nonlocal func, args, kwds, vals
             return func(*args, **vals, **kwds)
@@ -611,9 +611,6 @@ class SingletonFactoryBinding(FactoryBinding):
         return make
 
     def async_plain_wrapper(self, ctx: "InjectorContext"):
-        return self.aw_plain_wrapper(ctx)
-
-    def aw_plain_wrapper(self, ctx: "InjectorContext"):
         return FutureSingletonWrapper(
             self.factory, aw_call=True, thread_safe=self.thread_safe
         )
@@ -775,6 +772,80 @@ class CallableFactoryResolver(FactoryBinding):
             )
         return lambda: make
 
+    def plain_wrapper(self, ctx: "InjectorContext"):
+        func = self.factory
+        return lambda: func
+
+    def args_wrapper(self: Self, ctx: "InjectorContext"):
+        args = self.resolve_args(ctx)
+        vals = self.vals
+        func = self.factory
+        if vals:
+            def make(*a, **kw):
+                nonlocal func, args, vals
+                if kw: vals = vals | kw
+                return func(*args, *a, **vals)
+        
+        return make
+
+    def async_args_wrapper(self, ctx: "InjectorContext"):
+        return self.args_wrapper(ctx)
+
+    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
+        args, aw_args = self.resolve_aw_args(ctx)
+        return FutureFactoryWrapper(
+            self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call
+        )
+
+    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        kwds = self.resolve_kwds(ctx)
+        vals = self.vals
+        func = self.factory
+
+        def make():
+            nonlocal func, kwds, vals
+            return func(**vals, **kwds)
+
+        return make
+
+    def async_kwds_wrapper(self, ctx: "InjectorContext"):
+        return self.kwds_wrapper(ctx)
+
+    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return FutureFactoryWrapper(
+            self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call
+        )
+
+    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        args = self.resolve_args(ctx)
+        kwds = self.resolve_kwds(ctx)
+        vals = self.vals
+        func = self.factory
+
+        def make():
+            nonlocal func, args, kwds, vals
+            return func(*args, **vals, **kwds)
+
+        return make
+
+    def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
+        return self.args_kwds_wrapper(ctx)
+
+    def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        args, aw_args = self.resolve_aw_args(ctx)
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return FutureFactoryWrapper(
+            self.factory,
+            self.vals,
+            args=args,
+            kwds=kwds,
+            aw_args=aw_args,
+            aw_kwds=aw_kwds,
+            aw_call=self.aw_call,
+        )
+
+
 
 
 
@@ -842,14 +913,6 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
     __slots__ = ()
 
-    def __reduce__(self):
-        return tuple, (tuple(self),)
-
-    def copy(self):
-        return self[:]
-
-    __copy__ = copy
-
     def __getitem__(self, name: str):
         return self.get_raw(name)()
 
@@ -870,19 +933,51 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
     def values(self) -> "ValuesView[_T]":
         return ValuesView(self)
 
-    if t.TYPE_CHECKING:
-
-        def get_raw(name: str) -> Callable[[], _T]:
-            ...
-
-        def iter_raw() -> Iterator[str]:
-            ...
-
-        raw_items = dict[str, Callable[[], _T]].items
-        raw_values = dict[str, Callable[[], _T]].values
-
     iter_raw = dict.__iter__
     get_raw = dict.__getitem__
+    raw_items = dict.items
+    raw_values = dict.values
+
+
+class _KeyWordArgs(dict[str, _T], t.Generic[_T]):
+
+    __slots__ = 'deps',
+
+    def __init__(self, vals: Mapping[str, _T], deps: _KeywordDeps, /):
+        self.__raw_init__(vals)
+        self.deps = deps
+
+    def __missing__(self, name: str):
+        return self.deps[name]
+
+    def __iter__(self) -> "Iterator[str]":
+        yield from self.iter_raw()
+        skip = self.raw_keys()
+        for n in self.deps:
+            if not n in skip:
+                yield n
+
+    def __reduce__(self):
+        return dict, (tuple(self.items()),)
+
+    def copy(self):
+        return self.__class__(self)
+
+    __copy__ = copy
+
+    def keys(self) -> "ItemsView[tuple[str, _T]]":
+        return KeyView(self)
+
+    def items(self) -> "ItemsView[tuple[str, _T]]":
+        return ItemsView(self)
+
+    def values(self) -> "ValuesView[_T]":
+        return ValuesView(self)
+
+    __raw_init__ = dict.__init__
+    iter_raw = dict.__iter__
+    # get_raw = dict.__getitem__
+    raw_keys = dict.keys
     raw_items = dict.items
     raw_values = dict.values
 

@@ -3,40 +3,50 @@
 # cython: wraparound=False
 
 
+import asyncio
+import typing as t
+from asyncio import AbstractEventLoop, ensure_future
+from asyncio import gather as async_gather
+from asyncio import get_running_loop
+from collections import defaultdict
+from collections.abc import (
+    Callable,
+    Collection,
+    ItemsView,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+    ValuesView,
+)
 from email.generator import Generator
 from email.policy import default
 from enum import Enum
-from itertools import starmap
-from threading import Lock
-import typing as t
-from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence, Collection, Iterator, Mapping, ItemsView, ValuesView
 from inspect import Parameter, Signature, isawaitable, iscoroutinefunction
-from asyncio import AbstractEventLoop, ensure_future, gather as async_gather, get_running_loop
-import asyncio
-
+from itertools import starmap
 from logging import getLogger
-from inject import T
+from threading import Lock
 
+from inject import T
 from laza.common.abc import abstractclass
 from laza.common.asyncio.futures import Future
-from laza.common.collections import Arguments, frozendict, orderedset, emptydict
+from laza.common.collections import Arguments, emptydict, frozendict, orderedset
 from laza.common.functools import Missing, export
 from laza.common.typing import Self, typed_signature
+from libs.common.laza.common.collections import FactoryDict, frozenorderedset
 from pytest import yield_fixture
 
-from libs.common.laza.common.collections import FactoryDict, frozenorderedset
-
-from .. import Injectable, InjectionMarker, T_Injectable, T_Injected, is_injectable_annotation
-
+from .. import (
+    Injectable,
+    InjectionMarker,
+    T_Injectable,
+    T_Injected,
+    is_injectable_annotation,
+)
 
 if t.TYPE_CHECKING:
     from ..injectors import Injector, InjectorContext
 
-
-
-
-import cython
 
 logger = getLogger(__name__)
 
@@ -68,7 +78,7 @@ _object_setattr = object.__setattr__
 @abstractclass
 class decorators:
     @staticmethod
-    def singleton(func: Callable, ctx: "InjectorContext", *, is_async: bool=False):
+    def singleton(func: Callable, ctx: "InjectorContext", *, is_async: bool = False):
         lock = ctx.lock()
         value = Missing
         if lock is None:
@@ -92,7 +102,7 @@ class decorators:
         return run
 
     @staticmethod
-    def resource(func: Callable, ctx: "InjectorContext", *, is_async: bool=False):
+    def resource(func: Callable, ctx: "InjectorContext", *, is_async: bool = False):
         lock = ctx.lock()
         value = Missing
 
@@ -117,7 +127,7 @@ class decorators:
         return run
 
     @staticmethod
-    def contextmanager(cm, ctx: "InjectorContext", *, is_async: bool=False):
+    def contextmanager(cm, ctx: "InjectorContext", *, is_async: bool = False):
         lock = ctx.lock()
         value = Missing
 
@@ -142,17 +152,16 @@ class decorators:
         return run
 
 
-
-
 def _is_aync_provider(obj) -> bool:
-    return getattr(obj, 'is_async', False) is True
-
+    return getattr(obj, "is_async", False) is True
 
 
 class _ParamBindType(Enum):
-    awaitable: '_ParamBindType'  = 'awaitable'
-    callable: '_ParamBindType'  = 'callable'
-    value: '_ParamBindType'  = 'value'
+    awaitable: "_ParamBindType" = "awaitable"
+    callable: "_ParamBindType" = "callable"
+    default: "_ParamBindType" = "default"
+    value: "_ParamBindType" = "value"
+    none: "_ParamBindType" = None
 
 
 _PARAM_AWAITABLE = _ParamBindType.awaitable
@@ -173,6 +182,7 @@ class BoundParam:
         "has_dependency",
         "_value_factory",
         "_default_factory",
+        "_bind_type",
         "is_async",
     )
 
@@ -189,12 +199,14 @@ class BoundParam:
     # _aw_value: 'AwaitValue'
     # _aw_default: 'AwaitValue'
 
-    def __new__(cls, param: Parameter, value: t.Any = _EMPTY, key: t.Union[str, int]=None):
+    def __new__(
+        cls, param: Parameter, value: t.Any = _EMPTY, key: t.Union[str, int] = None
+    ):
         self = object.__new__(cls)
         self.param = param
         self.key = key or param.name
         self.has_value = self.is_async = self.has_default = self.has_dependency = False
-       
+
         if isinstance(value, InjectionMarker):
             self.dependency = value
             self.has_dependency = True
@@ -214,32 +226,49 @@ class BoundParam:
             if is_injectable_annotation(annotation):
                 self.dependency = annotation
                 self.has_dependency = isinstance(annotation, InjectionMarker) or None
-       
+
         return self
 
     @property
     def name(self):
         return self.param.name
-        
+
+    @property
+    def bind_type(self):
+        try:
+            return self._bind_type
+        except AttributeError:
+            if self.has_value:
+                self._bind_type = _PARAM_VALUE
+            elif self.is_async:
+                self._bind_type = _PARAM_AWAITABLE
+            elif self.has_dependency:
+                self._bind_type = _PARAM_CALLABLE
+            elif self.has_default:
+                self._bind_type = _ParamBindType.default
+            else:
+                self._bind_type = _ParamBindType.none
+            return self._bind_type
+
     @property
     def default(self):
         return self.param.default
-        
+
     @property
     def annotation(self):
         return self.param.annotation
-        
+
     @property
     def kind(self):
         return self.param.kind
-        
+
     @property
     def value_factory(self) -> None:
         try:
-            return self._value_factory 
+            return self._value_factory
         except AttributeError as e:
             if not self.has_value:
-                raise AttributeError(f'`value`') from e
+                raise AttributeError(f"`value`") from e
             value = self.value
             self._value_factory = lambda: value
             return self._value_factory
@@ -247,19 +276,16 @@ class BoundParam:
     @property
     def default_factory(self) -> None:
         try:
-            return self._default_factory 
+            return self._default_factory
         except AttributeError as e:
             if self.has_default is True:
                 default = self.default
-                self._default_factory = lambda: default 
+                self._default_factory = lambda: default
             elif self.has_dependency is True:
                 self._default_factory = Missing
             else:
-                raise AttributeError(f'`default_factory`')
+                raise AttributeError(f"`default_factory`")
             return self._default_factory
-
-
-
 
 
 @export
@@ -277,11 +303,13 @@ class FactoryBinding:
         "kwds",
         "deps",
         "vals",
-        "_wrapper_factory",
+        "_pos_vals",
+        "_pos_deps",
+        "_wrapper_method",
     )
 
     factory: Callable
-    injector: 'Injector'
+    injector: "Injector"
     arguments: dict[str, t.Any]
     signature: Signature
     decorators: list[Callable[[Callable], Callable]]
@@ -289,15 +317,15 @@ class FactoryBinding:
     aws: frozenorderedset[BoundParam]
     deps: frozenset[BoundParam]
     args: tuple[BoundParam]
-    aw_args: bool
+    aw_args: tuple[int]
     kwds: tuple[BoundParam]
-    aw_kwds: bool
+    aw_kwds: tuple[str]
     vals: frozendict[str, t.Any]
     aw_call: bool
 
     def __init__(
         self,
-        injector: 'Injector',
+        injector: "Injector",
         factory: Callable,
         signature: Signature = None,
         *,
@@ -318,10 +346,7 @@ class FactoryBinding:
     @property
     def dependencies(self):
         return {
-            p.dependency 
-                for _ in (self.args, self.kwds) 
-                    for p in _ 
-                        if p.has_dependency
+            p.dependency for _ in (self.args, self.kwds) for p in _ if p.has_dependency
         }
 
     def _parse_arguments(self, arguments: Arguments = None):
@@ -353,8 +378,9 @@ class FactoryBinding:
         args = []
         kwds = []
         vals = {}
-        aw_args = 0
-        aw_kwds = 0
+        aw_args = []
+        aw_kwds = []
+        pos_vals = pos_deps = i = 0
         skip_pos = False
         for p in self._iter_bind_params(arguments):
             self._evaluate_param_dependency(p)
@@ -362,58 +388,74 @@ class FactoryBinding:
                 if skip_pos is False:
                     if p.has_value or p.has_dependency:
                         args.append(p)
-                        aw_args += p.is_async
+                        p.is_async and aw_args.append(i)
+                        pos_vals += p.has_value
+                        pos_deps += p.has_dependency and not p.has_value
                     else:
                         skip_pos = True
+                    i += 1
                 continue
             elif p.has_value:
                 vals[p.key] = p.value
             elif p.has_dependency:
                 kwds.append(p)
-                aw_kwds += p.is_async
-
+                p.is_async and aw_kwds.append(p.key)
 
         self.args = tuple(args)
         self.kwds = tuple(kwds)
         self.vals = frozendict(vals)
-        self.aw_args = not not aw_args
-        self.aw_kwds = not not aw_kwds
+        self._pos_vals = pos_vals
+        self._pos_deps = pos_deps
+        self.aw_args = tuple(aw_args)
+        self.aw_kwds = tuple(aw_kwds)
 
     def _evaluate_param_dependency(self, p: BoundParam):
         if not False is p.has_dependency:
             if bound := self.injector.get_bound(p.dependency):
                 p.has_dependency = True
                 p.is_async = _is_aync_provider(bound)
-            
+
         return p.has_dependency
 
     def resolve_args(self, ctx: "InjectorContext"):
-        return _PositionalDeps(
-            (_PARAM_VALUE, p.value) if p.has_value 
-                else (_PARAM_CALLABLE, ctx.find(p.dependency, default=p.default_factory))
-            for p in self.args
-        )
+        if self.args:
+            if self._pos_vals > 0 < self._pos_deps:
+                return _PositionalArgs((
+                        p.bind_type, 
+                        p.value if p.bind_type is _PARAM_VALUE
+                            else ctx.find(p.dependency, default=p.default_factory)
+                    ) for p in self.args
+                )
+            elif self._pos_deps > 0:
+                return _PositionalDeps(
+                    ctx.find(p.dependency, default=p.default_factory)
+                    for p in self.args
+                )
+            else:
+                return tuple(p.value for p in self.args)
+        return ()
 
     def resolve_aw_args(self, ctx: "InjectorContext"):
-        if self.aw_args:
-            aw = []
-            args = []
-            i = 0
-            for p in self.args:
-                if p.has_value is True:
-                    args.append((_PARAM_VALUE, p.value))
-                else:
-                    func = ctx.find(p.dependency, default=p.default_factory)
-                    if p.is_async:
-                        aw.append(i)
-                        args.append((_PARAM_AWAITABLE, func))
-                    else:
-                        args.append((_PARAM_CALLABLE, func))
-                i += 1
+        return self.resolve_args(ctx), self.aw_args
+        # if self.aw_args:
+        #     aw = []
+        #     args = []
+        #     i = 0
+        #     for p in self.args:
+        #         if p.has_value is True:
+        #             args.append((_PARAM_VALUE, p.value))
+        #         else:
+        #             func = ctx.find(p.dependency, default=p.default_factory)
+        #             if p.is_async:
+        #                 aw.append(i)
+        #                 args.append((_PARAM_AWAITABLE, func))
+        #             else:
+        #                 args.append((_PARAM_CALLABLE, func))
+        #         i += 1
 
-            return _PositionalDeps(args), tuple(aw)
-        else:
-            return self.resolve_args(ctx), ()
+        #     return _PositionalArgs(args), tuple(aw)
+        # else:
+        #     return self.resolve_args(ctx), ()
 
     def resolve_kwds(self, ctx: "InjectorContext"):
         return _KeywordDeps(
@@ -423,26 +465,23 @@ class FactoryBinding:
 
     def resolve_aw_kwds(self, ctx: "InjectorContext"):
         if self.aw_kwds:
-            aw = []
-            return _KeywordDeps(
-                kv for p in self.kwds
-                    if (kv := (p.key, ctx.find(p.dependency, default=p.default_factory)))
-                    and (not p.is_async or aw.append(kv))
-            ), tuple(aw)
+            deps = self.resolve_kwds(ctx)
+            return deps, tuple((n, deps.pop(n)) for n in self.aw_kwds)
         else:
             return self.resolve_kwds(ctx), ()
-  
-    def __call__(self, ctx: 'InjectorContext') -> Callable:
-        return self._get_wrapper(ctx)
 
-    def _get_wrapper(self, ctx):
+    def __call__(self, ctx: "InjectorContext") -> Callable:
+        return self.wrapper_method(self, ctx)
+
+    @property
+    def wrapper_method(self):
         try:
-            fn = self._wrapper_factory
+            return self._wrapper_method
         except AttributeError:
-            self._wrapper_factory = fn = self._evaluate_wrapper()
-        return fn(self, ctx) 
+            self._wrapper_method = self._evaluate_wrapper_method()
+            return self._wrapper_method
 
-    def _evaluate_wrapper(self):
+    def _evaluate_wrapper_method(self):
         cls = self.__class__
         if not self.signature.parameters:
             if self.aw_call:
@@ -453,112 +492,130 @@ class FactoryBinding:
                 return cls.plain_wrapper
         elif not self.args:
             if self.aw_kwds:
-                return cls.aw_kwds_wrapper  
+                return cls.aw_kwds_wrapper
             elif self.aw_call:
                 return cls.async_kwds_wrapper
             else:
                 return cls.kwds_wrapper
         elif not self.kwds:
             if self.aw_args:
-                return cls.aw_args_wrapper  
+                return cls.aw_args_wrapper
             elif self.aw_call:
                 return cls.async_args_wrapper
             else:
                 return cls.args_wrapper
         else:
             if self.aw_kwds or self.aw_args:
-                return cls.aw_args_kwds_wrapper  
+                return cls.aw_args_kwds_wrapper
             elif self.aw_call:
                 return cls.async_args_kwds_wrapper
             else:
                 return cls.args_kwds_wrapper
 
-    def plain_wrapper(self, ctx: 'InjectorContext'):
+    def plain_wrapper(self, ctx: "InjectorContext"):
         return self.factory
 
-    def async_plain_wrapper(self, ctx: 'InjectorContext'):
+    def async_plain_wrapper(self, ctx: "InjectorContext"):
         return self.plain_wrapper(ctx)
 
-    def aw_plain_wrapper(self, ctx: 'InjectorContext'):
+    def aw_plain_wrapper(self, ctx: "InjectorContext"):
         return self.factory
 
-    def args_wrapper(self: Self, ctx: 'InjectorContext'):
+    def args_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
+
         def make():
             nonlocal func, args, vals
             return func(*args, **vals)
+
         return make
 
-    def async_args_wrapper(self, ctx: 'InjectorContext'):
+    def async_args_wrapper(self, ctx: "InjectorContext"):
         return self.args_wrapper(ctx)
 
-    def aw_args_wrapper(self: Self, ctx: 'InjectorContext'):
+    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
         args, aw_args = self.resolve_aw_args(ctx)
-        return FutureFactoryWrapper(self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call)
-     
-    def kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        return FutureFactoryWrapper(
+            self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call
+        )
+
+    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
+
         def make():
             nonlocal func, kwds, vals
             return func(**vals, **kwds)
+
         return make
 
-    def async_kwds_wrapper(self, ctx: 'InjectorContext'):
+    def async_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.kwds_wrapper(ctx)
 
-    def aw_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureFactoryWrapper(self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call)
+        return FutureFactoryWrapper(
+            self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call
+        )
 
-    def args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
+
         def make():
             nonlocal func, args, kwds, vals
             return func(*args, **vals, **kwds)
+
         return make
 
-    def async_args_kwds_wrapper(self, ctx: 'InjectorContext'):
+    def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.args_kwds_wrapper(ctx)
 
-    def aw_args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+    def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args, aw_args = self.resolve_aw_args(ctx)
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureFactoryWrapper(self.factory, self.vals, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds, aw_call=self.aw_call)
-       
-       
+        return FutureFactoryWrapper(
+            self.factory,
+            self.vals,
+            args=args,
+            kwds=kwds,
+            aw_args=aw_args,
+            aw_kwds=aw_kwds,
+            aw_call=self.aw_call,
+        )
 
 
 class SingletonFactoryBinding(FactoryBinding):
 
-    __slots__ = 'thread_safe',
+    __slots__ = ("thread_safe",)
 
     @t.overload
     def __init__(
         self,
-        injector: 'Injector',
+        injector: "Injector",
         factory: Callable,
         signature: Signature = None,
         *,
         is_async: bool = None,
         arguments: Arguments = None,
-        thread_safe: bool=False,
-    ): ...
+        thread_safe: bool = False,
+    ):
+        ...
 
-    def __init__(self, *args, thread_safe: bool=False, **kwds):
+    def __init__(self, *args, thread_safe: bool = False, **kwds):
         self.thread_safe = thread_safe
         super().__init__(*args, **kwds)
 
-    def plain_wrapper(self, ctx: 'InjectorContext'):
+    def plain_wrapper(self, ctx: "InjectorContext"):
         func = self.factory
         value = Missing
         lock = Lock() if self.thread_safe else None
+
         def make():
             nonlocal func, value
             if value is Missing:
@@ -569,21 +626,25 @@ class SingletonFactoryBinding(FactoryBinding):
                 finally:
                     lock and lock.release()
             return value
+
         return make
 
-    def async_plain_wrapper(self, ctx: 'InjectorContext'):
+    def async_plain_wrapper(self, ctx: "InjectorContext"):
         return self.aw_plain_wrapper(ctx)
-    
-    def aw_plain_wrapper(self, ctx: 'InjectorContext'):
-        return FutureSingletonWrapper(self.factory,  aw_call=True, thread_safe=self.thread_safe)
 
-    def args_wrapper(self: Self, ctx: 'InjectorContext'):
+    def aw_plain_wrapper(self, ctx: "InjectorContext"):
+        return FutureSingletonWrapper(
+            self.factory, aw_call=True, thread_safe=self.thread_safe
+        )
+
+    def args_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
 
         value = Missing
         lock = Lock() if self.thread_safe else None
+
         def make():
             nonlocal func, value, args, vals
             if value is Missing:
@@ -594,22 +655,31 @@ class SingletonFactoryBinding(FactoryBinding):
                 finally:
                     lock and lock.release()
             return value
+
         return make
 
-    def async_args_wrapper(self, ctx: 'InjectorContext'):
+    def async_args_wrapper(self, ctx: "InjectorContext"):
         return self.aw_args_wrapper(ctx)
 
-    def aw_args_wrapper(self: Self, ctx: 'InjectorContext'):
+    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
         args, aw_args = self.resolve_aw_args(ctx)
-        return FutureSingletonWrapper(self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call, thread_safe=self.thread_safe)
-     
-    def kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+        return FutureSingletonWrapper(
+            self.factory,
+            self.vals,
+            args=args,
+            aw_args=aw_args,
+            aw_call=self.aw_call,
+            thread_safe=self.thread_safe,
+        )
+
+    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
 
         value = Missing
         lock = Lock() if self.thread_safe else None
+
         def make():
             nonlocal func, value, kwds, vals
             if value is Missing:
@@ -620,16 +690,24 @@ class SingletonFactoryBinding(FactoryBinding):
                 finally:
                     lock and lock.release()
             return value
+
         return make
 
-    def async_kwds_wrapper(self, ctx: 'InjectorContext'):
+    def async_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.aw_kwds_wrapper(ctx)
 
-    def aw_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureSingletonWrapper(self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call, thread_safe=self.thread_safe)
+        return FutureSingletonWrapper(
+            self.factory,
+            self.vals,
+            kwds=kwds,
+            aw_kwds=aw_kwds,
+            aw_call=self.aw_call,
+            thread_safe=self.thread_safe,
+        )
 
-    def args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
@@ -637,6 +715,7 @@ class SingletonFactoryBinding(FactoryBinding):
 
         value = Missing
         lock = Lock() if self.thread_safe else None
+
         def make():
             nonlocal func, value, args, kwds, vals
             if value is Missing:
@@ -647,19 +726,25 @@ class SingletonFactoryBinding(FactoryBinding):
                 finally:
                     lock and lock.release()
             return value
+
         return make
 
-    def async_args_kwds_wrapper(self, ctx: 'InjectorContext'):
+    def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.aw_args_kwds_wrapper(ctx)
 
-    def aw_args_kwds_wrapper(self: Self, ctx: 'InjectorContext'):
+    def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args, aw_args = self.resolve_aw_args(ctx)
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureSingletonWrapper(self.factory, self.vals, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds, aw_call=self.aw_call, thread_safe=self.thread_safe)
-       
-       
-
-
+        return FutureSingletonWrapper(
+            self.factory,
+            self.vals,
+            args=args,
+            kwds=kwds,
+            aw_args=aw_args,
+            aw_kwds=aw_kwds,
+            aw_call=self.aw_call,
+            thread_safe=self.thread_safe,
+        )
 
 
 class CallableFactoryResolver(FactoryBinding):
@@ -678,6 +763,7 @@ class CallableFactoryResolver(FactoryBinding):
 
     def kwd_wrap_func(self, func, kwds, vals):
         if vals:
+
             def make(*a, **kw):
                 nonlocal self, func, kwds, vals
                 kw = vals | kw
@@ -695,10 +781,10 @@ class CallableFactoryResolver(FactoryBinding):
                 nonlocal self, func, kwds, vals
                 kw = vals | kw
                 return func(
-                        *self.iargs(args, a),
-                        **kw,
-                        **self.ikwds(kwds, kw),
-                    )
+                    *self.iargs(args, a),
+                    **kw,
+                    **self.ikwds(kwds, kw),
+                )
 
             make.is_async = False
 
@@ -711,33 +797,27 @@ class CallableFactoryResolver(FactoryBinding):
 
 
 
-
-_blank_slice = slice(None, None, None)
-
-
-_tuple_new = tuple.__new__
-_tuple_blank = ()
-
-__base_positional_deps = () if t.TYPE_CHECKING else (tuple,)
-
-
-class _PositionalDeps(tuple[tuple[_ParamBindType, Callable[[], _T]]], t.Generic[_T]):
+class _PositionalArgs(tuple[tuple[_ParamBindType, Callable[[], _T]]], t.Generic[_T]):
 
     __slots__ = ()
-    
+
     __raw_new__ = classmethod(tuple.__new__)
 
     def __reduce__(self):
-        return tuple, (tuple(self),) 
+        return tuple, (tuple(self),)
 
     def copy(self):
         return self[:]
+
     __copy__ = copy
 
     @t.overload
-    def __getitem__(self, index: int) -> tuple[_T, bool]: ...
+    def __getitem__(self, index: int) -> tuple[_T, bool]:
+        ...
+
     @t.overload
-    def __getitem__(self, slice: slice) -> Self: ...
+    def __getitem__(self, slice: slice) -> Self:
+        ...
 
     def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
         bt, item = self.get_raw(index)
@@ -745,37 +825,54 @@ class _PositionalDeps(tuple[tuple[_ParamBindType, Callable[[], _T]]], t.Generic[
             return item
         return item()
 
-    def __iter__(self) -> 'Iterator[tuple[_T, bool]]':
+    def __iter__(self) -> "Iterator[tuple[_T, bool]]":
         for bt, yv in self.iter_raw():
             if bt is _PARAM_VALUE:
                 yield yv
             else:
                 yield yv()
-            
+
     if t.TYPE_CHECKING:
-        def get_raw(index: int) -> tuple[_ParamBindType, Callable[[], _T]]: ...
-        def iter_raw() -> Iterator[tuple[_ParamBindType, Callable[[], _T]]]: ...
+
+        def get_raw(index: int) -> tuple[_ParamBindType, Callable[[], _T]]:
+            ...
+
+        def iter_raw() -> Iterator[tuple[_ParamBindType, Callable[[], _T]]]:
+            ...
+
     else:
         get_raw = tuple.__getitem__
         iter_raw = tuple.__iter__
 
 
-   
+class _PositionalDeps(_PositionalArgs):
+    __slots__ = ()
+
+    def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
+        return self.get_raw(index)()
+
+    def __iter__(self) -> "Iterator[tuple[_T, bool]]":
+        for yv in self.iter_raw():
+            yield yv()
+
+
+
 class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
     __slots__ = ()
 
     def __reduce__(self):
-        return tuple, (tuple(self),) 
+        return tuple, (tuple(self),)
 
     def copy(self):
         return self[:]
+
     __copy__ = copy
 
     def __getitem__(self, name: str):
         return self.get_raw(name)()
 
-    def __iter__(self) -> 'Iterator[_T]':
+    def __iter__(self) -> "Iterator[_T]":
         return self.iter_raw()
 
     def __reduce__(self):
@@ -786,15 +883,20 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
     __copy__ = copy
 
-    def items(self) -> 'ItemsView[tuple[str, _T]]':
+    def items(self) -> "ItemsView[tuple[str, _T]]":
         return ItemsView(self)
 
-    def values(self) -> 'ValuesView[_T]':
+    def values(self) -> "ValuesView[_T]":
         return ValuesView(self)
-            
+
     if t.TYPE_CHECKING:
-        def get_raw(name: str) -> Callable[[], _T]: ...
-        def iter_raw() -> Iterator[str]: ...
+
+        def get_raw(name: str) -> Callable[[], _T]:
+            ...
+
+        def iter_raw() -> Iterator[str]:
+            ...
+
         raw_items = dict[str, Callable[[], _T]].items
         raw_values = dict[str, Callable[[], _T]].values
 
@@ -804,20 +906,26 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
     raw_values = dict.values
 
 
-
-
-
-
 class FutureFactoryWrapper:
 
-    __slots__ = '_func', '_args', '_kwds', '_vals', '_aw_args', '_aw_kwds', '_aw_call'
+    __slots__ = "_func", "_args", "_kwds", "_vals", "_aw_args", "_aw_kwds", "_aw_call"
 
     _func: Callable
-    _args: _PositionalDeps
+    _args: _PositionalArgs
     _kwds: _KeywordDeps
     _vals: Mapping
 
-    def __new__(cls, func, vals: Mapping=frozendict(), args: _PositionalDeps=emptydict(), kwds: _KeywordDeps=emptydict(), *, aw_args: tuple[int]=emptydict(), aw_kwds: tuple[str]=emptydict(), aw_call: bool=True) -> Self:
+    def __new__(
+        cls,
+        func,
+        vals: Mapping = frozendict(),
+        args: _PositionalArgs = emptydict(),
+        kwds: _KeywordDeps = emptydict(),
+        *,
+        aw_args: tuple[int] = emptydict(),
+        aw_kwds: tuple[str] = emptydict(),
+        aw_call: bool = True,
+    ) -> Self:
         self = _object_new(cls)
         self._func = func
         self._vals = vals
@@ -829,32 +937,36 @@ class FutureFactoryWrapper:
         return self
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}:{self._func.__module__}.{self._func.__qualname__}()'
+        return f"{self.__class__.__name__}:{self._func.__module__}.{self._func.__qualname__}()"
 
     def __call__(self):
+        loop = get_running_loop()
         if aw_args := self._aw_args:
             _args = self._args
-            aw_args = { i: ensure_future(_args[i]) for i in aw_args }
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
         if aw_kwds := self._aw_kwds:
-            aw_kwds = { n: ensure_future(d()) for n, d in aw_kwds }
-        
-        return FactoryFuture(self, aw_args, aw_kwds)
+            aw_kwds = {n: ensure_future(d(), loop=loop) for n, d in aw_kwds}
 
+        return FactoryFuture(self, aw_args, aw_kwds, loop=loop)
 
 
 class FutureSingletonWrapper(FutureFactoryWrapper):
 
-    __slots__ = '__value', '__lock',
+    __slots__ = (
+        "__value",
+        "__lock",
+    )
 
     __lock: Lock
 
     if not t.TYPE_CHECKING:
-        def __new__(cls, *args, thread_safe: bool, **kwds) -> Self:
+
+        def __new__(cls, *args, thread_safe: bool = True, **kwds) -> Self:
             self = FutureFactoryWrapper.__new__(cls, *args, **kwds)
             self.__value = Missing
             self.__lock = Lock() if thread_safe else None
             return self
-        
+
     def __call__(self):
         if self.__value is Missing:
             if lock := self.__lock:
@@ -868,20 +980,21 @@ class FutureSingletonWrapper(FutureFactoryWrapper):
         return self.__value
 
 
-
-
 class FactoryFuture(Future):
 
     _asyncio_future_blocking = False
     _loop: AbstractEventLoop
     _factory: FutureFactoryWrapper
     _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
 
-    def __init__(self, factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None) -> Self:
+    def __init__(
+        self, factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None
+    ) -> Self:
         Future.__init__(self, loop=loop)
         self._factory = factory
         self._aws = aw_args, aw_kwds
-    
+
     def __await__(self):
         if not self.done():
             self._asyncio_future_blocking = True
@@ -892,18 +1005,21 @@ class FactoryFuture(Future):
                 for k, aw in aw_args.items():
                     aw_args[k] = yield from aw
                 _args = factory._args
-                args = ((aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))))
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
             else:
                 args = factory._args
 
             if aw_kwds:
+
                 for k, aw in aw_kwds.items():
                     aw_kwds[k] = yield from aw
-            
+
             res = factory._func(*args, **aw_kwds, **factory._kwds, **factory._vals)
             if factory._aw_call:
                 res = yield from ensure_future(res, loop=self._loop)
-            self.set_result(res) # res
+            self.set_result(res)  # res
             return res
         return self.result()
 

@@ -104,8 +104,8 @@ Singleton = providers.Singleton
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
-    # b = providers.Factory(B.make, a)
-    b = Singleton(B.make, a)
+    b = providers.Factory(B.make, a)
+    # b = Singleton(B.make, a)
     c = Singleton(C.make, a, b=b)
     test = providers.Factory(
         Test.make,

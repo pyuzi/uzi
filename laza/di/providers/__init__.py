@@ -18,6 +18,7 @@ from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injec
                 T_Injected, is_injectable)
 from .functools import (
     FactoryBinding,
+    SingletonFactoryBinding,
     decorators
 )
 
@@ -659,7 +660,7 @@ _none_or_ellipsis = frozenset([None, ...])
 class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     arguments: Arguments = _Attr(default_factory=Arguments)
-    is_shared: bool = False
+    is_shared: t.ClassVar[bool] = False
     
     _signature: Signature = None
     _blank_signature: t.ClassVar[Signature] = Signature()
@@ -668,12 +669,10 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         Parameter('__Parameter_var_keyword', Parameter.VAR_KEYWORD),
     ])
 
-    decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]] = ()
+    # decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]] = ()
+    # _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
 
-    _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
-
-    _resolver_class: t.ClassVar[type[FactoryBinding]] = FactoryBinding
-    # _async_resolver_class: t.ClassVar[type[AsyncFactoryResolver]] = AsyncFactoryResolver
+    _binding_class: t.ClassVar[type[FactoryBinding]] = FactoryBinding
 
     def __init__(self, using: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         super().__init__()
@@ -698,8 +697,8 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self.__set_attr(arguments=self.arguments.replace(kwargs=kwargs))
         return self
         
-    def singleton(self, is_singleton: bool = True) -> Self:
-        self.__set_attr(is_shared=is_singleton)
+    def singleton(self, is_singleton: bool = True, *, thread_safe: bool=False) -> Self:
+        self.__set_attr(is_shared=is_singleton, thread_safe=thread_safe)
         return self
 
     @t.overload
@@ -725,13 +724,6 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self.__set_attr(is_async=is_async)
         return self
 
-    def decorate(self, *decorators: abc.Callable[[abc.Callable], abc.Callable], replace: bool=False) -> Self:
-        if replace is True:
-            self.decorators = decorators
-        else:
-            self.decorators = self.decorators + decorators
-        return self
-
     def get_signature(self):
         sig = self._signature
         if sig is None:
@@ -744,13 +736,9 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature if self.arguments else self._blank_signature
 
-    def _collect_decorators(self):
-        return self.decorators
-
     def _onfreeze(self):
         if None is self.is_async:
             self.__set_attr(is_async=self._is_async_factory())
-        self.__set_attr(_all_decorators=tuple(self._collect_decorators()))
 
     def _is_async_factory(self) -> bool:
         return iscoroutinefunction(self.uses)
@@ -759,30 +747,41 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         return self._uses
 
     def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
-        return self._create_resolver(injector), None
+        return self._create_binding(injector), None
 
-    def _create_resolver(self, injector: "Injector"):
-        return self._resolver_class(
+    def _create_binding(self, injector: "Injector"):
+        return self._binding_class(
                 injector,
                 self.uses, 
                 self.get_signature(),
                 is_async=self.is_async,
                 arguments=self.arguments, 
-                decorators=self._all_decorators
             )
 
 
 
 
 @export()
+class Singleton(Factory[T_Injected]):
+
+    is_shared: t.ClassVar[bool] = True
+    thread_safe: bool = True
+    _binding_class: t.ClassVar[type[SingletonFactoryBinding]] = SingletonFactoryBinding
+
+    def _create_binding(self, injector: "Injector"):
+        return self._binding_class(
+                injector,
+                self.uses, 
+                self.get_signature(),
+                is_async=self.is_async,
+                arguments=self.arguments, 
+                thread_safe=self.thread_safe
+            )
+
+
+
+@export()
 class Callable(Factory[T_Injected]):
-
-    is_partial: bool = False
-    is_shared: t.ClassVar[bool] = False
-
-    def partial(self, is_partial: bool = True) -> Self:
-        self.__set_attr(is_partial=is_partial)
-        return self
 
     def _fallback_signature(self):
         return self._arbitrary_signature

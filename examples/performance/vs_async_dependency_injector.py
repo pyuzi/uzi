@@ -96,14 +96,15 @@ ioc = Injector()
 
 ioc.factory(A)
 ioc.factory(B).using(B.make)#.singleton()
-ioc.factory(C).using(C.make)#.singleton()
+ioc.singleton(C).using(C.make)#.singleton()
 ioc.factory(Test).using(Test.make)  # .singleton()
 
-# Singleton = providers.Singleton 
-Singleton = providers.Factory 
+Singleton = providers.Singleton 
+# Singleton = providers.Factory 
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
+    # b = providers.Factory(B.make, a)
     b = Singleton(B.make, a)
     c = Singleton(C.make, a, b=b)
     test = providers.Factory(
@@ -187,7 +188,7 @@ async def main():
 if __name__ == '__main__':
     import uvloop
 
-    uvloop.install()
+    # uvloop.install()
 
   
     asyncio.run(main(), debug=False)

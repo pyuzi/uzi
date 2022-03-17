@@ -46,13 +46,13 @@ class Test(object):
 ioc = Injector()
 
 ioc.factory(A)
-ioc.factory(B)#.singleton()
-ioc.factory(C)#.singleton()
+ioc.singleton(B)#.singleton()
+ioc.singleton(C)#.singleton()
 ioc.factory(Test).args('ex','why','zee', A()) #.kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
-# Singleton = providers.Singleton 
-Singleton = providers.Factory 
+Singleton = providers.Singleton 
+# Singleton = providers.Factory 
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)

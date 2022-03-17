@@ -13,7 +13,7 @@ from collections.abc import (
     Callable,
     Collection,
     ItemsView,
-    KeyView,
+    KeysView,
     Iterable,
     Iterator,
     Mapping,
@@ -421,16 +421,18 @@ class FactoryBinding:
     def resolve_args(self, ctx: "InjectorContext"):
         if self.args:
             if self._pos_vals > 0 < self._pos_deps:
-                return _PositionalArgs((
-                        p.bind_type, 
-                        p.value if p.bind_type is _PARAM_VALUE
-                            else ctx.find(p.dependency, default=p.default_factory)
-                    ) for p in self.args
+                return _PositionalArgs(
+                    (
+                        p.bind_type,
+                        p.value
+                        if p.bind_type is _PARAM_VALUE
+                        else ctx.find(p.dependency, default=p.default_factory),
+                    )
+                    for p in self.args
                 )
             elif self._pos_deps > 0:
                 return _PositionalDeps(
-                    ctx.find(p.dependency, default=p.default_factory)
-                    for p in self.args
+                    ctx.find(p.dependency, default=p.default_factory) for p in self.args
                 )
             else:
                 return tuple(p.value for p in self.args)
@@ -492,6 +494,10 @@ class FactoryBinding:
             else:
                 return cls.args_kwds_wrapper
 
+    def make_future_wrapper(self: Self, **kwds):
+        kwds.setdefault("aw_call", self.aw_call)
+        return FutureFactoryWrapper(self.factory, self.vals, **kwds)
+
     def plain_wrapper(self, ctx: "InjectorContext"):
         return self.factory
 
@@ -514,17 +520,13 @@ class FactoryBinding:
 
     def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
         args, aw_args = self.resolve_aw_args(ctx)
-        return FutureFactoryWrapper(
-            self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call
-        )
+        return self.make_future_wrapper(args=args, aw_args=aw_args)
 
     def kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
 
-        kwds = _KeyWordArgs(self.vals, kwds)
-        vals = {}
         def make():
             nonlocal func, kwds, vals
             return func(**vals, **kwds)
@@ -536,9 +538,7 @@ class FactoryBinding:
 
     def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureFactoryWrapper(
-            self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call
-        )
+        return self.make_future_wrapper(kwds=kwds, aw_kwds=aw_kwds)
 
     def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
@@ -546,11 +546,9 @@ class FactoryBinding:
         vals = self.vals
         func = self.factory
 
-        kwds = _KeyWordArgs(self.vals, kwds)
-        vals = {}
         def make():
             nonlocal func, args, kwds, vals
-            return func(*args, **vals, **kwds)
+            return func(*args, **kwds, **vals)
 
         return make
 
@@ -560,14 +558,8 @@ class FactoryBinding:
     def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args, aw_args = self.resolve_aw_args(ctx)
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureFactoryWrapper(
-            self.factory,
-            self.vals,
-            args=args,
-            kwds=kwds,
-            aw_args=aw_args,
-            aw_kwds=aw_kwds,
-            aw_call=self.aw_call,
+        return self.make_future_wrapper(
+            args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds
         )
 
 
@@ -592,6 +584,11 @@ class SingletonFactoryBinding(FactoryBinding):
         self.thread_safe = thread_safe
         super().__init__(*args, **kwds)
 
+    def make_future_wrapper(self: Self, **kwds):
+        kwds.setdefault("aw_call", self.aw_call)
+        kwds.setdefault("thread_safe", self.thread_safe)
+        return FutureSingletonWrapper(self.factory, self.vals, **kwds)
+
     def plain_wrapper(self, ctx: "InjectorContext"):
         func = self.factory
         value = Missing
@@ -611,9 +608,7 @@ class SingletonFactoryBinding(FactoryBinding):
         return make
 
     def async_plain_wrapper(self, ctx: "InjectorContext"):
-        return FutureSingletonWrapper(
-            self.factory, aw_call=True, thread_safe=self.thread_safe
-        )
+        return self.make_future_wrapper()
 
     def args_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
@@ -639,17 +634,6 @@ class SingletonFactoryBinding(FactoryBinding):
     def async_args_wrapper(self, ctx: "InjectorContext"):
         return self.aw_args_wrapper(ctx)
 
-    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
-        args, aw_args = self.resolve_aw_args(ctx)
-        return FutureSingletonWrapper(
-            self.factory,
-            self.vals,
-            args=args,
-            aw_args=aw_args,
-            aw_call=self.aw_call,
-            thread_safe=self.thread_safe,
-        )
-
     def kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
@@ -673,17 +657,6 @@ class SingletonFactoryBinding(FactoryBinding):
 
     def async_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.aw_kwds_wrapper(ctx)
-
-    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
-        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureSingletonWrapper(
-            self.factory,
-            self.vals,
-            kwds=kwds,
-            aw_kwds=aw_kwds,
-            aw_call=self.aw_call,
-            thread_safe=self.thread_safe,
-        )
 
     def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
@@ -710,112 +683,50 @@ class SingletonFactoryBinding(FactoryBinding):
     def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.aw_args_kwds_wrapper(ctx)
 
-    def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
-        args, aw_args = self.resolve_aw_args(ctx)
-        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureSingletonWrapper(
-            self.factory,
-            self.vals,
-            args=args,
-            kwds=kwds,
-            aw_args=aw_args,
-            aw_kwds=aw_kwds,
-            aw_call=self.aw_call,
-            thread_safe=self.thread_safe,
-        )
 
 
-class CallableFactoryResolver(FactoryBinding):
+
+class CallableFactoryBinding(FactoryBinding):
 
     __slots__ = ()
 
-    def plain_wrap_func(self, func):
-        return lambda: func
-
-    def arg_wrap_func(self, func, args, vals):
-        if vals:
-            fn = lambda *a, **kw: func(*self.iargs(args, a), **(vals | kw))
-        else:
-            fn = lambda *a, **kw: func(*self.iargs(args, a), **kw)
-        return lambda: fn
-
-    def kwd_wrap_func(self, func, kwds, vals):
-        if vals:
-
-            def make(*a, **kw):
-                nonlocal self, func, kwds, vals
-                kw = vals | kw
-                return func(*a, **kw, **self.ikwds(kwds, kw))
-
-            make.is_async = False
-        else:
-            make = lambda *a, **kw: func(*a, **kw, **self.ikwds(kwds, kw))
-        return lambda: make
-
-    def arg_kwd_wrap_func(self, func, args, kwds, vals):
-        if vals:
-
-            def make(*a, **kw):
-                nonlocal self, func, kwds, vals
-                kw = vals | kw
-                return func(
-                    *self.iargs(args, a),
-                    **kw,
-                    **self.ikwds(kwds, kw),
-                )
-
-            make.is_async = False
-
-        else:
-            make = lambda *a, **kw: func(
-                *self.iargs(args, a), **kw, **self.ikwds(kwds, kw)
-            )
-        return lambda: make
+    def make_future_wrapper(self: Self, **kwds):
+        kwds.setdefault("aw_call", self.aw_call)
+        return FutureCallableWrapper(self.factory, self.vals, **kwds)
 
     def plain_wrapper(self, ctx: "InjectorContext"):
-        func = self.factory
-        return lambda: func
+        make = self.factory
+        return lambda: make
 
     def args_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
-        if vals:
-            def make(*a, **kw):
-                nonlocal func, args, vals
-                if kw: vals = vals | kw
-                return func(*args, *a, **vals)
-        
-        return make
 
-    def async_args_wrapper(self, ctx: "InjectorContext"):
-        return self.args_wrapper(ctx)
+        def make(*a, **kw):
+            nonlocal func, args, vals
+            return func(*args, *a, **(vals | kw))
+
+        return lambda: make
 
     def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
-        args, aw_args = self.resolve_aw_args(ctx)
-        return FutureFactoryWrapper(
-            self.factory, self.vals, args=args, aw_args=aw_args, aw_call=self.aw_call
-        )
+        make = super().aw_args_wrapper(ctx)
+        return lambda: make
 
     def kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
 
-        def make():
+        def make(*a, **kw):
             nonlocal func, kwds, vals
-            return func(**vals, **kwds)
+            return func(*a, **(vals | kw), **kwds.skip(kw))
 
-        return make
-
-    def async_kwds_wrapper(self, ctx: "InjectorContext"):
-        return self.kwds_wrapper(ctx)
+        return lambda: make
 
     def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
-        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureFactoryWrapper(
-            self.factory, self.vals, kwds=kwds, aw_kwds=aw_kwds, aw_call=self.aw_call
-        )
+        make = super().aw_kwds_wrapper(ctx)
+        return lambda: make
 
     def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
@@ -823,27 +734,34 @@ class CallableFactoryResolver(FactoryBinding):
         vals = self.vals
         func = self.factory
 
-        def make():
+        def make(*a, **kw):
             nonlocal func, args, kwds, vals
-            return func(*args, **vals, **kwds)
+            return func(*args, *a, **(vals | kw), **kwds.skip(kw))
 
-        return make
-
-    def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
-        return self.args_kwds_wrapper(ctx)
+        return lambda: make
 
     def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
-        args, aw_args = self.resolve_aw_args(ctx)
-        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return FutureFactoryWrapper(
-            self.factory,
-            self.vals,
-            args=args,
-            kwds=kwds,
-            aw_args=aw_args,
-            aw_kwds=aw_kwds,
-            aw_call=self.aw_call,
-        )
+        make = super().aw_args_kwds_wrapper(ctx)
+        return lambda: make
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -908,7 +826,6 @@ class _PositionalDeps(_PositionalArgs):
             yield yv()
 
 
-
 class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
     __slots__ = ()
@@ -933,51 +850,14 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
     def values(self) -> "ValuesView[_T]":
         return ValuesView(self)
 
+    def skip(self, skip: Mapping[str, t.Any]):
+        if skip:
+            return {k: self.get_raw(k)() for k in self.iter_raw() if not k in skip}
+        else:
+            return self
+
     iter_raw = dict.__iter__
     get_raw = dict.__getitem__
-    raw_items = dict.items
-    raw_values = dict.values
-
-
-class _KeyWordArgs(dict[str, _T], t.Generic[_T]):
-
-    __slots__ = 'deps',
-
-    def __init__(self, vals: Mapping[str, _T], deps: _KeywordDeps, /):
-        self.__raw_init__(vals)
-        self.deps = deps
-
-    def __missing__(self, name: str):
-        return self.deps[name]
-
-    def __iter__(self) -> "Iterator[str]":
-        yield from self.iter_raw()
-        skip = self.raw_keys()
-        for n in self.deps:
-            if not n in skip:
-                yield n
-
-    def __reduce__(self):
-        return dict, (tuple(self.items()),)
-
-    def copy(self):
-        return self.__class__(self)
-
-    __copy__ = copy
-
-    def keys(self) -> "ItemsView[tuple[str, _T]]":
-        return KeyView(self)
-
-    def items(self) -> "ItemsView[tuple[str, _T]]":
-        return ItemsView(self)
-
-    def values(self) -> "ValuesView[_T]":
-        return ValuesView(self)
-
-    __raw_init__ = dict.__init__
-    iter_raw = dict.__iter__
-    # get_raw = dict.__getitem__
-    raw_keys = dict.keys
     raw_items = dict.items
     raw_values = dict.values
 
@@ -1056,6 +936,26 @@ class FutureSingletonWrapper(FutureFactoryWrapper):
         return self.__value
 
 
+
+
+class FutureCallableWrapper(FutureFactoryWrapper):
+
+    __slots__ = ()
+
+    def __call__(self, *a, **kw):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwds := self._aw_kwds:
+            aw_kwds = {n: ensure_future(d(), loop=loop) for n, d in aw_kwds if not n in kw}
+
+        return CallableFuture(self, aw_args, aw_kwds, args=a, kwds=kw, loop=loop)
+
+
+
+
+
 class FactoryFuture(Future):
 
     _asyncio_future_blocking = False
@@ -1078,8 +978,8 @@ class FactoryFuture(Future):
             aw_args, aw_kwds = self._aws
 
             if aw_args:
-                for k, aw in aw_args.items():
-                    aw_args[k] = yield from aw
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
                 _args = factory._args
                 args = (
                     aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
@@ -1088,11 +988,73 @@ class FactoryFuture(Future):
                 args = factory._args
 
             if aw_kwds:
-
-                for k, aw in aw_kwds.items():
-                    aw_kwds[k] = yield from aw
+                for k in aw_kwds:
+                    aw_kwds[k] = yield from aw_kwds[k]
 
             res = factory._func(*args, **aw_kwds, **factory._kwds, **factory._vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+            self.set_result(res)  # res
+            return res
+        return self.result()
+
+    __iter__ = __await__
+
+
+class CallableFuture(Future):
+
+    _asyncio_future_blocking = False
+    _loop: AbstractEventLoop
+    _factory: FutureCallableWrapper
+    _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+    _extra_args: tuple[t.Any]
+    _extra_kwds: Mapping[str, t.Any]
+
+    def __init__(
+        self,
+        factory,
+        aw_args=emptydict(),
+        aw_kwds=emptydict(),
+        *,
+        args: tuple = (),
+        kwds: dict[str, t.Any]=emptydict(),
+        loop=None,
+    ) -> Self:
+        Future.__init__(self, loop=loop)
+        self._factory = factory
+        self._aws = aw_args, aw_kwds
+        self._extra_args = args
+        self._extra_kwds = kwds
+
+    def __await__(self):
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwds = self._aws
+
+            if aw_args:
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
+                _args = factory._args
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
+            else:
+                args = factory._args
+
+            if aw_kwds:
+                for k, aw in aw_kwds.items():
+                    aw_kwds[k] = yield from aw_kwds[k]
+
+            if kwds := self._extra_kwds:
+                vals = factory._vals | kwds
+                kwds = factory._kwds.skip(kwds)
+            else:
+                vals = factory._vals
+                kwds = factory._kwds
+
+            res = factory._func(*args, *self._extra_args, **aw_kwds, **kwds, **vals)
             if factory._aw_call:
                 res = yield from ensure_future(res, loop=self._loop)
             self.set_result(res)  # res

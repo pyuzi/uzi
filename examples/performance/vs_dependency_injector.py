@@ -46,9 +46,9 @@ class Test(object):
 ioc = Injector()
 
 ioc.factory(A)
-ioc.singleton(B)#.singleton()
+ioc.factory(B)#.singleton()
 ioc.singleton(C)#.singleton()
-ioc.factory(Test).args('ex','why','zee', A()) #.kwargs(x='ex', y='why', z='zee')  # .singleton()
+ioc.factory(Test).args('ex','why','zee', A()).kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
 Singleton = providers.Singleton 
@@ -56,7 +56,8 @@ Singleton = providers.Singleton
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
-    b = Singleton(B, a)
+    b = providers.Factory(B, a)
+    # b = Singleton(B, a)
     c = Singleton(C, a, b=b)
     test = providers.Factory(
         Test,
@@ -64,9 +65,9 @@ class Container(containers.DeclarativeContainer):
         A(),
         b=b,
         c=c,
-        # x='ex',
-        # y='why',
-        # z='zee'
+        x='ex',
+        y='why',
+        z='zee'
     )
 
 
@@ -123,8 +124,8 @@ def main():
         bench |= reduce(or_, ls)
         print(bench, "\n")
 
-        # b = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
-        # print(b, "\n")
+        b = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
+        print(b, "\n")
 
 
 if __name__ == '__main__':

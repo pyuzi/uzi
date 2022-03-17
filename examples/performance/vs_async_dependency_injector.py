@@ -95,7 +95,7 @@ class Test(object):
 ioc = Injector()
 
 ioc.factory(A)
-ioc.factory(B).using(B.make)#.singleton()
+ioc.singleton(B).using(B.make)#.singleton()
 ioc.singleton(C).using(C.make)#.singleton()
 ioc.factory(Test).using(Test.make)  # .singleton()
 
@@ -104,8 +104,8 @@ Singleton = providers.Singleton
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
-    b = providers.Factory(B.make, a)
-    # b = Singleton(B.make, a)
+    # b = providers.Factory(B.make, a)
+    b = Singleton(B.make, a)
     c = Singleton(C.make, a, b=b)
     test = providers.Factory(
         Test.make,
@@ -181,8 +181,8 @@ async def main():
         # bench |= reduce(or_, ls)
         # print(bench, "\n")
 
-        # b = await Benchmark("inject.", N).arun(pre, di=_inj_di, laza=_inj_laza)
-        # print(b, "\n")
+        b = await Benchmark("inject.", N).arun(pre, di=_inj_di, laza=_inj_laza)
+        print(b, "\n")
 
 
 if __name__ == '__main__':

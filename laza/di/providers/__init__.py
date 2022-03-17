@@ -17,6 +17,7 @@ from laza.common.typing import (Self, UnionType, get_args, get_origin,
 from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, is_injectable)
 from .functools import (
+    CallableFactoryBinding,
     FactoryBinding,
     SingletonFactoryBinding,
     decorators
@@ -783,8 +784,20 @@ class Singleton(Factory[T_Injected]):
 @export()
 class Callable(Factory[T_Injected]):
 
+    _binding_class: t.ClassVar[type[CallableFactoryBinding]] = CallableFactoryBinding
+
     def _fallback_signature(self):
         return self._arbitrary_signature
+
+    def _create_binding(self, injector: "Injector"):
+        return self._binding_class(
+                injector,
+                self.uses, 
+                self.get_signature(),
+                is_async=self.is_async,
+                arguments=self.arguments, 
+            )
+
 
 
 

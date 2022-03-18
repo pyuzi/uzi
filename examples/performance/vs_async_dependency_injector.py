@@ -9,85 +9,14 @@ from dependency_injector import containers, providers, wiring
 from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
+from vs_dependency_injector import A, B, C, Test, Connection, Container, ioc
+
+
 
 N = int(2e3)
-# N = 1
+N = 1
 
 ST = 0# .000000001
-
-res: dict[str, tuple[float, float]] = {}
-
-
-class A(object):
-    
-    n = 0
-
-    def __init__(self):
-        # print(f'{self.__class__.__name__}.new()')
-        # time.sleep(ST/2)
-        return
-
-class B(object):
-    
-    n = 0
-    
-    def __init__(self, a: A):
-        assert isinstance(a, A)
-        self.a = a
-        # self.__class__.n += 1
-
-
-    @classmethod
-    async def make(cls, a: A, /):
-        # print(f'{cls.__name__}.make()')
-        # await asyncio.sleep(ST)
-        rv = cls(a)
-        return rv
-
-
-
-class C(object):
-
-    def __init__(self, a: A, /, b: B):
-        assert isinstance(a, A)
-        assert isinstance(b, B)
-        # assert isinstance(bb, B)
-        # assert b is bb
-        self.a = a
-        self.b = b
-
-    @classmethod
-    async def make(cls, a: A, b: B):
-        # print(f'{cls.__name__}.make()')
-        # await asyncio.sleep(ST)
-        rv = cls(a, b)
-        return rv
-
-
-
-
-class Test(object):
-
-   
-    def __init__(self, a: A, b: B, /, c: C):
-        # time.sleep(ST)
-
-        assert isinstance(a, A)
-        assert isinstance(b, B)
-        assert isinstance(c, C)
-        # assert all(isinstance(_, C) for _ in (c, cc, ccc))
-        # assert not (c is cc or c is ccc or cc is ccc)
-        # assert b is c.b
-
-        self.a = a
-        self.b = b
-        self.c = c
-
-    @classmethod
-    async def make(cls, a: A, b: B, /, c: C):
-        # await asyncio.sleep(0)
-        rv = cls(a, b, c)
-        return rv
 
 
 
@@ -97,7 +26,9 @@ ioc = Injector()
 ioc.factory(A)
 ioc.factory(B).using(B.make)#.singleton()
 ioc.singleton(C).using(C.make)#.singleton()
-ioc.factory(Test).using(Test.make)  # .singleton()
+ioc.resource(Connection, k='cm-')
+ioc.factory(Test).using(Test.make, 'ex','why','zee', x='ex', y='why', z='zee')  # .singleton()
+
 
 Singleton = providers.Singleton 
 # Singleton = providers.Factory 
@@ -107,11 +38,15 @@ class Container(containers.DeclarativeContainer):
     b = providers.Factory(B.make, a)
     # b = Singleton(B.make, a)
     c = Singleton(C.make, a, b=b)
+    con = providers.Resource(Connection, a, b=b, k='gn-')
     test = providers.Factory(
         Test.make,
+        'ex','why','zee', 
         a,
         b,
         c=c,
+        con=con,
+        x='ex', y='why', z='zee'
     )
 
 
@@ -136,10 +71,6 @@ async def _inj_di(
     assert isinstance(c, C)
 
 
-c = Container()
-c.wire([__name__])
-
-
 
 async def main():
     # print('init...')
@@ -149,7 +80,11 @@ async def main():
     # await aw
     # print('done...')
 
-    with context(ioc) as ctx:
+    c = Container()
+    c.wire([__name__])
+    c.init_resources()
+
+    async with context(ioc) as ctx:
         ls = []
        
         pre =None # lambda k, b: print(f'----------------{k}--------------')
@@ -183,6 +118,8 @@ async def main():
 
         b = await Benchmark("inject.", N).arun(pre, di=_inj_di, laza=_inj_laza)
         print(b, "\n")
+
+    c.shutdown_resources()
 
 
 if __name__ == '__main__':

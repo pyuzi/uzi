@@ -19,6 +19,7 @@ from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injec
 from .functools import (
     CallableFactoryBinding,
     FactoryBinding,
+    ResourceFactoryBinding,
     SingletonFactoryBinding,
     decorators
 )
@@ -766,8 +767,12 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 class Singleton(Factory[T_Injected]):
 
     is_shared: t.ClassVar[bool] = True
-    thread_safe: bool = True
+    is_thread_safe: bool = True
     _binding_class: t.ClassVar[type[SingletonFactoryBinding]] = SingletonFactoryBinding
+
+    def thread_safe(self, is_thread_safe=True):
+        self.__set_attr(is_thread_safe=is_thread_safe)
+        return self
 
     def _create_binding(self, injector: "Injector"):
         return self._binding_class(
@@ -776,9 +781,34 @@ class Singleton(Factory[T_Injected]):
                 self.get_signature(),
                 is_async=self.is_async,
                 arguments=self.arguments, 
-                thread_safe=self.thread_safe
+                thread_safe=self.is_thread_safe
             )
 
+
+
+
+@export()
+class Resource(Singleton[T_Injected]):
+
+    is_async: bool = None
+    is_awaitable: bool = None
+    is_shared: t.ClassVar[bool] = True
+
+    _binding_class: t.ClassVar[type[ResourceFactoryBinding]] = ResourceFactoryBinding
+
+    def awaitable(self, is_awaitable=True):
+        self.__set_attr(is_awaitable=is_awaitable)
+        return self
+        
+    def _create_binding(self, injector: "Injector"):
+        return self._binding_class(
+                injector,
+                self.uses, 
+                self.get_signature(),
+                is_async=self.is_async,
+                aw_enter=self.is_awaitable,
+                arguments=self.arguments, 
+            )
 
 
 @export()
@@ -799,17 +829,3 @@ class Callable(Factory[T_Injected]):
             )
 
 
-
-
-
-@export()
-class Resource(Factory[T_Injected]):
-
-    is_async: bool = None
-    is_awaitable: bool = None
-    is_shared: t.ClassVar[bool] = True
-
-    def awaitable(self, is_awaitable=True):
-        self.__set_attr(is_awaitable=is_awaitable)
-        return self
-        

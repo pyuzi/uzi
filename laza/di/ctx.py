@@ -1,20 +1,20 @@
 import asyncio
 import logging
-from types import MethodType
 import typing as t
 from collections.abc import Callable
+from contextlib import AsyncExitStack
 from contextvars import ContextVar, Token
 from threading import Lock
+from types import MethodType
 
-from laza.common.functools import export, Missing
+from laza.common.functools import Missing, export
 from typing_extensions import Self
 
 from . import Call, Injectable, T_Default, T_Injectable, T_Injected
-from .util import AsyncContextLock, ContextLock, ExitStack
+from .util import AsyncExitStack
 
 if t.TYPE_CHECKING:
     from .injectors import BindingsMap, Injector
-    from .providers.vars import ProviderVar
 
 
 logger = logging.getLogger(__name__)
@@ -26,23 +26,25 @@ TContextBinding = Callable[
 
 
 class InjectorLookupError(LookupError):
-    
-    key: Injectable
-    injector: 'InjectorContext'
 
-    def __init__(self, key=None, injector: 'InjectorContext'=None) -> None:
+    key: Injectable
+    injector: "InjectorContext"
+
+    def __init__(self, key=None, injector: "InjectorContext" = None) -> None:
         self.key = key
         self.injector = injector
 
     def __str__(self) -> str:
         key, injector = self.key, self.injector
-        return '' if key is None is injector \
-            else f'{key!r}' if injector is None \
-                else f'at {injector!r}' if key is None \
-                    else f'{key!r} at {injector!r}'
-
-
-
+        return (
+            ""
+            if key is None is injector
+            else f"{key!r}"
+            if injector is None
+            else f"at {injector!r}"
+            if key is None
+            else f"{key!r} at {injector!r}"
+        )
 
 
 def context_partial(provider: Injectable):
@@ -72,7 +74,7 @@ _dict_setdefault = dict.setdefault
 
 
 @export()
-class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
+class InjectorContext(dict[T_Injectable, Callable[[], T_Injected]]):
 
     __slots__ = (
         "__injector",
@@ -83,13 +85,15 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
 
     __injector: "Injector"
     __parent: Self
-    __bindings: dict[Injectable, Callable[[Self], Callable[[], 'ProviderVar[T_Injected]']]]
-    __exitstack: ExitStack
+    __bindings: dict[
+        Injectable, Callable[[Self], Callable[[], Callable[[], T_Injected]]]
+    ]
+    __exitstack: AsyncExitStack
 
     is_async: bool = False
 
     if not t.TYPE_CHECKING:
-        _exitstack_class = ExitStack
+        _exitstack_class = AsyncExitStack
 
     def __init__(
         self, parent: "InjectorContext", injector: "Injector", bindings: "BindingsMap"
@@ -104,6 +108,10 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
         return self.__injector.name
 
     @property
+    def exitstack(self):
+        return self.__exitstack
+
+    @property
     def base(self) -> str:
         return self
 
@@ -115,57 +123,33 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
     def parent(self):
         return self.__parent
 
-    def lock(self) -> t.Union[ContextLock, None]:
-        return Lock()
-
-    def alock(self) -> t.Union[AsyncContextLock, None]:
-        return asyncio.Lock()
-
-    def exit(self, exit):
-        """Registers a callback with the standard __exit__ method signature.
-
-        Can suppress exceptions the same way __exit__ method can.
-        Also accepts any object with an __exit__ method (registering a call
-        to the method instead of the object itself).
-        """
-        # We use an unbound method rather than a bound method to follow
-        # the standard lookup behaviour for special methods.
-        return self.__exitstack.exit(exit)
-
-    def enter(self, cm):
-        """Enters the supplied context manager.
-
-        If successful, also pushes its __exit__ method as a callback and
-        returns the result of the __enter__ method.
-        """
-        # We look up the special methods on the type to match the with
-        # statement.
-        return self.__exitstack.enter(cm)
-
-    def callback(self, callback, /, *args, **kwds): 
-        """Registers an arbitrary callback and arguments.
-
-        Cannot suppress exceptions.
-        """
-        return self.__exitstack.callback(callback, *args, **kwds)
+    @t.overload
+    def find(
+        self, dep: T_Injectable, *fallbacks: T_Injectable
+    ) -> Callable[[], T_Injected]:
+        ...
 
     @t.overload
-    def find(self, dep: T_Injectable, *fallbacks: T_Injectable) -> 'ProviderVar[T_Injected]': ...
-    @t.overload
-    def find(self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default) -> t.Union['ProviderVar[T_Injected]', T_Default]: ...
+    def find(
+        self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default
+    ) -> t.Union[Callable[[], T_Injected], T_Default]:
+        ...
+
     def find(self, *keys, default=Missing):
         for key in keys:
             rv = self[key]
             if rv is None:
                 continue
             return rv
-        
+
         if default is Missing:
             raise InjectorLookupError(key, self)
 
         return default
 
-    def make(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
+    def make(
+        self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing
+    ) -> T_Injected:
         if fallbacks:
             func = self.find(key, *fallbacks, default=None)
         else:
@@ -176,29 +160,17 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
         elif default is Missing:
             raise InjectorLookupError(key, self)
         return default
-        
-    async def amake(self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing) -> T_Injected: 
-        func = self.find(key, *fallbacks, default=None)
-        if func is None:
-            if default is Missing:
-                raise InjectorLookupError(key, self)
-            return default
-        else:
-            return await func
-        
+
     def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
         if isinstance(func, MethodType):
             args = (func.__self__,) + args
             func = func.__func__
-            
+
         return self.make(Call(func))(*args, **kwds)
-    
-    def __exit__(self, *er):
-        return self.__exitstack.flush(er)
 
     def __contains__(self, x) -> bool:
         return dict.__contains__(self, x) or x in self.__parent
-    
+
     def __missing__(self, key):
         res = self.__bindings[key]
         if res is None:
@@ -213,7 +185,7 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
 
     def __eq__(self, x):
         return x is self
- 
+
     def __ne__(self, x):
         return not self.__eq__(x)
 
@@ -238,18 +210,17 @@ class InjectorContext(dict[T_Injectable, 'ProviderVar[T_Injected]']):
 @export()
 class NullInjectorContext(InjectorContext):
     """NullInjector Object"""
- 
+
     __slots__ = ()
 
     name: t.Final = None
-    injector = parent = None 
+    injector = parent = None
 
     def noop(slef, *a, **kw):
         ...
 
     __init__ = __getitem__ = __missing__ = __contains__ = _reset = noop
     del noop
-
 
 
 __ctxvar: ContextVar["InjectorContext"] = ContextVar(
@@ -296,9 +267,21 @@ class ContextManager:
             self.__token = self.__var.reset(self.__token)
             ctx = self.__context
             while not ctx is old:
-                ctx.__exit__(*e)
+                ctx.exitstack.close()
                 ctx = ctx.parent
 
             del self.__context
 
+    async def __aenter__(self):
+        return self.__enter__()
 
+    async def __aexit__(self, *e):
+        if not self.__token is None:
+            old = self.__token.old_value
+            self.__token = self.__var.reset(self.__token)
+            ctx = self.__context
+            while not ctx is old:
+                await ctx.exitstack.aclose()
+                ctx = ctx.parent
+
+            del self.__context

@@ -4,6 +4,7 @@
 
 
 import asyncio
+from contextlib import AbstractAsyncContextManager
 import typing as t
 from asyncio import AbstractEventLoop, ensure_future
 from asyncio import gather as async_gather
@@ -342,7 +343,7 @@ class FactoryBinding:
 
     @property
     def is_async(self):
-        return self.aw_call or self.aw_kwds or self.aw_args
+        return self.aw_call or not not (self.aw_kwds or self.aw_args)
 
     @property
     def dependencies(self):
@@ -455,46 +456,54 @@ class FactoryBinding:
             return self.resolve_kwds(ctx), ()
 
     def __call__(self, ctx: "InjectorContext") -> Callable:
-        return self.wrapper_method(self, ctx)
+        return self.make_wrapper(ctx)
+
+    if t.TYPE_CHECKING:
+        def make_wrapper(self, ctx: "InjectorContext") -> Callable:
+            ...
 
     @property
-    def wrapper_method(self):
+    def make_wrapper(self):
         try:
             return self._wrapper_method
         except AttributeError:
-            self._wrapper_method = self._evaluate_wrapper_method()
+            self._wrapper_method = self._evaluate_make_wrapper()
             return self._wrapper_method
+
+    def _evaluate_make_wrapper(self):
+        meth = self._evaluate_wrapper_method()
+        return lambda ctx: meth(self, ctx)
 
     def _evaluate_wrapper_method(self):
         cls = self.__class__
         if not self.signature.parameters:
-            if self.aw_call:
+            if self.is_async:
                 return cls.async_plain_wrapper
             else:
                 return cls.plain_wrapper
         elif not self.args:
             if self.aw_kwds:
                 return cls.aw_kwds_wrapper
-            elif self.aw_call:
+            elif self.is_async:
                 return cls.async_kwds_wrapper
             else:
                 return cls.kwds_wrapper
         elif not self.kwds:
             if self.aw_args:
                 return cls.aw_args_wrapper
-            elif self.aw_call:
+            elif self.is_async:
                 return cls.async_args_wrapper
             else:
                 return cls.args_wrapper
         else:
             if self.aw_kwds or self.aw_args:
                 return cls.aw_args_kwds_wrapper
-            elif self.aw_call:
+            elif self.is_async:
                 return cls.async_args_kwds_wrapper
             else:
                 return cls.args_kwds_wrapper
 
-    def make_future_wrapper(self: Self, **kwds):
+    def make_future_wrapper(self: Self, ctx: 'InjectorContext', **kwds):
         kwds.setdefault("aw_call", self.aw_call)
         return FutureFactoryWrapper(self.factory, self.vals, **kwds)
 
@@ -508,49 +517,34 @@ class FactoryBinding:
         args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
-
-        def make():
-            nonlocal func, args, vals
-            return func(*args, **vals)
-
-        return make
+        return lambda: func(*args, **vals)
 
     def async_args_wrapper(self, ctx: "InjectorContext"):
         return self.args_wrapper(ctx)
 
     def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
         args, aw_args = self.resolve_aw_args(ctx)
-        return self.make_future_wrapper(args=args, aw_args=aw_args)
+        return self.make_future_wrapper(ctx, args=args, aw_args=aw_args)
 
     def kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
-
-        def make():
-            nonlocal func, kwds, vals
-            return func(**vals, **kwds)
-
-        return make
+        return lambda: func(**kwds, **vals)
 
     def async_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.kwds_wrapper(ctx)
 
     def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
-        return self.make_future_wrapper(kwds=kwds, aw_kwds=aw_kwds)
+        return self.make_future_wrapper(ctx, kwds=kwds, aw_kwds=aw_kwds)
 
     def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
-
-        def make():
-            nonlocal func, args, kwds, vals
-            return func(*args, **kwds, **vals)
-
-        return make
+        return lambda: func(*args, **kwds, **vals)
 
     def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.args_kwds_wrapper(ctx)
@@ -559,8 +553,10 @@ class FactoryBinding:
         args, aw_args = self.resolve_aw_args(ctx)
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
         return self.make_future_wrapper(
-            args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds
+            ctx, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds
         )
+
+
 
 
 class SingletonFactoryBinding(FactoryBinding):
@@ -584,13 +580,8 @@ class SingletonFactoryBinding(FactoryBinding):
         self.thread_safe = thread_safe
         super().__init__(*args, **kwds)
 
-    def make_future_wrapper(self: Self, **kwds):
-        kwds.setdefault("aw_call", self.aw_call)
-        kwds.setdefault("thread_safe", self.thread_safe)
-        return FutureSingletonWrapper(self.factory, self.vals, **kwds)
-
     def __call__(self, ctx: "InjectorContext") -> Callable:
-        func = self.wrapper_method(self, ctx)
+        func = self.make_wrapper(ctx)
         value = Missing
         lock = Lock() if self.thread_safe else None
         def make():
@@ -607,7 +598,7 @@ class SingletonFactoryBinding(FactoryBinding):
         return make
 
     def async_plain_wrapper(self, ctx: "InjectorContext"):
-        return self.make_future_wrapper()
+        return self.make_future_wrapper(ctx)
 
     def async_args_wrapper(self, ctx: "InjectorContext"):
         return self.aw_args_wrapper(ctx)
@@ -622,11 +613,77 @@ class SingletonFactoryBinding(FactoryBinding):
 
 
 
+class ResourceFactoryBinding(SingletonFactoryBinding):
+
+    __slots__ = ('aw_enter',)
+
+    @t.overload
+    def __init__(
+        self,
+        injector: "Injector",
+        factory: Callable,
+        signature: Signature = None,
+        *,
+        is_async: bool = None,
+        arguments: Arguments = None,
+        aw_enter: bool = None,
+        thread_safe: bool = False,
+    ):
+        ...
+
+    @property
+    def is_async(self):
+        return super().is_async or not not self.aw_enter
+
+    def __init__(self, *args, aw_enter: bool = None, **kwds):
+        self.aw_enter = aw_enter
+        super().__init__(*args, **kwds)
+
+    def __call__(self, ctx: "InjectorContext") -> Callable:
+        func = self.make_wrapper(ctx)
+        value = Missing
+        lock = Lock() if self.thread_safe else None
+        def make():
+            nonlocal func, value
+            if value is Missing:
+                lock and lock.acquire(blocking=True)
+                try:
+                    if value is Missing:
+                        value = func()
+                finally:
+                    lock and lock.release()
+            return value
+
+        return make
+
+    def make_future_wrapper(self: Self, ctx: 'InjectorContext', **kwds):
+        kwds.setdefault("aw_call", self.aw_call)
+        kwds.setdefault("aw_enter", self.aw_enter)
+        return FutureResourceWrapper(ctx, self.factory, self.vals, **kwds)
+
+    def _sync_enter_context_wrap(self, ctx: 'InjectorContext', func):
+        return lambda: ctx.exitstack.enter(func())
+
+    def plain_wrapper(self, ctx: "InjectorContext"):
+        return self._sync_enter_context_wrap(ctx, super().plain_wrapper(ctx))
+
+    def args_wrapper(self: Self, ctx: "InjectorContext"):
+        return self._sync_enter_context_wrap(ctx, super().args_wrapper(ctx))
+   
+    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        return self._sync_enter_context_wrap(ctx, super().kwds_wrapper(ctx))
+
+    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        return self._sync_enter_context_wrap(ctx, super().args_kwds_wrapper(ctx))
+
+
+
+
 class CallableFactoryBinding(FactoryBinding):
 
     __slots__ = ()
 
-    def make_future_wrapper(self: Self, **kwds):
+    def make_future_wrapper(self: Self, ctx: 'InjectorContext',  **kwds):
         kwds.setdefault("aw_call", self.aw_call)
         return FutureCallableWrapper(self.factory, self.vals, **kwds)
 
@@ -798,21 +855,26 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
     raw_values = dict.values
 
 
+
+
+
+
+
 class FutureFactoryWrapper:
 
     __slots__ = "_func", "_args", "_kwds", "_vals", "_aw_args", "_aw_kwds", "_aw_call"
 
     _func: Callable
-    _args: _PositionalArgs
-    _kwds: _KeywordDeps
+    _args: '_PositionalArgs'
+    _kwds: '_KeywordDeps'
     _vals: Mapping
 
     def __new__(
         cls,
         func,
         vals: Mapping = frozendict(),
-        args: _PositionalArgs = emptydict(),
-        kwds: _KeywordDeps = emptydict(),
+        args: '_PositionalArgs' = emptydict(),
+        kwds: '_KeywordDeps' = emptydict(),
         *,
         aw_args: tuple[int] = emptydict(),
         aw_kwds: tuple[str] = emptydict(),
@@ -842,36 +904,6 @@ class FutureFactoryWrapper:
         return FactoryFuture(self, aw_args, aw_kwds, loop=loop)
 
 
-class FutureSingletonWrapper(FutureFactoryWrapper):
-
-    __slots__ = (
-        "__value",
-        "__lock",
-    )
-
-    __lock: Lock
-
-    if not t.TYPE_CHECKING:
-
-        def __new__(cls, *args, thread_safe: bool = True, **kwds) -> Self:
-            self = FutureFactoryWrapper.__new__(cls, *args, **kwds)
-            self.__value = Missing
-            self.__lock = Lock() if thread_safe else None
-            return self
-
-    def __call__(self):
-        if self.__value is Missing:
-            if lock := self.__lock:
-                lock.acquire(blocking=True)
-            try:
-                if self.__value is Missing:
-                    self.__value = super().__call__()
-            finally:
-                lock and lock.release()
-
-        return self.__value
-
-
 
 
 class FutureCallableWrapper(FutureFactoryWrapper):
@@ -887,6 +919,34 @@ class FutureCallableWrapper(FutureFactoryWrapper):
             aw_kwds = {n: ensure_future(d(), loop=loop) for n, d in aw_kwds if not n in kw}
 
         return CallableFuture(self, aw_args, aw_kwds, args=a, kwds=kw, loop=loop)
+
+
+
+
+class FutureResourceWrapper(FutureFactoryWrapper):
+
+    __slots__ = ('_aw_enter', '_ctx',)
+
+    _aw_enter: bool
+    _ctx: 'InjectorContext'
+
+    if not t.TYPE_CHECKING:
+        def __new__(cls, ctx,  *args, aw_enter: bool=None, **kwds):
+            self = super().__new__(cls, *args, **kwds)
+            self._ctx = ctx
+            self._aw_enter = aw_enter
+            return self
+
+    def __call__(self, *a, **kw):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwds := self._aw_kwds:
+            aw_kwds = {n: ensure_future(d(), loop=loop) for n, d in aw_kwds}
+
+        return ResourceFuture(self, aw_args, aw_kwds, loop=loop)
+
 
 
 
@@ -935,6 +995,7 @@ class FactoryFuture(Future):
         return self.result()
 
     __iter__ = __await__
+
 
 
 class CallableFuture(Future):
@@ -993,6 +1054,84 @@ class CallableFuture(Future):
             res = factory._func(*args, *self._extra_args, **aw_kwds, **kwds, **vals)
             if factory._aw_call:
                 res = yield from ensure_future(res, loop=self._loop)
+            self.set_result(res)  # res
+            return res
+        return self.result()
+
+    __iter__ = __await__
+
+
+
+class ResourceFuture(Future):
+
+    _asyncio_future_blocking = False
+    _loop: AbstractEventLoop
+    _factory: FutureResourceWrapper
+    _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+    _extra_args: tuple[t.Any]
+    _extra_kwds: Mapping[str, t.Any]
+
+    def __init__(
+        self,
+        factory,
+        aw_args=emptydict(),
+        aw_kwds=emptydict(),
+        *,
+        args: tuple = (),
+        kwds: dict[str, t.Any]=emptydict(),
+        loop=None,
+    ) -> Self:
+        Future.__init__(self, loop=loop)
+        self._factory = factory
+        self._aws = aw_args, aw_kwds
+        self._extra_args = args
+        self._extra_kwds = kwds
+
+    def __await__(self):
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwds = self._aws
+
+            if aw_args:
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
+                _args = factory._args
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
+            else:
+                args = factory._args
+
+            if aw_kwds:
+                for k, aw in aw_kwds.items():
+                    aw_kwds[k] = yield from aw_kwds[k]
+
+            if kwds := self._extra_kwds:
+                vals = factory._vals | kwds
+                kwds = factory._kwds.skip(kwds)
+            else:
+                vals = factory._vals
+                kwds = factory._kwds
+
+            res = factory._func(*args, *self._extra_args, **aw_kwds, **kwds, **vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+
+            aw_enter = factory._aw_enter
+            cm = factory._ctx.exitstack
+            if aw_enter is False:
+                res = cm.enter(res)
+            elif aw_enter is True:
+                res = yield from self._loop.create_task(cm.enter_async(res))
+            elif isinstance(res, AbstractAsyncContextManager):
+                factory._aw_enter = True
+                res = yield from self._loop.create_task(cm.enter_async(res))
+            else:
+                factory._aw_enter = False
+                res = cm.enter(res)
+
             self.set_result(res)  # res
             return res
         return self.result()

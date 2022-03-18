@@ -14,7 +14,7 @@ from vs_dependency_injector import A, B, C, Test, Connection, Container, ioc
 
 
 N = int(2e3)
-N = 1
+# N = 1
 
 ST = 0# .000000001
 
@@ -42,10 +42,8 @@ class Container(containers.DeclarativeContainer):
     test = providers.Factory(
         Test.make,
         'ex','why','zee', 
-        a,
-        b,
-        c=c,
-        con=con,
+        a, b,
+        c=c, con=con,
         x='ex', y='why', z='zee'
     )
 

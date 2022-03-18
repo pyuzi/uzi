@@ -9,7 +9,7 @@ from laza.di import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
-N = int(5e4)
+N = int(5e3)
 # N = 1
 
 res: dict[str, tuple[float, float]] = {}
@@ -18,12 +18,12 @@ res: dict[str, tuple[float, float]] = {}
 
 class A(object):
     def __init__(self):
-        # time.sleep(0.0000001)
-        return
+        ls = [*range(10)]
 
 
 class B(object):
     def __init__(self, a: A, /):
+        ls = [*range(2)]
         assert isinstance(a, A)
 
     @classmethod
@@ -132,7 +132,7 @@ ioc.factory(A)
 ioc.factory(B)#.singleton()
 ioc.singleton(C)#.singleton()
 ioc.resource(Connection, k='cm-')
-ioc.factory(Test).args('ex','why','zee', A()).kwargs(x='ex', y='why', z='zee')  # .singleton()
+ioc.factory(Test).args('ex','why','zee').kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
 Singleton = providers.Singleton 
@@ -147,7 +147,8 @@ class Container(containers.DeclarativeContainer):
     test = providers.Factory(
         Test,
         'ex','why','zee', 
-        A(),
+        # A(),
+        a,
         b=b,
         c=c,
         con=con,
@@ -202,7 +203,7 @@ def main():
         
         
         bench = Benchmark("A.", N).run(di=Container.a, laza=ctx[A])
-        ls.append(bench)
+        # ls.append(bench)
         print(bench, "\n")
 
         bench = Benchmark("B.", N).run( di=Container.b, laza=ctx[B])
@@ -217,15 +218,16 @@ def main():
         ls.append(bench)
         print(bench, "\n")
 
+        bench = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
+        ls.append(bench)
+        print(bench, "\n")
+
 
         bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
         bench |= reduce(or_, ls)
         print(bench, "\n")
 
-        b = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
-        print(b, "\n")
-
-    
+           
     c.shutdown_resources()
 
     # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), laza=_new_ctx_test)

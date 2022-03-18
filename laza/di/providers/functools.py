@@ -21,22 +21,16 @@ from collections.abc import (
     Sequence,
     ValuesView,
 )
-from email.generator import Generator
-from email.policy import default
 from enum import Enum
-from inspect import Parameter, Signature, isawaitable, iscoroutinefunction
-from itertools import starmap
+from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
 from threading import Lock
 
-from inject import T
 from laza.common.abc import abstractclass
 from laza.common.asyncio.futures import Future
-from laza.common.collections import Arguments, emptydict, frozendict, orderedset
+from laza.common.collections import Arguments, emptydict, frozendict, frozenorderedset
 from laza.common.functools import Missing, export
 from laza.common.typing import Self, typed_signature
-from libs.common.laza.common.collections import FactoryDict, frozenorderedset
-from pytest import yield_fixture
 
 from .. import (
     Injectable,

@@ -62,6 +62,7 @@ class Injectable(metaclass=_PrivateABCMeta):
 Injectable.register(type)
 Injectable.register(t.TypeVar)
 Injectable.register(FunctionType)
+Injectable.register(MethodType)
 Injectable.register(GenericAlias)
 Injectable.register(type(t.Generic[T_Injected]))
 Injectable.register(type(t.Union))

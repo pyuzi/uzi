@@ -589,11 +589,10 @@ class SingletonFactoryBinding(FactoryBinding):
         kwds.setdefault("thread_safe", self.thread_safe)
         return FutureSingletonWrapper(self.factory, self.vals, **kwds)
 
-    def plain_wrapper(self, ctx: "InjectorContext"):
-        func = self.factory
+    def __call__(self, ctx: "InjectorContext") -> Callable:
+        func = self.wrapper_method(self, ctx)
         value = Missing
         lock = Lock() if self.thread_safe else None
-
         def make():
             nonlocal func, value
             if value is Missing:
@@ -610,78 +609,15 @@ class SingletonFactoryBinding(FactoryBinding):
     def async_plain_wrapper(self, ctx: "InjectorContext"):
         return self.make_future_wrapper()
 
-    def args_wrapper(self: Self, ctx: "InjectorContext"):
-        args = self.resolve_args(ctx)
-        vals = self.vals
-        func = self.factory
-
-        value = Missing
-        lock = Lock() if self.thread_safe else None
-
-        def make():
-            nonlocal func, value, args, vals
-            if value is Missing:
-                lock and lock.acquire(blocking=True)
-                try:
-                    if value is Missing:
-                        value = func(*args, **vals)
-                finally:
-                    lock and lock.release()
-            return value
-
-        return make
-
     def async_args_wrapper(self, ctx: "InjectorContext"):
         return self.aw_args_wrapper(ctx)
-
-    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
-        kwds = self.resolve_kwds(ctx)
-        vals = self.vals
-        func = self.factory
-
-        value = Missing
-        lock = Lock() if self.thread_safe else None
-
-        def make():
-            nonlocal func, value, kwds, vals
-            if value is Missing:
-                lock and lock.acquire(blocking=True)
-                try:
-                    if value is Missing:
-                        value = func(**kwds, **vals)
-                finally:
-                    lock and lock.release()
-            return value
-
-        return make
 
     def async_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.aw_kwds_wrapper(ctx)
 
-    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
-        args = self.resolve_args(ctx)
-        kwds = self.resolve_kwds(ctx)
-        vals = self.vals
-        func = self.factory
-
-        value = Missing
-        lock = Lock() if self.thread_safe else None
-
-        def make():
-            nonlocal func, value, args, kwds, vals
-            if value is Missing:
-                lock and lock.acquire(blocking=True)
-                try:
-                    if value is Missing:
-                        value = func(*args, **kwds, **vals)
-                finally:
-                    lock and lock.release()
-            return value
-
-        return make
-
     def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
         return self.aw_args_kwds_wrapper(ctx)
+
 
 
 

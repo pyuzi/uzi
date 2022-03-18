@@ -78,6 +78,15 @@ def _inj_laza(test: Test, a: A, b: B, c: C):
     assert isinstance(b, B)
     assert isinstance(c, C)
 
+def _new_ctx_test():
+    with context(ioc) as ctx:
+        test = ctx[Test]()
+        
+
+def _new_ctx_inj():
+    with context(ioc) as ctx:
+        _inj_laza()
+        
 
 @wiring.inject
 def _inj_di(
@@ -126,6 +135,12 @@ def main():
 
         b = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
         print(b, "\n")
+
+
+    # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), laza=_new_ctx_test)
+    # print(b)
+    # b = Benchmark("new-ctx.inject.", N).run(di=_inj_di, laza=_new_ctx_inj)
+    # print(b, "\n")
 
 
 if __name__ == '__main__':

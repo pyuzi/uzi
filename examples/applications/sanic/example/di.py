@@ -29,11 +29,11 @@ def inject(handler: Callable):
     if hasattr(func, '__dependency__'):
         return handler
 
-    provider = providers.Callable(func)
+    provider = providers.Partial(func)
 
     def wrapper(req: Request, *a, **kw):
         nonlocal provider
-        return req.ctx.injector_context[provider]()(req, *a, **kw)
+        return req.ctx.injector_context[provider](req, *a, **kw)
     
     update_wrapper(wrapper, func)
     wrapper.__dependency__ = provider

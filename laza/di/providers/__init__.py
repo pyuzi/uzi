@@ -19,6 +19,7 @@ from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injec
 from .functools import (
     CallableFactoryBinding,
     FactoryBinding,
+    PartialFactoryBinding,
     ResourceFactoryBinding,
     SingletonFactoryBinding,
     decorators
@@ -812,9 +813,9 @@ class Resource(Singleton[T_Injected]):
 
 
 @export()
-class Callable(Factory[T_Injected]):
+class Partial(Factory[T_Injected]):
 
-    _binding_class: t.ClassVar[type[CallableFactoryBinding]] = CallableFactoryBinding
+    _binding_class: t.ClassVar[type[PartialFactoryBinding]] = PartialFactoryBinding
 
     def _fallback_signature(self):
         return self._arbitrary_signature
@@ -827,5 +828,14 @@ class Callable(Factory[T_Injected]):
                 is_async=self.is_async,
                 arguments=self.arguments, 
             )
+
+
+
+
+@export()
+class Callable(Partial[T_Injected]):
+
+    _binding_class: t.ClassVar[type[CallableFactoryBinding]] = CallableFactoryBinding
+
 
 

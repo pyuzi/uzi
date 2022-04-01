@@ -673,7 +673,7 @@ class ResourceFactoryBinding(SingletonFactoryBinding):
 
 
 
-class CallableFactoryBinding(FactoryBinding):
+class PartialFactoryBinding(FactoryBinding):
 
     __slots__ = ()
 
@@ -682,8 +682,7 @@ class CallableFactoryBinding(FactoryBinding):
         return FutureCallableWrapper(self.factory, self.vals, **kwds)
 
     def plain_wrapper(self, ctx: "InjectorContext"):
-        make = self.factory
-        return lambda: make
+        return self.factory
 
     def args_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
@@ -694,11 +693,7 @@ class CallableFactoryBinding(FactoryBinding):
             nonlocal func, args, vals
             return func(*args, *a, **(vals | kw))
 
-        return lambda: make
-
-    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
-        make = super().aw_args_wrapper(ctx)
-        return lambda: make
+        return make
 
     def kwds_wrapper(self: Self, ctx: "InjectorContext"):
         kwds = self.resolve_kwds(ctx)
@@ -709,11 +704,7 @@ class CallableFactoryBinding(FactoryBinding):
             nonlocal func, kwds, vals
             return func(*a, **(vals | kw), **kwds.skip(kw))
 
-        return lambda: make
-
-    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
-        make = super().aw_kwds_wrapper(ctx)
-        return lambda: make
+        return make
 
     def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
         args = self.resolve_args(ctx)
@@ -725,6 +716,37 @@ class CallableFactoryBinding(FactoryBinding):
             nonlocal func, args, kwds, vals
             return func(*args, *a, **(vals | kw), **kwds.skip(kw))
 
+        return make
+    
+    
+
+
+class CallableFactoryBinding(PartialFactoryBinding):
+
+    __slots__ = ()
+
+    def plain_wrapper(self, ctx: "InjectorContext"):
+        make = super().plain_wrapper(ctx)
+        return lambda: make
+
+    def args_wrapper(self: Self, ctx: "InjectorContext"):
+        make = super().args_wrapper(ctx)
+        return lambda: make
+
+    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
+        make = super().aw_args_wrapper(ctx)
+        return lambda: make
+
+    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        make = super().kwds_wrapper(ctx)
+        return lambda: make
+
+    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        make = super().aw_kwds_wrapper(ctx)
+        return lambda: make
+
+    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+        make = super().args_kwds_wrapper(ctx)
         return lambda: make
 
     def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):

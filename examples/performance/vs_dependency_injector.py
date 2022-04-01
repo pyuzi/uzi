@@ -18,12 +18,12 @@ res: dict[str, tuple[float, float]] = {}
 
 class A(object):
     def __init__(self):
-        ls = [*range(10)]
+        ls = [*range(100)]
 
 
 class B(object):
     def __init__(self, a: A, /):
-        ls = [*range(2)]
+        ls = [*range(50)]
         assert isinstance(a, A)
 
     @classmethod

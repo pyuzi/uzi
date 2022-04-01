@@ -13,9 +13,9 @@ from laza.common.functools import calling_frame, export
 from laza.common.promises import Promise
 from laza.common.typing import Self
 
-from . import Injectable, InjectionMarker, is_injectable
+from . import Injectable, InjectionMarker, is_injectable, ctx as ctx_module
 from .containers import Container, InjectorContainer
-from .ctx import InjectorContext, context_partial
+from .ctx import InjectorContext, NullInjectorContext, context_partial
 from .providers import (
     Provider,
     Callable as CallableProvider,
@@ -89,6 +89,14 @@ class Injector(ProviderRegistry):
     _resolver_class: type[ProviderResolver] = ProviderResolver
     _bindings_class: type[ProviderResolver] = BindingsMap
 
+    # call = ctx_module.call
+    # async_call = ctx_module.async_call
+    
+    run = ctx_module.run
+    run_async = ctx_module.run_async
+    
+    context = ctx_module.context
+
     def __init__(self, parent: "Injector" = None, *, name: str = None):
         if name is None:
             cf = calling_frame()
@@ -96,6 +104,7 @@ class Injector(ProviderRegistry):
         else:
             self.__name = name
 
+        
         self.__parent = parent
         self.__bootstrapped = False
         self.__boot = Promise().then(lambda: self.__bootstrap())
@@ -185,7 +194,7 @@ class Injector(ProviderRegistry):
             return self.__parent.is_provided(obj)
         return res
 
-    def create_context(self, current: InjectorContext) -> InjectorContext:
+    def create_context(self, current: InjectorContext=NullInjectorContext()) -> InjectorContext:
         if parent := self.__parent:
             if not current.injector is parent:
                 current = parent.create_context(current)

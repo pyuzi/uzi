@@ -676,11 +676,11 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     _binding_class: t.ClassVar[type[FactoryBinding]] = FactoryBinding
 
-    def __init__(self, using: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
+    def __init__(self, provide: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         super().__init__()
-        if not using in _none_or_ellipsis:
-            self.provide(using)
-            self.using(using)
+        if not provide in _none_or_ellipsis:
+            self.provide(provide)
+            callable(provide) and self.using(provide)
         args and self.args(*args)
         kwargs and self.kwargs(**kwargs)
 

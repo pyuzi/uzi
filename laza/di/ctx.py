@@ -1,4 +1,5 @@
 import asyncio
+from inspect import isawaitable
 import logging
 import typing as t
 from collections.abc import Callable
@@ -18,6 +19,8 @@ if t.TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+_T = t.TypeVar('_T')
 
 
 TContextBinding = Callable[
@@ -60,9 +63,44 @@ def context_partial(provider: Injectable):
 def run_forever(injector: "Injector"):
     context(injector).__enter__()
 
+async def async_run_forever(injector: "Injector"):
+    context(injector).__enter__()
 
-def run(injector: "Injector", func, /, *args, **kwargs):
+
+def run(injector: "Injector", func: Callable[[], _T], /, *args, **kwargs) -> _T:
+    with context(injector):
+        return func(*args, **kwargs)
+
+
+async def run_async(injector: "Injector", func: Callable[[], _T], /, *args, **kwargs) -> _T:
+    async with context(injector):
+        res = func(*args, **kwargs)
+        if isawaitable(res):
+            return await res
+        # return res
+
+async def run_async_forever(injector: "Injector", func: Callable[[], _T], /, *args, **kwargs) -> _T:
+    async with context(injector):
+        func(*args, **kwargs)
+        asyncio.get_running_loop().run_forever()
+        # return res
+
+
+# def run(injector: "Injector", func: Callable[[], _T], /, *args, **kwargs) -> _T:
+#     with context(injector) as ctx:
+#         return ctx[func](*args, **kwargs)
+
+# async def async_run(injector: "Injector", func: Callable[[], _T], /, *args, **kwargs) -> _T:
+#     async with context(injector) as ctx:
+#         return ctx[func](*args, **kwargs)
+
+
+def run(injector: "Injector", func: Callable[[], _T], /, *args, **kwargs) -> _T:
     with context(injector) as ctx:
+        return ctx[func](*args, **kwargs)
+
+async def async_run(injector: "Injector", func: Callable[[], _T], /, *args, **kwargs) -> _T:
+    async with context(injector) as ctx:
         return ctx[func](*args, **kwargs)
 
 

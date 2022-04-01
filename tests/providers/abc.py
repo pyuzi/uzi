@@ -10,7 +10,7 @@ from collections.abc import Set
 from laza.di.providers import Provider
 from laza.di.injectors import Injector
 
-from laza.di import InjectionMarker, isinjectable
+from laza.di import InjectionMarker, is_injectable
 
 
 
@@ -78,7 +78,7 @@ class ProviderTestCase:
     def test__dependency__(self, provider: Provider):
         assert provider.container is None
         dep = provider.__dependency__
-        assert dep is provider or isinjectable(dep)
+        assert dep is provider or is_injectable(dep)
         
     @xfail(raises=ValueError, strict=True)        
     def test_xfail__dependency__with_set_container(self, provider: Provider, container):

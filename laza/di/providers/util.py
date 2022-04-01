@@ -16,7 +16,7 @@ from laza.common.typing import get_origin
 
 from ..ctx import context_partial
 from .. import InjectionMarker, Injectable
-from . import Callable, ContextManagerProvider, Provider, Alias, Resource, Singleton, Value, Factory
+from . import Callable, Provider, Alias, Resource, Singleton, Value, Factory
 
 if t.TYPE_CHECKING:
     from ..injectors import Injector
@@ -145,9 +145,6 @@ class ProviderRegistry(ABC):
         def value(self, provide: Injectable, value: t.Any, /) -> Value:
             ...
 
-        def contextmanager(self, provide: Injectable, cm: AbstractContextManager, /) -> ContextManagerProvider:
-            ...
-
         def callable(self, factory: _T_Fn=...,  *a, **kw) -> Callable:
             ...
 
@@ -164,7 +161,6 @@ class ProviderRegistry(ABC):
         alias = _provder_factory_method(Alias)
         value = _provder_factory_method(Value)
         callable = _provder_factory_method(Callable)
-        contextmanager = _provder_factory_method(ContextManagerProvider)
         factory = _provder_factory_method(Factory)
         resource = _provder_factory_method(Resource)
         singleton = _provder_factory_method(Singleton)

@@ -14,7 +14,7 @@ from laza.common.functools import Missing, export
 from laza.common.typing import (Self, UnionType, get_args, get_origin,
                                 typed_signature)
 
-from .. import (Call, Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
+from .. import (Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, is_injectable)
 from .functools import (
     CallableFactoryBinding,
@@ -22,7 +22,6 @@ from .functools import (
     PartialFactoryBinding,
     ResourceFactoryBinding,
     SingletonFactoryBinding,
-    decorators
 )
 
 
@@ -447,19 +446,6 @@ class Value(Provider[T_UsingValue, T_Injected]):
 
 
 
-@export()
-class ContextManagerProvider(Value):
-    """Provides given value as it is."""
-
-    def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
-        cm = self.uses
-        if not isinstance(cm, AbstractContextManager):
-            raise TypeError(f'value must be a `ContextManager` not `{cm}`')
-        
-        return lambda ctx: decorators.contextmanager(cm, ctx), None
-
-
-
 
 @export()
 class InjectorContextProvider(Provider[T_UsingValue, T_Injected]):
@@ -626,36 +612,6 @@ class DepMarkerProvider(Provider):
         return run, {dep}
 
 
-
-
-
-
-@export()
-class CallMarkerProvider(Provider):
-    
-    _uses: t.ClassVar = Call
-
-    def _provides_fallback(self):
-        return self.uses
-
-    def _can_bind(self, injector: "Injector", obj: Dep) -> bool:
-        return isinstance(obj, self.uses)
-
-    def _bind(self, injector: "Injector", marker: Call):
-        dep = marker.__injects__
-        argv = marker.__arguments__
-
-        if isinstance(dep, InjectionMarker):
-            provider = Callable(
-                lambda fn, *a, **kw: fn(*a, **kw), 
-                dep, *argv.args, **argv.kwargs
-            )
-        else:
-            provider = Callable(dep, *argv.args, **argv.kwargs)
-
-        return provider.bind(injector, dep), None
-        
-        
 
 
 _none_or_ellipsis = frozenset([None, ...])

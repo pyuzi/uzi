@@ -11,7 +11,7 @@ from types import MethodType
 from laza.common.functools import Missing, export
 from typing_extensions import Self
 
-from . import Call, Injectable, T_Default, T_Injectable, T_Injected
+from . import Injectable, T_Default, T_Injectable, T_Injected
 from .util import AsyncExitStack
 
 if t.TYPE_CHECKING:
@@ -204,7 +204,7 @@ class InjectorContext(dict[T_Injectable, Callable[[], T_Injected]]):
             args = (func.__self__,) + args
             func = func.__func__
 
-        return self.make(Call(func))(*args, **kwds)
+        return self.make(func)(*args, **kwds)
 
     def __contains__(self, x) -> bool:
         return dict.__contains__(self, x) or x in self.__parent

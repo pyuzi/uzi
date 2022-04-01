@@ -22,7 +22,6 @@ from .providers import (
     DepMarkerProvider,
     InjectorContextProvider,
     AnnotatedProvider, 
-    CallMarkerProvider,
     UnionProvider,
 )
 from .providers.util import BindingsMap, ProviderRegistry, ProviderResolver
@@ -218,7 +217,6 @@ class Injector(ProviderRegistry):
     def __register_default_providers(self):
         self.register(UnionProvider().final())
         self.register(AnnotatedProvider().final())
-        self.register(CallMarkerProvider().final())
         self.register(DepMarkerProvider().final())
         self.register(InjectorContextProvider(self).autoload().final())
 

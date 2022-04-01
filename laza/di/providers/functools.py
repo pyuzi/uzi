@@ -7,26 +7,19 @@ import asyncio
 from contextlib import AbstractAsyncContextManager
 import typing as t
 from asyncio import AbstractEventLoop, ensure_future
-from asyncio import gather as async_gather
 from asyncio import get_running_loop
-from collections import defaultdict
 from collections.abc import (
     Callable,
-    Collection,
     ItemsView,
-    KeysView,
-    Iterable,
     Iterator,
     Mapping,
-    Sequence,
     ValuesView,
 )
 from enum import Enum
-from inspect import Parameter, Signature, iscoroutinefunction
+from inspect import Parameter, Signature
 from logging import getLogger
 from threading import Lock
 
-from laza.common.abc import abstractclass
 from laza.common.asyncio.futures import Future
 from laza.common.collections import Arguments, emptydict, frozendict, frozenorderedset
 from laza.common.functools import Missing, export
@@ -35,8 +28,6 @@ from laza.common.typing import Self, typed_signature
 from .. import (
     Injectable,
     InjectionMarker,
-    T_Injectable,
-    T_Injected,
     is_injectable_annotation,
 )
 
@@ -61,95 +52,17 @@ _EMPTY = Parameter.empty
 _T = t.TypeVar("_T")
 
 
-# if cython.compiled:
-#     # print(f'RUNNING: "{__name__}" IN COMPILED MODE')
-# else:
-#     # print(f'RUNNING IN PYTHON')
 
 
 _object_new = object.__new__
 _object_setattr = object.__setattr__
 
 
-@abstractclass
-class decorators:
-    @staticmethod
-    def singleton(func: Callable, ctx: "InjectorContext", *, is_async: bool = False):
-        lock = ctx.lock()
-        value = Missing
-        if lock is None:
-
-            def run() -> T_Injected:
-                nonlocal func, value
-                if value is Missing:
-                    value = func()
-                return value
-
-        else:
-
-            def run() -> T_Injected:
-                nonlocal lock, func, value
-                if value is Missing:
-                    with lock:
-                        if value is Missing:
-                            value = func()
-                return value
-
-        return run
-
-    @staticmethod
-    def resource(func: Callable, ctx: "InjectorContext", *, is_async: bool = False):
-        lock = ctx.lock()
-        value = Missing
-
-        if lock is None:
-
-            def run() -> T_Injected:
-                nonlocal func, value, ctx
-                if value is Missing:
-                    value = ctx.enter(func())
-                return value
-
-        else:
-
-            def run() -> T_Injected:
-                nonlocal lock, func, value, ctx
-                if value is Missing:
-                    with lock:
-                        if value is Missing:
-                            value = ctx.enter(func())
-                return value
-
-        return run
-
-    @staticmethod
-    def contextmanager(cm, ctx: "InjectorContext", *, is_async: bool = False):
-        lock = ctx.lock()
-        value = Missing
-
-        if lock is None:
-
-            def run():
-                nonlocal cm, value, ctx
-                if value is Missing:
-                    value = ctx.enter(cm)
-                return value
-
-        else:
-
-            def run():
-                nonlocal cm, value, lock, ctx
-                if value is Missing:
-                    with lock:
-                        if value is Missing:
-                            value = ctx.enter(cm)
-                return value
-
-        return run
-
 
 def _is_aync_provider(obj) -> bool:
     return getattr(obj, "is_async", False) is True
+
+
 
 
 class _ParamBindType(Enum):

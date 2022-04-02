@@ -94,6 +94,7 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           poetry install
+          poetry run mike set-default --push latest
           poetry run mike deploy --push --update-aliases --branch gh-docs $(poetry version -s) latest 
   pypi:
     if: github.ref == 'refs/heads/master'

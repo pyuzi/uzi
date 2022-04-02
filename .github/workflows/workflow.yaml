@@ -9,48 +9,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # test:
-  #   name: Run Tests
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         # test python versions
-  #         - python: "3.9"
-  #           os: ubuntu-latest
-  #         - python: "3.10"
-  #           os: ubuntu-latest
-  #         # test OSs
-  #         - python: "3.x"
-  #           os: macos-latest
-  #         - python: "3.x"
-  #           os: windows-latest
-  #   defaults:
-  #     run:
-  #       shell: bash
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Set up Python ${{ matrix.python }}
-  #       uses: actions/setup-python@v2
-  #       with:
-  #         python-version: ${{ matrix.python }}
-  #     - name: Install and configure Poetry
-  #       uses: snok/install-poetry@v1.3.1
-  #     - name: Test
-  #       run: make test
-  #     - name: Export Coverage Report
-  #       run: |
-  #         poetry run pip install "coverage[toml]"
-  #         poetry run coverage xml
-  #     - name: Upload code coverage
-  #       uses: codecov/codecov-action@v2.1.0
-  #       with:
-  #         token: ${{ secrets.CODECOV_TOKEN }}
-  #         file: ./coverage.xml
-  #         name: di
-  #         env_vars: OS,PYTHON
-  #         fail_ci_if_error: true
+  test:
+    name: Run Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # test python versions
+          - python: "3.9"
+            os: ubuntu-latest
+          - python: "3.10"
+            os: ubuntu-latest
+          # test OSs
+          - python: "3.x"
+            os: macos-latest
+          - python: "3.x"
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1.3.1
+      - name: Test
+        run: make test
+      - name: Export Coverage Report
+        run: |
+          poetry run pip install "coverage[toml]"
+          poetry run coverage xml
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v2.1.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          name: di
+          env_vars: OS,PYTHON
+          fail_ci_if_error: true
   version-check:
     name: Check Version Bump
     if: github.ref != 'refs/heads/master'
@@ -95,7 +95,6 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           poetry install
           poetry run mike deploy --push --update-aliases --branch gh-docs $(poetry version -s) latest 
-          poetry run mike set-default --push $(poetry version -s)
   pypi:
     if: github.ref == 'refs/heads/master'
     name: 🚀 PyPi Release 📦

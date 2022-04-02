@@ -1,7 +1,0 @@
-
--e .
-pytest
-pytest-asyncio
-pytest-cov
-tox
-

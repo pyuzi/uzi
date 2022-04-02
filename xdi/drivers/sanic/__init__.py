@@ -3,7 +3,7 @@ from collections.abc import Callable
 from functools import partial, update_wrapper
 
 
-from laza.di import Injector, providers
+from xdi import Injector, providers
 from sanic import Request, Sanic
 
 

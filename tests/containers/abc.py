@@ -5,9 +5,9 @@ import pytest
 
 
 
-from laza.di.containers import Container
-from laza.di.injectors import Injector
-from laza.common.functools import uniqueid
+from xdi.containers import Container
+from xdi.injectors import Injector
+from xdi._common.functools import uniqueid
 
 
 

@@ -9,7 +9,7 @@ import boto3
 
 from mypy_boto3_s3 import S3Client
 
-from laza.di import Injector, Dep
+from xdi import Injector, Dep
 
 from . import services
 from .settings import Settings

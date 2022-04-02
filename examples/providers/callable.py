@@ -2,7 +2,7 @@
 
 import passlib.hash
 
-from laza.di import Injector, context
+from xdi import Injector, context
 
 
 hash_password = passlib.hash.sha256_crypt.hash

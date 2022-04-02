@@ -4,8 +4,8 @@ import typing as t
 
 from functools import partial
 
-from laza.common import typing as tt
-from laza.common.functools import export
+from xdi._common import typing as tt
+from xdi._common.functools import export
 
 
 

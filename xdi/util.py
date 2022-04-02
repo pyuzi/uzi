@@ -7,7 +7,6 @@ import typing as t
 from collections.abc import Callable
 from typing_extensions import Self
 
-from laza.common.abc import abstractclass
 
 
 logger = logging.getLogger(__name__)
@@ -32,17 +31,14 @@ class AwaitValue(t.Generic[_T]):
         return self.__value
 
 
-@abstractclass
 class ContextLock(AbstractContextManager):
     __slots__ = ()
 
 
-@abstractclass
 class AsyncContextLock(AbstractAsyncContextManager):
     __slots__ = ()
 
 
-@abstractclass
 class AbstractExitStack:
 
     __slots__ = ()
@@ -167,7 +163,6 @@ class AbstractExitStack:
 
 
 
-# Inspired by discussions on https://bugs.python.org/issue29302
 class AbstractAsyncExitStack(AbstractExitStack):
     """Async context manager for dynamic management of a stack of exit
     callbacks.

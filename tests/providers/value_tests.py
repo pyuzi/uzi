@@ -4,7 +4,7 @@ import typing as t
 
 
 
-from laza.di.providers import Value as Provider
+from xdi.providers import Value as Provider
 
 
 from .abc import ProviderTestCase

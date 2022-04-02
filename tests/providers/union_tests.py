@@ -5,11 +5,11 @@ import typing as t
 
 
 
-from laza.di.providers import UnionProvider as Provider, Factory
+from xdi.providers import UnionProvider as Provider, Factory
 
-from laza.di.injectors import Injector
+from xdi.injectors import Injector
 
-from libs.di.laza.di import injectors
+from libs.di.xdi import injectors
  
 
 from .abc import ProviderTestCase, AsyncProviderTestCase

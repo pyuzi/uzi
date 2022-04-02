@@ -1,8 +1,8 @@
 import typing as t
 
 import pytest
-from laza.di import Dep
-from laza.di.providers import DepMarkerProvider as Provider
+from xdi import Dep
+from xdi.providers import DepMarkerProvider as Provider
 
 from .abc import ProviderTestCase
 

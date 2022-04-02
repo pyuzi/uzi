@@ -1,109 +1,36 @@
+
+MANIFEST
+
+__pycache__/
+build/
+dist/
+tmp/
+venv*/
+
+.cache/
+.idea/
+.tox/
+.venv*/
+.vscode/
+.local/*
+
+*.swp
+*.pyc
+*.egg-info/
+
+
+
 *.pyc
 *.pyo
-*/*.pyc
-*/*.pyo
-*.sqlite3
-.installed.cfg
-
-
-*~
-*.~
-*/*~
-*/*.~
-/.trash
-/.cache
-.logs/
-pytest.ini
-*.egg-info
-
-.vscode/
-
-.local/*
-!.local/git-keep
-**/*.local*
-
-XDG_CACHE_HOME
-
-lib64
-
-local_settings.py
-*/local_settings.py
-
-_local_settings.py
-*/_local_settings.py
-
-
-local_test_settings.py
-*/local_test_settings.py
-
-_local_test_settings.py
-*/_local_test_settings.py
-
-# migrations
-# */migrations
-
-*/**/wsgi_venv.txt
-*/**/wsgi_venv.py
-venv
-*/venv
-
-
-*.so
 *.pyc
-/db.sqlite3
-.DS_Store
-.env
-*/settings/local.py
-/staticfiles/*
-/mediafiles/*
-__pycache__/
-.pytest_cache/
-.tox/
-/build/
+*.pyo
+*.sqlite3
 
 # coverage result
 .coverage
 /coverage/
-
-# pycharm
-.idea
-
-# data
-*.dump
-
-# npm
-node_modules/
-npm-debug.log
+.pytest_cache/
 
 #Folders
 .DS_Store
 
-
-# General
-/venv/
-
-
-
-# templated email
-tmp_email/
-
-
-/static
-
-#vs code
-.vscode/*
-
-certs
-
-depo*.csv
-
-*.log
-
-/dist/
-
-*.egg-info
-
-third_party
-third_party/*
-secrets/google/*
-bin/*.csv

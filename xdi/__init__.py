@@ -1,13 +1,13 @@
 import typing as t
 from abc import ABCMeta, abstractmethod
 from collections.abc import Callable as AbstractCallable
+from enum import Enum
 from logging import getLogger
 from types import FunctionType, GenericAlias, MethodType
 
-from laza.common.datapath import DataPath
-from laza.common.collections import frozendict, Arguments
-from laza.common.enum import Enum
-from laza.common.functools import Missing, calling_frame, export
+from xdi._common.collections import frozendict
+from xdi._common.datapath import DataPath
+from xdi._common.functools import Missing, calling_frame, export
 from typing_extensions import Self
 
 if t.TYPE_CHECKING:
@@ -31,14 +31,11 @@ def is_injectable(obj):
     return isinstance(obj, Injectable)
 
 
-
 @export()
 def is_injectable_annotation(obj):
-    """Returns `True` if the given type is injectable.  
-    """
+    """Returns `True` if the given type is injectable."""
     return is_injectable(obj)
 
-    
 
 class _PrivateABCMeta(ABCMeta):
     def register(self, subclass):
@@ -142,10 +139,6 @@ class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
             raise AttributeError(f"cannot set readonly attribute {name!r}")
 
         return super().__setattr__(name, value)
-
-
-
-
 
 
 class DepInjectorFlag(Enum):
@@ -280,13 +273,6 @@ class Dep(DataPath[T_Injected]):
         raise AttributeError(f"cannot set readonly attribute {name!r}")
 
 
-
-
-
-
-
-
-
+from .containers import Container
 from .ctx import context
 from .injectors import Injector, inject
-from .containers import Container

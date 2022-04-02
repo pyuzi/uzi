@@ -2,8 +2,8 @@ import asyncio
 import typing as t
 
 import pytest
-from laza.di import Dep
-from laza.di.providers import AnnotatedProvider as Provider
+from xdi import Dep
+from xdi.providers import AnnotatedProvider as Provider
 
 from .abc import ProviderTestCase, AsyncProviderTestCase
 

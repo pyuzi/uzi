@@ -9,8 +9,8 @@ from collections.abc import Callable as AbcCallable, Sequence
 from typing_extensions import Self
 
 
-from laza.common.collections import MultiChainMap
-from laza.common.typing import get_origin
+from xdi._common.collections import MultiChainMap
+from xdi._common.typing import get_origin
 
 
 

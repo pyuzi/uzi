@@ -9,9 +9,9 @@ from functools import wraps
 from inspect import Parameter, Signature, iscoroutinefunction, ismemberdescriptor
 from logging import getLogger
 
-from laza.common.collections import Arguments
-from laza.common.functools import Missing, export
-from laza.common.typing import (Self, UnionType, get_args, get_origin,
+from xdi._common.collections import Arguments
+from xdi._common.functools import Missing, export
+from xdi._common.typing import (Self, UnionType, get_args, get_origin,
                                 typed_signature)
 
 from .. import (Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,

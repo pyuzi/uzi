@@ -2,7 +2,7 @@
 
 import sys
 
-from laza.di import inject, context, Dep
+from xdi import inject, context, Dep
 
 from .services import UserService, AuthService, PhotoService
 from .di import injector

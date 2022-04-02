@@ -6,7 +6,7 @@ from functools import reduce
 from operator import or_
 
 from dependency_injector import containers, providers, wiring
-from laza.di import Injector, context, inject
+from xdi import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 from vs_dependency_injector import A, B, C, Test, Connection, Container, ioc
@@ -49,7 +49,7 @@ class Container(containers.DeclarativeContainer):
 
 
 @inject
-async def _inj_laza(test: Test, a: A, b: B, c: C):
+async def _inj_xdi(test: Test, a: A, b: B, c: C):
     assert isinstance(test, Test)
     assert isinstance(a, A)
     assert isinstance(b, B)
@@ -86,16 +86,16 @@ async def main():
         ls = []
        
         pre =None # lambda k, b: print(f'----------------{k}--------------')
-        bench = await Benchmark("B.", N).arun(pre, di=Container.b, laza=ctx[B])
+        bench = await Benchmark("B.", N).arun(pre, di=Container.b, xdi=ctx[B])
         ls.append(bench)
         print(bench, "\n")
 
 
-        bench = await Benchmark("C.", N).arun(pre, di=Container.c, laza=ctx[C])
+        bench = await Benchmark("C.", N).arun(pre, di=Container.c, xdi=ctx[C])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, laza=ctx[Test])
+        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, xdi=ctx[Test])
         ls.append(bench)
         print(bench, "\n")
 
@@ -114,7 +114,7 @@ async def main():
         # bench |= reduce(or_, ls)
         # print(bench, "\n")
 
-        b = await Benchmark("inject.", N).arun(pre, di=_inj_di, laza=_inj_laza)
+        b = await Benchmark("inject.", N).arun(pre, di=_inj_di, xdi=_inj_xdi)
         print(b, "\n")
 
     c.shutdown_resources()

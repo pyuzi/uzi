@@ -7,10 +7,10 @@ import pytest
 from collections.abc import Set
 
 
-from laza.di.providers import Provider
-from laza.di.injectors import Injector
+from xdi.providers import Provider
+from xdi.injectors import Injector
 
-from laza.di import InjectionMarker, is_injectable
+from xdi import InjectionMarker, is_injectable
 
 
 

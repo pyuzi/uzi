@@ -5,7 +5,7 @@ import typing as t
 
 
 
-from laza.di.providers import Alias as Provider
+from xdi.providers import Alias as Provider
 
 from .abc import ProviderTestCase, AsyncProviderTestCase
 

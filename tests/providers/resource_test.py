@@ -4,7 +4,7 @@ import typing as t
 
 
 
-from laza.di.providers import Resource as Provider
+from xdi.providers import Resource as Provider
 
 
 from .contextmanager_tests import ContextManagerProviderTests

@@ -20,10 +20,10 @@ from inspect import Parameter, Signature
 from logging import getLogger
 from threading import Lock
 
-from laza.common.asyncio.futures import Future
-from laza.common.collections import Arguments, emptydict, frozendict, frozenorderedset
-from laza.common.functools import Missing, export
-from laza.common.typing import Self, typed_signature
+from xdi._common.asyncio.futures import Future
+from xdi._common.collections import Arguments, emptydict, frozendict, frozenorderedset
+from xdi._common.functools import Missing, export
+from xdi._common.typing import Self, typed_signature
 
 from .. import (
     Injectable,

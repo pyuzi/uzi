@@ -5,7 +5,7 @@ from operator import or_
 from typing import Literal
 
 from dependency_injector import containers, providers, wiring, resources
-from laza.di import Injector, context, inject
+from xdi import Injector, context, inject
 
 from _benchmarkutil import Benchmark
 
@@ -160,7 +160,7 @@ class Container(containers.DeclarativeContainer):
 
 
 @inject
-def _inj_laza(test: Test, a: A, b: B, c: C):
+def _inj_xdi(test: Test, a: A, b: B, c: C):
     assert isinstance(test, Test)
     assert isinstance(a, A)
     assert isinstance(b, B)
@@ -173,7 +173,7 @@ def _new_ctx_test():
 
 def _new_ctx_inj():
     with context(ioc) as ctx:
-        _inj_laza()
+        _inj_xdi()
         
 
 @wiring.inject
@@ -202,23 +202,23 @@ def main():
        
         
         
-        bench = Benchmark("A.", N).run(di=Container.a, laza=ctx[A])
+        bench = Benchmark("A.", N).run(di=Container.a, xdi=ctx[A])
         # ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("B.", N).run( di=Container.b, laza=ctx[B])
+        bench = Benchmark("B.", N).run( di=Container.b, xdi=ctx[B])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("C.", N).run(di=Container.c, laza=ctx[C])
+        bench = Benchmark("C.", N).run(di=Container.c, xdi=ctx[C])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("Test.", N).run(di=Container.test, laza=ctx[Test])
+        bench = Benchmark("Test.", N).run(di=Container.test, xdi=ctx[Test])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("inject.", N).run(di=_inj_di, laza=_inj_laza)
+        bench = Benchmark("inject.", N).run(di=_inj_di, xdi=_inj_xdi)
         ls.append(bench)
         print(bench, "\n")
 
@@ -230,9 +230,9 @@ def main():
            
     c.shutdown_resources()
 
-    # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), laza=_new_ctx_test)
+    # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), xdi=_new_ctx_test)
     # print(b)
-    # b = Benchmark("new-ctx.inject.", N).run(di=_inj_di, laza=_new_ctx_inj)
+    # b = Benchmark("new-ctx.inject.", N).run(di=_inj_di, xdi=_new_ctx_inj)
     # print(b, "\n")
 
 

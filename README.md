@@ -1,4 +1,4 @@
-# Laza DI
+# XDI
 
 A super fast dependency injection library for python.
 
@@ -112,11 +112,11 @@ Duplicating the assembly code with make it harder to change in the future.
 
 
 
-### With Laza DI.
+### With XDI.
 
 
 ```python
-from laza.di import Injector, inject, context
+from xdi import Injector, inject, context
 
 @inject  # tell the di to inject dependencies
 def some_func(service: Service):
@@ -150,10 +150,10 @@ some_func() # <-- dependency `Service` is injected automatically
 
 ## Installation
 
-Install from [PyPi](https://pypi.org/project/laza-di/)
+Install from [PyPi](https://pypi.org/project/xdi/)
 
 ```
-pip install laza-di
+pip install xdi
 ```
 
 

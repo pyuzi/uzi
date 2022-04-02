@@ -8,7 +8,7 @@ from contextvars import ContextVar, Token
 from threading import Lock
 from types import MethodType
 
-from laza.common.functools import Missing, export
+from xdi._common.functools import Missing, export
 from typing_extensions import Self
 
 from . import Injectable, T_Default, T_Injectable, T_Injected

@@ -1,7 +1,7 @@
-# Laza DI
+# XDI
 
 
-**`Laza DI`** is a [dependency injection](https://en.wikipedia.org/wiki/Dependency_injection) library for Python.
+**`XDI`** is a [dependency injection](https://en.wikipedia.org/wiki/Dependency_injection) library for Python.
 
 
 

@@ -1,4 +1,4 @@
-laza-di
+xdi
 pydantic
 pyyaml
 boto3

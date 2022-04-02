@@ -1,5 +1,5 @@
 
-from laza.di import Injector, inject, context
+from xdi import Injector, inject, context
 
 
 from _benchmarkutil import Benchmark, Timer
@@ -103,25 +103,25 @@ with Timer() as tm:
         
         # [ctx[d]() for d in (Foo, Bar, Baz, FooBar, FooBarBaz, Service)]
         
-        bfoo = Benchmark('Foo.', _n).run(py=mkfoo, laza=ctx[Foo])
-        bbar = Benchmark('Bar.', _n).run(py=mkbar, laza=ctx[Bar])
-        bbaz = Benchmark('Baz.', _n).run(py=mkbaz, laza=ctx[Baz])
+        bfoo = Benchmark('Foo.', _n).run(py=mkfoo, xdi=ctx[Foo])
+        bbar = Benchmark('Bar.', _n).run(py=mkbar, xdi=ctx[Bar])
+        bbaz = Benchmark('Baz.', _n).run(py=mkbaz, xdi=ctx[Baz])
         
         bench = Benchmark(str(Foo | Bar | Baz), _n)
         bench |= bfoo | bbar | bbaz 
         print(bench, '\n')
 
-        bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, laza=ctx[FooBar])
-        bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, laza=ctx[FooBarBaz])
-        bservice    = Benchmark('Service.', _n).run(py=mkservice, laza=ctx[Service])
+        bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, xdi=ctx[FooBar])
+        bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, xdi=ctx[FooBarBaz])
+        bservice    = Benchmark('Service.', _n).run(py=mkservice, xdi=ctx[Service])
 
         bench = Benchmark(str(FooBar | FooBarBaz | Service), _n)
         bench |= bfoobar | bfoobarbaz | bservice
         print(bench, '\n')
 
-        binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, laza=inject_1)
-        binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, laza=inject_2)
-        binject_3 = Benchmark('inject_3.', _n).run(py=mkinject_3, laza=inject_3)
+        binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, xdi=inject_1)
+        binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, xdi=inject_2)
+        binject_3 = Benchmark('inject_3.', _n).run(py=mkinject_3, xdi=inject_3)
 
 
         bench = Benchmark('INJECT', _n)

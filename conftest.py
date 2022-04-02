@@ -2,8 +2,8 @@ import pytest
 import typing as t
 
 
-from laza.di import context as context_
-from laza.di.test import TestContainer, TestInjector
+from xdi import context as context_
+from xdi.test import TestContainer, TestInjector
 
 
 

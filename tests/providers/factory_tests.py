@@ -5,7 +5,7 @@ import typing as t
 
 
 
-from laza.di.providers import Factory
+from xdi.providers import Factory
 
 
 

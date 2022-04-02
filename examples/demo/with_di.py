@@ -3,7 +3,7 @@ import os
 
 from after import ApiClient, Service
 
-from laza.di.injectors import Injector, inject, context
+from xdi.injectors import Injector, inject, context
 
 
 

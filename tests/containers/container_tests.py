@@ -4,7 +4,7 @@ import time
 
 
 
-from laza.di.containers import Container
+from xdi.containers import Container
 
 from .abc import ContainerTestCase
 

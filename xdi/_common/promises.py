@@ -103,14 +103,6 @@ SETTLED = State.settled
 
 
 
-print(
-    f'{State.__module__}{State.__name__}',
-    *(f'{s!r}' for s in State), 
-    f'{State.settled=}',
-    sep='\n  - ', end='\n\n'
-)
-
-
 
 
 class InvalidStateError(ValueError):

@@ -6,7 +6,7 @@ authors = ["David Kyalo <kyalo@qwertie.com>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/davidkyalo/xdi"
-documentation = "https://github.com/davidkyalo/xdi"
+documentation = "https://davidkyalo.github.io/xdi"
 keywords = [
     "dependency-injection",
     "inversion-of-control",

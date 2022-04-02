@@ -115,10 +115,10 @@ jobs:
           printf "\nSee this release on GitHub: [v$PACKAGE_VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/$PACKAGE_VERSION)\n" >> README.md
           poetry config pypi-token.pypi "${{ secrets.PYPI_API_TOKEN }}"
           poetry publish --build
-      - name: 🚀 Create GitHub Release 😺
-        uses: ncipollo/release-action@v1
-        if: steps.pypi.outcome == 'success'
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ env.package_version }}
-          generateReleaseNotes: true
+      # - name: 🚀 Create GitHub Release 😺
+      #   uses: ncipollo/release-action@v1
+      #   if: steps.pypi.outcome == 'success'
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     tag: ${{ env.package_version }}
+      #     generateReleaseNotes: true

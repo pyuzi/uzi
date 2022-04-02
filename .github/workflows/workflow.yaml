@@ -93,8 +93,10 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          MAJOR=$(echo $(poetry version -s) | cut -d "." -f 1)
+          MINOR=$(echo $(poetry version -s) | cut -d "." -f 2)
           poetry install
-          poetry run mike deploy --push --update-aliases --branch gh-docs $(poetry version -s) latest 
+          poetry run mike deploy --push --update-aliases --branch gh-docs $MAJOR.$MINOR.x latest 
   pypi:
     if: github.ref == 'refs/heads/master'
     name: 🚀 PyPi Release 📦

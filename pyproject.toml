@@ -10,7 +10,8 @@ documentation = "https://github.com/davidkyalo/xdi"
 keywords = [
     "dependency-injection",
     "inversion-of-control",
-    "SOLID",
+    "inversion-of-control-container",
+    "IoC-Container",
     "IoC",
     "DI",
 ]
@@ -28,6 +29,7 @@ typing-extensions = "^4.1.1"
 pytest = "^7.1.1"
 pytest-asyncio = "^0.18.3"
 pytest-cov = "^3.0.0"
+pip = "^22.0.4"
 
 
 

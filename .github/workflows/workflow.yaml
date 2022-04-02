@@ -51,31 +51,31 @@ jobs:
   #         name: di
   #         env_vars: OS,PYTHON
   #         fail_ci_if_error: true
-  # version-check:
-  #   name: Check Version Bump
-  #   if: github.ref != 'refs/heads/master'
-  #   runs-on: ubuntu-latest
-  #   defaults:
-  #     run:
-  #       shell: bash
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #       with:
-  #         path: current
-  #     - uses: actions/checkout@v2
-  #       with:
-  #         ref: master
-  #         path: master
-  #     - name: Install and configure Poetry
-  #       uses: snok/install-poetry@v1.3.0
-  #     - name: Check version bump
-  #       run: |
-  #         cd $GITHUB_WORKSPACE/current
-  #         NEW_VERSION=$(poetry version -s)
-  #         cd $GITHUB_WORKSPACE/master
-  #         OLD_VERSION=$(poetry version -s)
-  #         python -c "from packaging import version;assert version.parse(\"${NEW_VERSION}\") > version.parse(\"${OLD_VERSION}\"), \"❌ Bad version bump detected: you must bump the version in pyproject.toml\""
-  #         python -c "print(\"✅ Version will be bumped from ${OLD_VERSION} to ${NEW_VERSION}\")"
+  version-check:
+    name: Check Version Bump
+    if: github.ref != 'refs/heads/master'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: current
+      - uses: actions/checkout@v2
+        with:
+          ref: master
+          path: master
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1.3.0
+      - name: Check version bump
+        run: |
+          cd $GITHUB_WORKSPACE/current
+          NEW_VERSION=$(poetry version -s)
+          cd $GITHUB_WORKSPACE/master
+          OLD_VERSION=$(poetry version -s)
+          python -c "from packaging import version;assert version.parse(\"${NEW_VERSION}\") > version.parse(\"${OLD_VERSION}\"), \"❌ Bad version bump detected: you must bump the version in pyproject.toml\""
+          python -c "print(\"✅ Version will be bumped from ${OLD_VERSION} to ${NEW_VERSION}\")"
   # docs:
   #   if: github.ref == 'refs/heads/master'
   #   concurrency: docs-branch

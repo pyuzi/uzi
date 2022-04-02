@@ -9,7 +9,6 @@ from xdi.providers import UnionProvider as Provider, Factory
 
 from xdi.injectors import Injector
 
-from libs.di.xdi import injectors
  
 
 from .abc import ProviderTestCase, AsyncProviderTestCase

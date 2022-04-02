@@ -49,7 +49,7 @@ except ImportError:
     GenericAlias = ()
 
 
-if sys.version_info < (3, 7):
+if sys.version_info < (3, 10):
    UnionType = type(Union[Any, None])
 else:
     from types import UnionType 

@@ -5,11 +5,13 @@ __pycache__/
 build/
 dist/
 tmp/
+venv/
 venv*/
 
 .cache/
 .idea/
 .tox/
+.venv/
 .venv*/
 .vscode/
 .local/*

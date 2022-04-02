@@ -41,6 +41,7 @@ class AsyncUnionProviderTests(UnionProviderTests, AsyncProviderTestCase):
 
     @pytest.fixture
     def injector(self, injector, value_setter):
-        injector.bindings[_Ta] = lambda c: lambda: asyncio.sleep(0, value_setter())
+        injector.bindings[_Ta] = fn = lambda c: lambda: asyncio.sleep(0, value_setter())
+        fn.is_async = True
         return injector
 

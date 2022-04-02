@@ -11,8 +11,7 @@ from logging import getLogger
 
 from xdi._common.collections import Arguments
 from xdi._common.functools import Missing, export
-from xdi._common.typing import (Self, UnionType, get_args, get_origin,
-                                typed_signature)
+from ..typing import Self, UnionType, get_args, get_origin, typed_signature
 
 from .. import (Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
                 T_Injected, is_injectable)

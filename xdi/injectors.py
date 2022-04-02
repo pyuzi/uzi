@@ -2,6 +2,7 @@ import logging
 import typing as t
 from collections.abc import Callable
 from functools import update_wrapper
+from typing_extensions import Self
 
 from xdi._common.collections import (
     MultiChainMap,
@@ -11,7 +12,6 @@ from xdi._common.collections import (
 )
 from xdi._common.functools import calling_frame, export
 from xdi._common.promises import Promise
-from xdi._common.typing import Self
 
 from . import Injectable, InjectionMarker, is_injectable, ctx as ctx_module
 from .containers import Container, InjectorContainer

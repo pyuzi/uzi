@@ -9,8 +9,8 @@ from collections.abc import (
     Hashable, Mapping, MutableMapping, MutableSet, Iterable, Set, Sequence, MutableSequence, 
     Callable, KeysView, ItemsView, ValuesView, Iterator, Sized, Reversible
 )
+from typing_extensions import Self
 
-from xdi._common.typing import Self
 
 
 

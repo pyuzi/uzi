@@ -1,11 +1,11 @@
 import typing as t
 from collections.abc import Callable, Iterable
 from logging import getLogger
+from typing_extensions import Self
 
 from xdi._common.collections import multidict, orderedset
 from xdi._common.functools import calling_frame, export
 from xdi._common.promises import Promise
-from xdi._common.typing import Self
 
 from . import Injectable, T_Injected
 from .providers import Provider, T_UsingAny

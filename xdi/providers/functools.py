@@ -23,8 +23,8 @@ from threading import Lock
 from xdi._common.asyncio.futures import Future
 from xdi._common.collections import Arguments, emptydict, frozendict, frozenorderedset
 from xdi._common.functools import Missing, export
-from xdi._common.typing import Self, typed_signature
 
+from ..typing import Self, typed_signature
 from .. import (
     Injectable,
     InjectionMarker,

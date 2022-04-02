@@ -142,4 +142,4 @@ class AsyncProviderTestCase(ProviderTestCase):
         val = await aw
         assert self.value is _notset or self.value == val
         if provider.is_shared:
-            assert val is func() is func() is func()
+            assert val is await func() is await func() is await func()

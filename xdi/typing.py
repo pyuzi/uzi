@@ -1,46 +1,53 @@
 
-from abc import ABC, abstractmethod
+import inspect
+import sys
 import typing as t 
+from collections.abc import Callable
 
-from functools import partial
+from typing import get_args, get_origin, ForwardRef
 
-from xdi._common import typing as tt
-from xdi._common.functools import export
+from typing_extensions import Self
 
-
-
-
-@export()
-def get_type_parameters(tp) -> t.Union[tuple[t.TypeVar, ...], None]:
-    return tt.get_type_parameters(tp)
+if sys.version_info < (3, 10): 
+    UnionType = type(t.Union[t.Any, None])
+else:
+    from types import UnionType
 
 
-@export()
-def get_args(tp):
-    return tt.get_args(tp)
 
 
-@export()
-def get_origin(obj):
-    if isinstance(obj, InjectableForm):
-        return obj.__injectable_origin__
-    return tt.get_origin(obj)
+def typed_signature(callable: Callable[..., t.Any], *, follow_wrapped=True, globalns=None, localns=None) -> inspect.Signature:
+    sig = inspect.signature(callable, follow_wrapped=follow_wrapped)
+
+    if follow_wrapped:
+        callable = inspect.unwrap(callable, stop=(lambda f: hasattr(f, "__signature__")))
+    
+    if globalns is None:
+        from xdi._common.imports import ImportRef
+            
+        globalns = getattr(callable, '__globals__', None) \
+            or getattr(ImportRef(callable).module(None), '__dict__', None)
+
+    params = (
+            p.replace(annotation=eval_type(p.annotation, globalns, localns)) 
+                for p in sig.parameters.values()
+        )
+    
+    return sig.replace(
+            parameters=params, 
+            return_annotation=eval_type(sig.return_annotation, globalns, localns)
+        )
 
 
-@export()
-def get_all_type_hints(obj: t.Any, globalns: t.Any = None, localns: t.Any = None) -> t.Any:
-    return tt.get_all_type_hints(obj, globalns=globalns, localns=localns)
+def eval_type(value, globalns, localns=None):
 
-
-class InjectableForm(ABC):
-
-    __slots__ = ()
-
-    @property
-    @abstractmethod
-    def __injectable_origin__(self):
-        ...
-
-    def __call__(self):
-        raise TypeError(f"Type {self!r} cannot be instantiated.")
-
+    if isinstance(value, str):
+        if sys.version_info >= (3, 7):
+            value = ForwardRef(value, is_argument=False)
+        else:
+            value = ForwardRef(value)
+    try:
+        return t._eval_type(value, globalns, localns)
+    except NameError:
+        # this is ok, it can be fixed with update_forward_refs
+        return value        

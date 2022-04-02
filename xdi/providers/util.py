@@ -10,10 +10,9 @@ from typing_extensions import Self
 
 
 from xdi._common.collections import MultiChainMap
-from xdi._common.typing import get_origin
 
 
-
+from ..typing import get_origin
 from ..ctx import context_partial
 from .. import InjectionMarker, Injectable
 from . import Callable, Provider, Alias, Resource, Singleton, Value, Factory

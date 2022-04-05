@@ -252,15 +252,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#key-features" class="md-nav__link">
-    Key Features
+  <a href="#why-use-xdi" class="md-nav__link">
+    Why Use XDI?
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#project-layout" class="md-nav__link">
-    Project layout
+  <a href="#why-use-dependency-injection" class="md-nav__link">
+    Why use dependency injection?
+  </a>
+  
+    <nav class="md-nav" aria-label="Why use dependency injection?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#with-xdi" class="md-nav__link">
+    With XDI.
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    Documentation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production" class="md-nav__link">
+    Production
   </a>
   
 </li>
@@ -269,6 +303,21 @@
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="basic_usage/" class="md-nav__link">
+        Basic Usage
+      </a>
     </li>
   
 
@@ -300,15 +349,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#key-features" class="md-nav__link">
-    Key Features
+  <a href="#why-use-xdi" class="md-nav__link">
+    Why Use XDI?
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#project-layout" class="md-nav__link">
-    Project layout
+  <a href="#why-use-dependency-injection" class="md-nav__link">
+    Why use dependency injection?
+  </a>
+  
+    <nav class="md-nav" aria-label="Why use dependency injection?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#with-xdi" class="md-nav__link">
+    With XDI.
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    Documentation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production" class="md-nav__link">
+    Production
   </a>
   
 </li>
@@ -332,20 +415,140 @@
 
 
 <h1 id="xdi">XDI</h1>
+<p><a href="https://pypi.python.org/pypi/xdi"><img alt="PyPi version" src="https://img.shields.io/pypi/v/xdi.svg?color=%233d85c6" /></a>
+<a href="https://pypi.python.org/pypi/xdi"><img alt="Supported Python versions" src="https://img.shields.io/pypi/pyversions/xdi.svg" /></a>
+<a href="https://github.com/davidkyalo/xdi/actions?query=workflow%3ACI%2FCD+event%3Apush+branch%3Amaster"><img alt="Build status" src="https://github.com/davidkyalo/xdi/actions/workflows/workflow.yaml/badge.svg?event=push&amp;branch=master" /></a>
+<a href="https://codecov.io/gh/davidkyalo/xdi"><img alt="Coverage status" src="https://codecov.io/gh/davidkyalo/xdi/branch/master/graph/badge.svg" /></a></p>
 <p><strong><code>XDI</code></strong> is a <a href="https://en.wikipedia.org/wiki/Dependency_injection">dependency injection</a> library for Python.</p>
-<h2 id="key-features">Key Features</h2>
+<h2 id="why-use-xdi">Why Use XDI?</h2>
 <ul>
-<li><code>mkdocs new [dir-name]</code> - Create a new project.</li>
-<li><code>mkdocs serve</code> - Start the live-reloading docs server.</li>
-<li><code>mkdocs build</code> - Build the documentation site.</li>
-<li><code>mkdocs -h</code> - Print help message and exit.</li>
+<li>Fast: minus the cost of an additional stack frame, <code>xdi</code> resolves dependencies 
+nearly as efficiently as resolving them by hand.</li>
+<li>Async support: <code>xdi</code> will <code>await</code> for you.</li>
+<li>Many Providers to choose from.</li>
 </ul>
-<h2 id="project-layout">Project layout</h2>
-<div class="highlight"><pre><span></span><code>mkdocs.yml    # The configuration file.
-docs/
-    index.md  # The documentation homepage.
-    ...       # Other markdown pages, images and other files.
+<h2 id="why-use-dependency-injection">Why use dependency injection?</h2>
+<p>Take a look at the following code.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">os</span>
+
+<span class="k">class</span> <span class="nc">ApiClient</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">api_url</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;API_URL&quot;</span><span class="p">)</span>  <span class="c1"># a dependency</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;API_KEY&quot;</span><span class="p">)</span>  <span class="c1"># a dependency</span>
+
+    <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">token</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span> <span class="n">url</span><span class="p">:</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">api_url</span><span class="si">}</span><span class="s1">/</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">status</span><span class="p">:</span> <span class="s1">&#39;ok&#39;</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="p">[]</span> <span class="p">}</span>
+
+
+
+<span class="k">class</span> <span class="nc">Service</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_api_client</span> <span class="o">=</span> <span class="n">ApiClient</span><span class="p">()</span>  <span class="c1"># a dependency</span>
+        <span class="c1"># do some init</span>
+
+    <span class="k">def</span> <span class="nf">do_something</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;abc&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Service doing something&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">some_func</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">service</span> <span class="o">=</span> <span class="n">Service</span><span class="p">()</span>  <span class="c1"># a dependency</span>
+    <span class="n">service</span><span class="o">.</span><span class="n">do_something</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;serivce has done something&quot;</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">some_func</span><span class="p">()</span>
 </code></pre></div>
+<p>This code will run as expected. However:-</p>
+<ol>
+<li>
+<p><strong>Testing it will be difficult</strong></p>
+<p>For example, to test <code>Service</code> we need a fake <code>ApiClient</code> as we don't what to 
+make real api calls or might not have the credentials to do so. 
+Since <code>Service</code> creates it's own <code>ApiClient</code> instance, it is impossible to 
+safely mock the <code>ApiClient</code> for tests. </p>
+</li>
+<li>
+<p><strong>Lacks flexibility and extensibility</strong></p>
+<p>It's imppossible to create an additional <code>ApiClient</code> instance that uses a 
+different <code>API_URL</code> and/or <code>API_KEY</code>.</p>
+</li>
+</ol>
+<p>So what do we do? We should decouple our objects from their dependencies. </p>
+<p>That is, objects should not create each other anymore. They should provide a way 
+to inject the dependencies instead.</p>
+<p>Here's how.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">ApiClient</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">api_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">api_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span> <span class="c1"># we let the caller provide the dependencies</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">api_url</span> <span class="o">=</span> <span class="n">api_url</span>  
+        <span class="bp">self</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="n">api_key</span>
+
+
+<span class="k">class</span> <span class="nc">Service</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">api_client</span><span class="p">:</span> <span class="n">ApiClient</span><span class="p">):</span> <span class="c1"># we let the caller provide the dependency</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_api_client</span> <span class="o">=</span> <span class="n">api_client</span> 
+
+
+<span class="k">def</span> <span class="nf">some_func</span><span class="p">(</span><span class="n">service</span><span class="p">:</span> <span class="n">Service</span><span class="p">):</span> <span class="c1"># we let the caller provide the dependency</span>
+    <span class="n">service</span><span class="o">.</span><span class="n">do_something</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;serivce has done something&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Congratulations, your code is now loosely coupled. </p>
+<p>But remember, with freedom comes more responsibility.</p>
+<p>The responsibility is left to the "caller" who has to know, assemble and provide the dependencies.</p>
+<p><div class="highlight"><pre><span></span><code><span class="n">some_func</span><span class="p">(</span>
+    <span class="n">service</span><span class="o">=</span><span class="n">Service</span><span class="p">(</span>
+        <span class="n">api_client</span><span class="o">=</span><span class="n">ApiClient</span><span class="p">(</span>
+            <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;API_KEY&quot;</span><span class="p">),</span>
+            <span class="n">api_url</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;TIMEOUT&quot;</span><span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+This quickly becomes a problem when you what to use <code>some_func()</code> from multiple places.
+Duplicating the assembly code with make it harder to change in the future.</p>
+<h3 id="with-xdi">With XDI.</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">xdi</span> <span class="kn">import</span> <span class="n">Injector</span><span class="p">,</span> <span class="n">inject</span><span class="p">,</span> <span class="n">context</span>
+
+<span class="nd">@inject</span>  <span class="c1"># tell the di to inject dependencies</span>
+<span class="k">def</span> <span class="nf">some_func</span><span class="p">(</span><span class="n">service</span><span class="p">:</span> <span class="n">Service</span><span class="p">):</span>
+    <span class="n">service</span><span class="o">.</span><span class="n">do_something</span><span class="p">()</span>
+
+
+<span class="n">injector</span> <span class="o">=</span> <span class="n">Injector</span><span class="p">()</span>
+
+<span class="c1"># register the ApiClient</span>
+<span class="n">injector</span><span class="o">.</span><span class="n">factory</span><span class="p">(</span>
+    <span class="n">ApiClient</span><span class="p">,</span> 
+    <span class="n">api_url</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;API_URL&quot;</span><span class="p">),</span> <span class="c1"># &lt;-- provide value from env</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s1">&#39;API_KEY&#39;</span><span class="p">)</span>  <span class="c1"># &lt;-- provide value from env</span>
+<span class="p">)</span><span class="o">.</span><span class="n">singleton</span><span class="p">()</span>  <span class="c1"># &lt;-- make it provide only one instance.</span>
+
+
+<span class="c1"># Register the Service. </span>
+<span class="n">injector</span><span class="o">.</span><span class="n">factory</span><span class="p">(</span><span class="n">Service</span><span class="p">)</span> 
+<span class="c1"># Since we did not specify a value for api_client. `ApiClient` will get injected </span>
+<span class="c1"># as it matches the type annotation `api_client: ApiClient`</span>
+
+
+<span class="c1"># Run the injector</span>
+<span class="n">injector</span><span class="o">.</span><span class="n">run_forever</span><span class="p">()</span>
+
+<span class="n">some_func</span><span class="p">()</span> <span class="c1"># &lt;-- dependency `Service` is injected automatically</span>
+</code></pre></div>
+<h2 id="installation">Installation</h2>
+<p>Install from <a href="https://pypi.org/project/xdi/">PyPi</a></p>
+<div class="highlight"><pre><span></span><code>pip install xdi
+</code></pre></div>
+<h2 id="documentation">Documentation</h2>
+<p>Full documentation is available <a href="https://davidkyalo.github.io/xdi/">here</a>.</p>
+<h2 id="production">Production</h2>
+<p><strong>This package is still in active development and should not be used in production environment</strong></p>
 
               
             </article>
@@ -355,6 +558,26 @@ docs/
       </main>
       
         <footer class="md-footer">
+  
+    <nav class="md-footer__inner md-grid" aria-label="Footer">
+      
+      
+        
+        <a href="basic_usage/" class="md-footer__link md-footer__link--next" aria-label="Next: Basic Usage" rel="next">
+          <div class="md-footer__title">
+            <div class="md-ellipsis">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              Basic Usage
+            </div>
+          </div>
+          <div class="md-footer__button md-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"/></svg>
+          </div>
+        </a>
+      
+    </nav>
   
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">

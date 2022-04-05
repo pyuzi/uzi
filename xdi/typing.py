@@ -8,10 +8,10 @@ from typing import get_args, get_origin, ForwardRef
 
 from typing_extensions import Self
 
-if sys.version_info < (3, 10): 
-    UnionType = type(t.Union[t.Any, None])
-else:
-    from types import UnionType
+if sys.version_info < (3, 10): # pragma: py-gt-39
+    UnionType = type(t.Union[t.Any, None]) 
+else: # pragma: py-lt-310
+    from types import UnionType 
 
 
 

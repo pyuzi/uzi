@@ -21,6 +21,11 @@ classifiers = [
 ]
 
 
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
 [tool.poetry.dependencies]
 python = "^3.9"
 typing-extensions = "^4.1.1"
@@ -33,9 +38,39 @@ pip = "^22.0.4"
 mkdocs = "^1.3.0"
 mkdocs-material = "^8.2.8"
 mike = "^1.1.2"
+coverage-conditional-plugin = "^0.5.0"
 
 
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.pytest.ini_options]
+addopts = "--cov=xdi --cov-report html --cov-config pyproject.toml"
+asyncio_mode="auto"
+
+
+# log_level = INFO
+log_level = "DEBUG"
+
+# Glob-style pattern(s) for matching the test modules.
+python_files = "tests/**/test.py tests/**/tests.py tests/**/*_test.py tests/**/*_tests.py"
+
+#Pattern for matching test classes
+python_classes = "*Test *Tests"
+
+#Test markers
+
+
+[tool.coverage.run]
+# Here we specify plugins for coverage to be used:
+plugins = [
+    "coverage_conditional_plugin"
+]
+
+[tool.coverage.coverage_conditional_plugin.rules]
+# Here we specify our pragma rules:
+py-gt-37 = "sys_version_info > (3, 7)"
+py-gt-38 = "sys_version_info > (3, 8)"
+py-gt-39 = "sys_version_info > (3, 9)"
+py-lt-38 = "sys_version_info < (3, 8)"
+py-lt-39 = "sys_version_info < (3, 9)"
+py-lt-310 = "sys_version_info < (3, 10)"
+has-mypy = "is_installed('mypy')"

@@ -1,4 +1,6 @@
 
+from functools import cache
+from typing import Union
 from xdi import Injector, inject, context
 
 
@@ -55,12 +57,12 @@ class Service:
 
 ioc = Injector() 
 
-ioc.factory(Foo)#.singleton()
-ioc.factory(Bar).singleton()
-ioc.factory(Baz).singleton()
-ioc.factory(FooBar)#.singleton()
-ioc.factory(FooBarBaz)#.singleton()
-ioc.factory(Service)#.singleton()
+ioc.factory(Foo)
+ioc.factory(Bar)
+ioc.factory(Baz)
+ioc.factory(FooBar)
+ioc.factory(FooBarBaz)
+ioc.factory(Service)
 
 
 @inject
@@ -106,18 +108,21 @@ with Timer() as tm:
         bfoo = Benchmark('Foo.', _n).run(py=mkfoo, xdi=ctx[Foo])
         bbar = Benchmark('Bar.', _n).run(py=mkbar, xdi=ctx[Bar])
         bbaz = Benchmark('Baz.', _n).run(py=mkbaz, xdi=ctx[Baz])
-        
-        bench = Benchmark(str(Foo | Bar | Baz), _n)
-        bench |= bfoo | bbar | bbaz 
-        print(bench, '\n')
+        print(bfoo, bbar, bbaz, sep='\n')
+        # bench = Benchmark(str(Union[Foo, Bar, Baz]), _n)
+        # bench |= bfoo | bbar | bbaz 
+        # print(bench, '\n')
+
 
         bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, xdi=ctx[FooBar])
         bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, xdi=ctx[FooBarBaz])
         bservice    = Benchmark('Service.', _n).run(py=mkservice, xdi=ctx[Service])
 
-        bench = Benchmark(str(FooBar | FooBarBaz | Service), _n)
-        bench |= bfoobar | bfoobarbaz | bservice
-        print(bench, '\n')
+        print('', bfoobar, bfoobarbaz, bservice, sep='\n')
+
+        # bench = Benchmark(str(Union[FooBar, FooBarBaz, Service]), _n)
+        # bench |= bfoobar | bfoobarbaz | bservice
+        # print(bench, '\n')
 
         binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, xdi=inject_1)
         binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, xdi=inject_2)

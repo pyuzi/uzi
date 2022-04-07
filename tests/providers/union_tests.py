@@ -7,7 +7,7 @@ import typing as t
 
 from xdi.providers import UnionProvider as Provider, Factory
 
-from xdi.injectors import Injector
+from xdi import Scope
 
  
 
@@ -30,9 +30,9 @@ class UnionProviderTests(ProviderTestCase):
         return Provider(t.Union[_T, _Ta])
 
     @pytest.fixture
-    def injector(self, injector, value_setter):
-        injector.bindings[_Ta] = lambda c: value_setter
-        return injector
+    def scope(self, scope, value_setter):
+        scope[_Ta] = lambda c: value_setter
+        return scope
 
 
 
@@ -40,8 +40,8 @@ class UnionProviderTests(ProviderTestCase):
 class AsyncUnionProviderTests(UnionProviderTests, AsyncProviderTestCase):
 
     @pytest.fixture
-    def injector(self, injector, value_setter):
-        injector.bindings[_Ta] = fn = lambda c: lambda: asyncio.sleep(0, value_setter())
+    def scope(self, scope, value_setter):
+        scope[_Ta] = fn = lambda c: lambda: asyncio.sleep(0, value_setter())
         fn.is_async = True
-        return injector
+        return scope
 

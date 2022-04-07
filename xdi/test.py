@@ -1,13 +1,17 @@
 import typing as t
 
+import attr
+
+from xdi import Dependency
 
 
 
 
-from .containers import Container, InjectorContainer
+
+
+from .containers import Container
 from .injectors import Injector
-from .ctx import InjectorContext
-from .providers.util import BindingsMap
+from .scopes import Scope
 
 
 
@@ -16,22 +20,7 @@ class TestContainer(Container):
 
 
 
-class TestInjectorContainer(InjectorContainer):
-    ...
-
-
-
-class TestInjectorContext(InjectorContext):
-
-    __setitem__ = dict.__setitem__
-    __delitem__ = dict.__delitem__
-    setdefault = dict.setdefault
-    update = dict.update
-    pop = dict.pop
-    
-
-
-class TestBindingsMap(BindingsMap):
+class TestInjectorContext(Injector):
 
     __setitem__ = dict.__setitem__
     __delitem__ = dict.__delitem__
@@ -42,14 +31,9 @@ class TestBindingsMap(BindingsMap):
 
 
 
-class TestInjector(Injector):
-    
-    _bindings_class = TestBindingsMap
-    _container_class = TestInjectorContainer
-    _context_class = TestInjectorContext
+class TestScope(Scope):
 
-
-
-    
-
-
+    def __setitem__(self, key, val):
+        if not isinstance(key, Dependency):
+            key = Dependency(key, self)
+        self._resolver_map[key] = val

@@ -13,12 +13,11 @@ from xdi._common.collections import MultiChainMap
 
 
 from ..typing import get_origin
-from ..ctx import context_partial
 from .. import InjectionMarker, Injectable
 from . import Callable, Provider, Alias, Resource, Singleton, Value, Factory
 
 if t.TYPE_CHECKING:
-    from ..injectors import Injector
+    from ..scopes import Scope
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +31,10 @@ class ProviderResolver:
 
     __slots__ = '__injector',  '__registry', 
 
-    __injector: 'Injector'
+    __injector: 'Scope'
     __registry: MultiChainMap[Injectable, Provider]
 
-    def __new__(cls, injecor: 'Injector', registry: MultiChainMap[Injectable, Provider]):
+    def __new__(cls, injecor: 'Scope', registry: MultiChainMap[Injectable, Provider]):
         self = object.__new__(cls)
         self.__injector = injecor
         self.__registry = registry
@@ -71,10 +70,10 @@ class BindingsMap(dict[Injectable, t.Union[_T_Fn, None]], t.Generic[_T_Fn]):
 
     __slots__ = '__injector', '__resolver',
 
-    __injector: 'Injector'
+    __injector: 'Scope'
     __resolver: ProviderResolver
 
-    def __init__(self, injector: 'Injector', resolver: ProviderResolver):
+    def __init__(self, injector: 'Scope', resolver: ProviderResolver):
         self.__injector = injector
         self.__resolver = resolver
 
@@ -129,12 +128,6 @@ class ProviderRegistry(ABC):
                     f'`FunctionType` not {provider.__class__.__name__}'
                 )
         return self
-
-    def inject(self, func: _T_Fn) -> _T_Fn:
-        provider = Callable(func)
-        self.register(provider)
-        return update_wrapper(context_partial(provider), func)
-       
     
     if t.TYPE_CHECKING:
 

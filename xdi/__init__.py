@@ -1,9 +1,12 @@
+from pickle import GLOBAL
 import typing as t
 from abc import ABCMeta, abstractmethod
 from collections.abc import Callable as AbstractCallable
-from enum import Enum
+from enum import IntEnum, auto, Enum
 from logging import getLogger
 from types import FunctionType, GenericAlias, MethodType
+
+import attr
 
 from xdi._common.collections import frozendict
 from xdi._common.datapath import DataPath
@@ -11,7 +14,7 @@ from xdi._common.functools import Missing, calling_frame, export
 from typing_extensions import Self
 
 if t.TYPE_CHECKING:
-    from .injectors import Injector
+    from .scopes import Scope
     from .providers import Provider
 
     ProviderType = type[Provider]
@@ -26,12 +29,12 @@ T_Injectable = t.TypeVar("T_Injectable", bound="Injectable", covariant=True)
 _logger = getLogger(__name__)
 
 
-@export()
+
 def is_injectable(obj):
     return isinstance(obj, Injectable)
 
 
-@export()
+
 def is_injectable_annotation(obj):
     """Returns `True` if the given type is injectable."""
     return is_injectable(obj)
@@ -45,7 +48,10 @@ class _PrivateABCMeta(ABCMeta):
         return super().register(subclass)
 
 
-@export()
+
+
+
+
 class Injectable(metaclass=_PrivateABCMeta):
 
     __slots__ = ()
@@ -65,7 +71,7 @@ Injectable.register(type(t.Generic[T_Injected]))
 Injectable.register(type(t.Union))
 
 
-@export()
+
 @Injectable.register
 class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
 
@@ -141,6 +147,132 @@ class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
         return super().__setattr__(name, value)
 
 
+class DependencyLocation(IntEnum):
+
+    GLOBAL: "DependencyLocation" = 0
+    """start resolving from the current/given scope and it's parent.
+    """
+
+    SELF: "DependencyLocation" = auto()
+    """Only inject from the current scope without considering parents
+    """
+    
+    PEER: "DependencyLocation" = auto()
+    """Skip the current/given container and resolve from it's peers or parent instead.
+    """
+
+    LOCAL: "DependencyLocation" = auto()
+    """Only inject from the current/given container without considering it's peers and parent
+    """
+
+    SUPER: "DependencyLocation" = auto()
+    """Skip the current scope and resolve from it's parent instead.
+    """
+
+    @classmethod
+    def coerce(cls, val):
+        return cls(val or 0)
+
+
+
+class _DependencyIdent(t.NamedTuple):
+    hash: int
+    pure: bool = False
+
+
+@InjectionMarker.register
+@attr.s(slots=True, frozen=False, cmp=False)
+class Dependency(t.Generic[T_Injected]):
+
+    """Marks an injectable as a `dependency` to be injected."""
+
+    dependency: T_Injectable = attr.field()
+    scope: t.Union['Container', 'Scope', None] = attr.field(default=None, repr=lambda s: f'{s.__class__.__name__}({s.name!r})')
+    loc: DependencyLocation = attr.field(default=DependencyLocation.GLOBAL, converter=DependencyLocation)
+    default: T_Injected = attr.field(default=Missing, kw_only=True)
+    container: 'Container' = attr.field(init=False, repr=False)
+
+    _ident: _DependencyIdent = attr.field(init=False, repr=False)
+
+    GLOBAL: t.Final = DependencyLocation.GLOBAL
+    """start resolving from the current/given scope and it's parent.
+    """
+
+    LOCAL: t.Final = DependencyLocation.LOCAL
+    """Only inject from the current/given container without considering it's peers and parent
+    """
+
+    SUPER: t.Final = DependencyLocation.SUPER
+    """Skip the current scope and resolve from it's parent instead.
+    """
+    
+    PEER: t.Final = DependencyLocation.PEER
+    """Skip the current/given container and resolve from it's peers or parent instead.
+    """
+
+    SELF: t.Final = DependencyLocation.SELF
+    """Only inject from the current scope without considering parents
+    """
+
+    # def parent(self, scope: 'Scope') -> t.Union[Self, None]:
+    #     if container := self.container:
+    #         if parent := container.parent or scope.parent:
+    #             if self.loc is GLOBAL:
+
+    #         if container is scope.container:
+
+    #         return  
+
+    @t.overload
+    def replace(self, *,
+                scope: t.Union['Container', 'Scope']=..., 
+                loc: DependencyLocation = ...,
+                default: DependencyLocation = ...,
+            ) -> Self:
+        ...
+    def replace(self, **kwds) -> Self:
+        return self.__class__(
+            self.dependency, **{
+            'scope': self.scope,
+            'loc': self.loc,
+            'default': self.default,
+            **kwds
+        })
+
+    def __init_subclass__(cls, *args, **kwargs):
+        raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__qualname__}")
+
+    def __attrs_post_init__(self):
+        self.container = scp.container if isinstance(scp := self.scope, Scope) else scp
+        if scp or self.loc or not self.default is Missing:
+            self._ident = _DependencyIdent(hash((self.dependency, self.container, self.loc, self.default)))
+        else:
+            self._ident = _DependencyIdent(hash(self.dependency), True)
+
+    @property
+    def __dependency__(self):
+        if self._ident.is_pure:
+            return self.dependency
+        # elif 
+        return self.dependency if self.is_pure else self.__class__
+
+    @property
+    def is_pure(self):
+        return self._ident.pure
+
+    def __eq__(self, x) -> bool:
+        ident = self._ident
+        if isinstance(x, Dependency):
+            return x._ident == ident
+        return ident.pure and x == self.dependency
+    
+    def __hash__(self):
+        return self._ident.hash
+
+
+
+
+
 class DepInjectorFlag(Enum):
 
     # none: 'InjectFlag'      = None
@@ -154,7 +286,7 @@ class DepInjectorFlag(Enum):
     """
 
 
-@export()
+
 @InjectionMarker.register
 class Dep(DataPath[T_Injected]):
 
@@ -166,6 +298,8 @@ class Dep(DataPath[T_Injected]):
         "__v_hashident__",
         "__default__",
     )
+
+    Flag = DepInjectorFlag
 
     ONLY_SELF: t.Final = DepInjectorFlag.only_self
     """Only inject from the current context without considering parents
@@ -273,6 +407,9 @@ class Dep(DataPath[T_Injected]):
         raise AttributeError(f"cannot set readonly attribute {name!r}")
 
 
+
+
+
+
 from .containers import Container
-from .ctx import context
-from .injectors import Injector, inject
+from .scopes import Scope

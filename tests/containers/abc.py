@@ -6,7 +6,7 @@ import pytest
 
 
 from xdi.containers import Container
-from xdi.injectors import Injector
+from xdi import Scope
 from xdi._common.functools import uniqueid
 
 
@@ -35,12 +35,12 @@ class ContainerTestCase:
         yield self.cls
 
     @pytest.fixture
-    def injector(self, injector: Injector):
+    def scope(self, scope: Scope):
         # for t_ in (_Ta, _Tb, _Tc):
-        #     injector.value(t_, f'{uniqueid[t_]()}.00-injector-{injector.name}')
-        return injector
+        #     scope.value(t_, f'{uniqueid[t_]()}.00-scope-{scope.name}')
+        return scope
 
-    def _test_multi_providers(self, make: type[Container], injector: Injector):
+    def _test_multi_providers(self, make: type[Container], scope: Scope):
         container = make()
         for _ in range(1,4):
             container = make(name=f'container[{_}]')
@@ -53,7 +53,7 @@ class ContainerTestCase:
                 #     pro.default()
                     
                 # container.value(t_, f'{uniqueid[t_]()}.02-{container.name}')
-            injector.require(container)
+            scope.require(container)
             for _ in range(1,2):
                 _container = make(name=f'{container.name}[{_}]')
                 for t_ in (_Ta, _Tb, _Tc):
@@ -61,15 +61,15 @@ class ContainerTestCase:
                 container.require(_container)
 
         for t_ in (_Ta, _Tb, _Tc):
-            injector.value(t_, f'{uniqueid[t_]()}.00-injector-{injector.name}').default()
+            scope.value(t_, f'{uniqueid[t_]()}.00-scope-{scope.name}').default()
 
-        injector._boot()
+        scope._boot()
         for t_ in (_T, _Ta, _Tb, _Tc):
             print(
                 f' - {t_!r}', 
-                *(f'   - {p!r}' for p in injector.registry.iall(t_)), 
+                *(f'   - {p!r}' for p in scope.registry.iall(t_)), 
                 '='*80,
-                f'  {injector.resolver.resolve(t_)!r}',
+                f'  {scope.resolver.resolve(t_)!r}',
                 '='*80,
                 sep="\n  ")
 

@@ -2,7 +2,7 @@ from types import MethodType
 import typing as t
 from abc import ABCMeta, abstractmethod
 from collections import ChainMap, abc
-from collections.abc import Callable as AbstractCallable
+from collections.abc import Callable as AbstractCallable, Iterable
 from collections.abc import Set
 from contextlib import AbstractContextManager
 from functools import wraps
@@ -10,10 +10,10 @@ from inspect import Parameter, Signature, iscoroutinefunction, ismemberdescripto
 from logging import getLogger
 
 from xdi._common.collections import Arguments
-from xdi._common.functools import Missing, export
+from xdi._common.functools import Missing
 from ..typing import Self, UnionType, get_args, get_origin, typed_signature
 
-from .. import (Dep, Injectable, DepInjectorFlag, InjectionMarker, T_Injectable,
+from .. import (Dep, Injectable, DependencyLocation, InjectionMarker, T_Injectable,
                 T_Injected, is_injectable)
 from .functools import (
     CallableFactoryBinding,
@@ -27,7 +27,8 @@ from .functools import (
 
 if t.TYPE_CHECKING:
     from ..containers import Container
-    from ..injectors import Injector, InjectorContext
+    from ..scopes import Scope
+    from ..scopes import Scope, Injector
 
 
 logger = getLogger(__name__)
@@ -86,7 +87,7 @@ def _fluent_decorator(default=Missing, *, fluent: bool = False):
 
 
 
-@export()
+
 class DuplicateProviderError(ValueError):
     pass
 
@@ -167,7 +168,7 @@ class ProviderType(ABCMeta):
 
 
 
-@export()
+
 @InjectionMarker.register
 class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
@@ -208,7 +209,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
     """Whether the value is provided async.
     """
 
-    filters: tuple[abc.Callable[['Injector', Injectable], bool]] = ()
+    filters: tuple[abc.Callable[['Scope', Injectable], bool]] = ()
     """Called to determine whether this provider can be bound.
     """
 
@@ -342,31 +343,41 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
         self.__set_attr(uses=using)
         return self
 
-    def bind(self, injector: "Injector", provides: T_Injectable=None) -> 'TContextBinding':
+    def bind(self, scope: "Scope", provides: T_Injectable=None) -> 'TContextBinding':
         self._freeze()
 
-        if self.container is None or injector.is_scope(self.container):
-            fn, deps = self._bind(injector, provides)
+        if self.container is None or self.container in scope:
+            fn, deps = self._bind(scope, provides)
             return fn
 
     @abstractmethod
-    def _bind(self, injector: "Injector", token: T_Injectable) -> tuple[abc.Callable, Set]:
+    def _bind(self, scope: "Scope", token: T_Injectable) -> tuple[abc.Callable, Set]:
         ...
 
-    def can_bind(self, injector: "Injector", dep: T_Injectable=None) -> bool:
+    def can_bind(self, scope: "Scope", dep: T_Injectable=None) -> bool:
         self._freeze()
-        if self.container is None or injector.is_scope(self.container):
-            return self._can_bind(injector, dep) and self._run_filters(injector, dep)
+        if self.container is None or self.container in scope:
+            return self._can_bind(scope, dep) and self._run_filters(scope, dep)
         return False
 
-    def _can_bind(self, injector: "Injector", dep: T_Injectable) -> bool:
+    def _can_bind(self, scope: "Scope", dep: T_Injectable) -> bool:
         return True
 
-    def _run_filters(self, injector: "Injector", dep: T_Injectable) -> bool:
+    def _run_filters(self, scope: "Scope", dep: T_Injectable) -> bool:
         for fl in self.filters:
-            if not fl(self, injector, dep):
+            if not fl(self, scope, dep):
                 return False
         return True
+
+    def compose(self, scope: 'Scope', dep: T_Injectable, override: Self = None, *overrides: Iterable[Self]) -> Self:
+        if child := override and override.compose(scope, dep, *overrides): 
+            if not self.is_final:
+                return child
+            raise DuplicateProviderError(
+                f"Final provider '{self}' got '{1+len(overrides)}' has overrides"
+            )
+        elif self.can_bind(scope, dep):
+            return self
 
     def substitute(self, *subs: 'Provider') -> 'Provider':
         if self.is_final:
@@ -399,7 +410,6 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
     # @t.Final
     def __setattr__(self, name=None, value=None, force=False, /, **kw):
-        
         name is None or (kw := {name: value})
 
         if force is False and self._frozen:
@@ -425,7 +435,7 @@ class Provider(t.Generic[_T_Using, T_Injected], metaclass=ProviderType):
 
 
 
-@export()
+
 class Value(Provider[T_UsingValue, T_Injected]):
     """Provides given value as it is."""
 
@@ -435,7 +445,7 @@ class Value(Provider[T_UsingValue, T_Injected]):
         def __init__(self, provide: Injectable = Missing, value: T_Injected = Missing) -> None:
             ...
 
-    def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
+    def _bind(self, scope: "Scope", dep: T_Injectable) -> 'TContextBinding':
         value = self.uses
         def make():
             nonlocal value
@@ -446,14 +456,14 @@ class Value(Provider[T_UsingValue, T_Injected]):
 
 
 
-@export()
+
 class InjectorContextProvider(Provider[T_UsingValue, T_Injected]):
     """Provides the current `InjectorContext`"""
     _uses: t.ClassVar = None
     uses: t.ClassVar = None
 
-    def _bind(self, injector: "Injector", dep: T_Injectable) -> 'TContextBinding':
-        def run(ctx: 'InjectorContext'):
+    def _bind(self, scope: "Scope", dep: T_Injectable) -> 'TContextBinding':
+        def run(ctx: 'Injector'):
             def make():
                 nonlocal ctx
                 return ctx
@@ -464,7 +474,7 @@ class InjectorContextProvider(Provider[T_UsingValue, T_Injected]):
 
 
 
-@export()
+
 class Alias(Provider[T_UsingAlias, T_Injected]):
 
 
@@ -472,16 +482,16 @@ class Alias(Provider[T_UsingAlias, T_Injected]):
         def __init__(self, provide: Injectable = Missing, alias: Injectable = Missing) -> None:
             ...
         
-    def _can_bind(self, injector: "Injector", obj: T_Injectable) -> bool:
-        return obj != self.uses and injector.is_provided(self.uses)
+    def _can_bind(self, scope: "Scope", obj: T_Injectable) -> bool:
+        return obj != self.uses and scope.is_provided(self.uses)
 
-    def _bind(self, injector: "Injector", obj: T_Injectable) -> 'TContextBinding':
+    def _bind(self, scope: "Scope", obj: T_Injectable) -> 'TContextBinding':
         real = self.uses
         return lambda ctx: ctx[real], {real}
 
 
 
-@export()
+
 class UnionProvider(Provider[_T_Using, T_Injected]):
 
     _bind_type = UnionType 
@@ -493,26 +503,27 @@ class UnionProvider(Provider[_T_Using, T_Injected]):
     def get_all_args(self, token: Injectable):
         return get_args(token)
 
-    def _iter_injectable(self, injector: 'Injector', token: Injectable) -> tuple[Injectable]:
+    def _iter_injectable(self, scope: 'Scope', token: Injectable) -> tuple[Injectable]:
         for a in self.get_all_args(token):
-            if is_injectable(a) and injector.is_provided(a):
+            print(f'{a=} --> {scope.is_provided(a)=}')
+            if is_injectable(a) and scope.is_provided(a):
                 yield a
                 
     def _is_bind_type(self, obj: T_Injectable):
         return isinstance(obj, self._bind_type)
 
-    def _can_bind(self, injector: "Injector", obj: T_Injectable) -> bool:
-        return self._is_bind_type(obj) and next(self._iter_injectable(injector, obj), ...)
+    def _can_bind(self, scope: "Scope", obj: T_Injectable) -> bool:
+        return self._is_bind_type(obj) and next(self._iter_injectable(scope, obj), ...)
 
-    def _bind(self, injector: "Injector", obj):
-        if deps := [*self._iter_injectable(injector, obj)]:
+    def _bind(self, scope: "Scope", obj):
+        if deps := [*self._iter_injectable(scope, obj)]:
             return lambda ctx: ctx.find(*deps), {*deps}
         return None, None
 
 
 
 
-@export()
+
 class AnnotatedProvider(UnionProvider):
 
     _uses: t.Final = type(t.Annotated)
@@ -527,7 +538,6 @@ class AnnotatedProvider(UnionProvider):
 
 
 
-@export()
 class DepMarkerProvider(Provider):
     
     _uses: t.ClassVar = Dep
@@ -535,14 +545,14 @@ class DepMarkerProvider(Provider):
     def _provides_fallback(self):
         return self.uses
 
-    def _can_bind(self, injector: "Injector", obj: Dep) -> bool:
+    def _can_bind(self, scope: "Scope", obj: Dep) -> bool:
         return isinstance(obj, self.uses) and ( 
                 obj.__injector__ is None
-                or obj.__injector__ in DepInjectorFlag
-                or injector.is_scope(obj.__injector__)
+                or obj.__injector__ in Dep.Flag
+                or obj.__injector__ in scope
             )
 
-    def _bind(self, injector: "Injector", marker: Dep):
+    def _bind(self, scope: "Scope", marker: Dep):
         dep = marker.__injects__
         flag = marker.__injector__
         default = marker.__default__
@@ -552,7 +562,7 @@ class DepMarkerProvider(Provider):
                 default.is_async = False
 
         if flag is Dep.ONLY_SELF:
-            def run(ctx: 'InjectorContext'):
+            def run(ctx: 'Injector'):
                 func = ctx.get(dep)
                 if None is func:
                     return ctx[default] if inject_default is True else default
@@ -571,7 +581,7 @@ class DepMarkerProvider(Provider):
                     return make
 
         elif flag is Dep.SKIP_SELF:
-            def run(ctx: 'InjectorContext'):
+            def run(ctx: 'Injector'):
                 func = ctx.parent[dep] 
                 if None is func:
                     return ctx[default] if inject_default is True else default
@@ -589,7 +599,7 @@ class DepMarkerProvider(Provider):
                     make.is_async = False
                     return make
         else:
-            def run(ctx: 'InjectorContext'):
+            def run(ctx: 'Injector'):
                 func = ctx[dep] 
                 if None is func:
                     return ctx[default] if inject_default is True else default
@@ -614,7 +624,7 @@ class DepMarkerProvider(Provider):
 
 
 _none_or_ellipsis = frozenset([None, ...])
-@export()
+
 class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
     arguments: Arguments = _Attr(default_factory=Arguments)
@@ -704,12 +714,12 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
     def _provides_fallback(self):
         return self._uses
 
-    def _bind(self, injector: "Injector", token: T_Injectable) -> 'TContextBinding':
-        return self._create_binding(injector), None
+    def _bind(self, scope: "Scope", token: T_Injectable) -> 'TContextBinding':
+        return self._create_binding(scope), None
 
-    def _create_binding(self, injector: "Injector"):
+    def _create_binding(self, scope: "Scope"):
         return self._binding_class(
-                injector,
+                scope,
                 self.uses, 
                 self.get_signature(),
                 is_async=self.is_async,
@@ -719,7 +729,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
 
 
 
-@export()
+
 class Singleton(Factory[T_Injected]):
 
     is_shared: t.ClassVar[bool] = True
@@ -730,9 +740,9 @@ class Singleton(Factory[T_Injected]):
         self.__set_attr(is_thread_safe=is_thread_safe)
         return self
 
-    def _create_binding(self, injector: "Injector"):
+    def _create_binding(self, scope: "Scope"):
         return self._binding_class(
-                injector,
+                scope,
                 self.uses, 
                 self.get_signature(),
                 is_async=self.is_async,
@@ -743,7 +753,7 @@ class Singleton(Factory[T_Injected]):
 
 
 
-@export()
+
 class Resource(Singleton[T_Injected]):
 
     is_async: bool = None
@@ -756,9 +766,9 @@ class Resource(Singleton[T_Injected]):
         self.__set_attr(is_awaitable=is_awaitable)
         return self
         
-    def _create_binding(self, injector: "Injector"):
+    def _create_binding(self, scope: "Scope"):
         return self._binding_class(
-                injector,
+                scope,
                 self.uses, 
                 self.get_signature(),
                 is_async=self.is_async,
@@ -767,7 +777,7 @@ class Resource(Singleton[T_Injected]):
             )
 
 
-@export()
+
 class Partial(Factory[T_Injected]):
 
     _binding_class: t.ClassVar[type[PartialFactoryBinding]] = PartialFactoryBinding
@@ -775,9 +785,9 @@ class Partial(Factory[T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature
 
-    def _create_binding(self, injector: "Injector"):
+    def _create_binding(self, scope: "Scope"):
         return self._binding_class(
-                injector,
+                scope,
                 self.uses, 
                 self.get_signature(),
                 is_async=self.is_async,
@@ -787,7 +797,7 @@ class Partial(Factory[T_Injected]):
 
 
 
-@export()
+
 class Callable(Partial[T_Injected]):
 
     _binding_class: t.ClassVar[type[CallableFactoryBinding]] = CallableFactoryBinding

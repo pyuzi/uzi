@@ -3,14 +3,14 @@
 from collections.abc import Callable
 from functools import partial, update_wrapper, wraps
 from aiohttp import ClientSession
-from xdi import Injector, providers
+from xdi import Scope, providers
 from sanic import Request
 
 from .services import search, giphy, T_HttpClient
 
 
 
-injector = Injector()
+injector = Scope()
 
 # injector.factory(T_HttpClient).using(ClientSession, timeout=10)#.awaitable()
 

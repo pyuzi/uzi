@@ -32,7 +32,7 @@ from .. import (
 )
 
 if t.TYPE_CHECKING:
-    from ..injectors import Injector, InjectorContext
+    from ..scopes import Scope, Injector
 
 
 logger = getLogger(__name__)
@@ -197,14 +197,13 @@ class BoundParam:
             return self._default_factory
 
 
-@export
 class FactoryBinding:
 
     __slots__ = (
         "factory",
         "signature",
         "decorators",
-        "injector",
+        "scope",
         "args",
         "aw_call",
         "aw_args",
@@ -218,7 +217,7 @@ class FactoryBinding:
     )
 
     factory: Callable
-    injector: "Injector"
+    scope: "Scope"
     arguments: dict[str, t.Any]
     signature: Signature
     decorators: list[Callable[[Callable], Callable]]
@@ -234,7 +233,7 @@ class FactoryBinding:
 
     def __init__(
         self,
-        injector: "Injector",
+        scope: "Scope",
         factory: Callable,
         signature: Signature = None,
         *,
@@ -243,7 +242,7 @@ class FactoryBinding:
     ):
         # self = object.__new__(cls)
         self.factory = factory
-        self.injector = injector
+        self.scope = scope
         self.aw_call = iscoroutinefunction(factory) if is_async is None else is_async
         self.signature = signature or typed_signature(factory)
         self._evaluate(self._parse_arguments(arguments))
@@ -320,13 +319,13 @@ class FactoryBinding:
 
     def _evaluate_param_dependency(self, p: BoundParam):
         if not False is p.has_dependency:
-            if bound := self.injector.get_bound(p.dependency):
+            if bound := self.scope[p.dependency:]:
                 p.has_dependency = True
                 p.is_async = _is_aync_provider(bound)
 
         return p.has_dependency
 
-    def resolve_args(self, ctx: "InjectorContext"):
+    def resolve_args(self, ctx: "Injector"):
         if self.args:
             if self._pos_vals > 0 < self._pos_deps:
                 return _PositionalArgs(
@@ -346,27 +345,27 @@ class FactoryBinding:
                 return tuple(p.value for p in self.args)
         return ()
 
-    def resolve_aw_args(self, ctx: "InjectorContext"):
+    def resolve_aw_args(self, ctx: "Injector"):
         return self.resolve_args(ctx), self.aw_args
 
-    def resolve_kwds(self, ctx: "InjectorContext"):
+    def resolve_kwds(self, ctx: "Injector"):
         return _KeywordDeps(
             (p.key, ctx.find(p.dependency, default=p.default_factory))
             for p in self.kwds
         )
 
-    def resolve_aw_kwds(self, ctx: "InjectorContext"):
+    def resolve_aw_kwds(self, ctx: "Injector"):
         if self.aw_kwds:
             deps = self.resolve_kwds(ctx)
             return deps, tuple((n, deps.pop(n)) for n in self.aw_kwds)
         else:
             return self.resolve_kwds(ctx), ()
 
-    def __call__(self, ctx: "InjectorContext") -> Callable:
+    def __call__(self, ctx: "Injector") -> Callable:
         return self.make_wrapper(ctx)
 
     if t.TYPE_CHECKING:
-        def make_wrapper(self, ctx: "InjectorContext") -> Callable:
+        def make_wrapper(self, ctx: "Injector") -> Callable:
             ...
 
     @property
@@ -410,53 +409,53 @@ class FactoryBinding:
             else:
                 return cls.args_kwds_wrapper
 
-    def make_future_wrapper(self: Self, ctx: 'InjectorContext', **kwds):
+    def make_future_wrapper(self: Self, ctx: 'Injector', **kwds):
         kwds.setdefault("aw_call", self.aw_call)
         return FutureFactoryWrapper(self.factory, self.vals, **kwds)
 
-    def plain_wrapper(self, ctx: "InjectorContext"):
+    def plain_wrapper(self, ctx: "Injector"):
         return self.factory
 
-    def async_plain_wrapper(self, ctx: "InjectorContext"):
+    def async_plain_wrapper(self, ctx: "Injector"):
         return self.plain_wrapper(ctx)
 
-    def args_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_wrapper(self: Self, ctx: "Injector"):
         args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
         return lambda: func(*args, **vals)
 
-    def async_args_wrapper(self, ctx: "InjectorContext"):
+    def async_args_wrapper(self, ctx: "Injector"):
         return self.args_wrapper(ctx)
 
-    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
+    def aw_args_wrapper(self: Self, ctx: "Injector"):
         args, aw_args = self.resolve_aw_args(ctx)
         return self.make_future_wrapper(ctx, args=args, aw_args=aw_args)
 
-    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def kwds_wrapper(self: Self, ctx: "Injector"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
         return lambda: func(**kwds, **vals)
 
-    def async_kwds_wrapper(self, ctx: "InjectorContext"):
+    def async_kwds_wrapper(self, ctx: "Injector"):
         return self.kwds_wrapper(ctx)
 
-    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def aw_kwds_wrapper(self: Self, ctx: "Injector"):
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
         return self.make_future_wrapper(ctx, kwds=kwds, aw_kwds=aw_kwds)
 
-    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_kwds_wrapper(self: Self, ctx: "Injector"):
         args = self.resolve_args(ctx)
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
         return lambda: func(*args, **kwds, **vals)
 
-    def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
+    def async_args_kwds_wrapper(self, ctx: "Injector"):
         return self.args_kwds_wrapper(ctx)
 
-    def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def aw_args_kwds_wrapper(self: Self, ctx: "Injector"):
         args, aw_args = self.resolve_aw_args(ctx)
         kwds, aw_kwds = self.resolve_aw_kwds(ctx)
         return self.make_future_wrapper(
@@ -473,7 +472,7 @@ class SingletonFactoryBinding(FactoryBinding):
     @t.overload
     def __init__(
         self,
-        injector: "Injector",
+        scope: "Scope",
         factory: Callable,
         signature: Signature = None,
         *,
@@ -487,7 +486,7 @@ class SingletonFactoryBinding(FactoryBinding):
         self.thread_safe = thread_safe
         super().__init__(*args, **kwds)
 
-    def __call__(self, ctx: "InjectorContext") -> Callable:
+    def __call__(self, ctx: "Injector") -> Callable:
         func = self.make_wrapper(ctx)
         value = Missing
         lock = Lock() if self.thread_safe else None
@@ -504,16 +503,16 @@ class SingletonFactoryBinding(FactoryBinding):
 
         return make
 
-    def async_plain_wrapper(self, ctx: "InjectorContext"):
+    def async_plain_wrapper(self, ctx: "Injector"):
         return self.make_future_wrapper(ctx)
 
-    def async_args_wrapper(self, ctx: "InjectorContext"):
+    def async_args_wrapper(self, ctx: "Injector"):
         return self.aw_args_wrapper(ctx)
 
-    def async_kwds_wrapper(self, ctx: "InjectorContext"):
+    def async_kwds_wrapper(self, ctx: "Injector"):
         return self.aw_kwds_wrapper(ctx)
 
-    def async_args_kwds_wrapper(self, ctx: "InjectorContext"):
+    def async_args_kwds_wrapper(self, ctx: "Injector"):
         return self.aw_args_kwds_wrapper(ctx)
 
 
@@ -527,7 +526,7 @@ class ResourceFactoryBinding(SingletonFactoryBinding):
     @t.overload
     def __init__(
         self,
-        injector: "Injector",
+        injector: "Scope",
         factory: Callable,
         signature: Signature = None,
         *,
@@ -546,7 +545,7 @@ class ResourceFactoryBinding(SingletonFactoryBinding):
         self.aw_enter = aw_enter
         super().__init__(*args, **kwds)
 
-    def __call__(self, ctx: "InjectorContext") -> Callable:
+    def __call__(self, ctx: "Injector") -> Callable:
         func = self.make_wrapper(ctx)
         value = Missing
         lock = Lock() if self.thread_safe else None
@@ -563,24 +562,24 @@ class ResourceFactoryBinding(SingletonFactoryBinding):
 
         return make
 
-    def make_future_wrapper(self: Self, ctx: 'InjectorContext', **kwds):
+    def make_future_wrapper(self: Self, ctx: 'Injector', **kwds):
         kwds.setdefault("aw_call", self.aw_call)
         kwds.setdefault("aw_enter", self.aw_enter)
         return FutureResourceWrapper(ctx, self.factory, self.vals, **kwds)
 
-    def _sync_enter_context_wrap(self, ctx: 'InjectorContext', func):
+    def _sync_enter_context_wrap(self, ctx: 'Injector', func):
         return lambda: ctx.exitstack.enter(func())
 
-    def plain_wrapper(self, ctx: "InjectorContext"):
+    def plain_wrapper(self, ctx: "Injector"):
         return self._sync_enter_context_wrap(ctx, super().plain_wrapper(ctx))
 
-    def args_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_wrapper(self: Self, ctx: "Injector"):
         return self._sync_enter_context_wrap(ctx, super().args_wrapper(ctx))
    
-    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def kwds_wrapper(self: Self, ctx: "Injector"):
         return self._sync_enter_context_wrap(ctx, super().kwds_wrapper(ctx))
 
-    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_kwds_wrapper(self: Self, ctx: "Injector"):
         return self._sync_enter_context_wrap(ctx, super().args_kwds_wrapper(ctx))
 
 
@@ -590,14 +589,14 @@ class PartialFactoryBinding(FactoryBinding):
 
     __slots__ = ()
 
-    def make_future_wrapper(self: Self, ctx: 'InjectorContext',  **kwds):
+    def make_future_wrapper(self: Self, ctx: 'Injector',  **kwds):
         kwds.setdefault("aw_call", self.aw_call)
         return FutureCallableWrapper(self.factory, self.vals, **kwds)
 
-    def plain_wrapper(self, ctx: "InjectorContext"):
+    def plain_wrapper(self, ctx: "Injector"):
         return self.factory
 
-    def args_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_wrapper(self: Self, ctx: "Injector"):
         args = self.resolve_args(ctx)
         vals = self.vals
         func = self.factory
@@ -608,7 +607,7 @@ class PartialFactoryBinding(FactoryBinding):
 
         return make
 
-    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def kwds_wrapper(self: Self, ctx: "Injector"):
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
         func = self.factory
@@ -619,7 +618,7 @@ class PartialFactoryBinding(FactoryBinding):
 
         return make
 
-    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_kwds_wrapper(self: Self, ctx: "Injector"):
         args = self.resolve_args(ctx)
         kwds = self.resolve_kwds(ctx)
         vals = self.vals
@@ -638,31 +637,31 @@ class CallableFactoryBinding(PartialFactoryBinding):
 
     __slots__ = ()
 
-    def plain_wrapper(self, ctx: "InjectorContext"):
+    def plain_wrapper(self, ctx: "Injector"):
         make = super().plain_wrapper(ctx)
         return lambda: make
 
-    def args_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_wrapper(self: Self, ctx: "Injector"):
         make = super().args_wrapper(ctx)
         return lambda: make
 
-    def aw_args_wrapper(self: Self, ctx: "InjectorContext"):
+    def aw_args_wrapper(self: Self, ctx: "Injector"):
         make = super().aw_args_wrapper(ctx)
         return lambda: make
 
-    def kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def kwds_wrapper(self: Self, ctx: "Injector"):
         make = super().kwds_wrapper(ctx)
         return lambda: make
 
-    def aw_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def aw_kwds_wrapper(self: Self, ctx: "Injector"):
         make = super().aw_kwds_wrapper(ctx)
         return lambda: make
 
-    def args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def args_kwds_wrapper(self: Self, ctx: "Injector"):
         make = super().args_kwds_wrapper(ctx)
         return lambda: make
 
-    def aw_args_kwds_wrapper(self: Self, ctx: "InjectorContext"):
+    def aw_args_kwds_wrapper(self: Self, ctx: "Injector"):
         make = super().aw_args_kwds_wrapper(ctx)
         return lambda: make
 
@@ -857,7 +856,7 @@ class FutureResourceWrapper(FutureFactoryWrapper):
     __slots__ = ('_aw_enter', '_ctx',)
 
     _aw_enter: bool
-    _ctx: 'InjectorContext'
+    _ctx: 'Injector'
 
     if not t.TYPE_CHECKING:
         def __new__(cls, ctx,  *args, aw_enter: bool=None, **kwds):

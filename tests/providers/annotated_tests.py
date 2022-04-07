@@ -17,20 +17,21 @@ _Ta = t.TypeVar("_Ta")
 class AnnotatedProviderTests(ProviderTestCase):
     @pytest.fixture
     def provider(self):
-        return Provider(t.Annotated[t.Any, Dep(_Ta)])
+        return Provider(t.Annotated[t.Any, _Ta])
 
     @pytest.fixture
-    def context(self, context, value_setter):
-        context[_Ta] = value_setter
-        return context
+    def scope(self, scope, value_setter):
+        scope[_Ta] = lambda inj: value_setter
+        return scope
+
 
 
 
 class AsyncAnnotatedProviderTests(AnnotatedProviderTests, AsyncProviderTestCase):
 
     @pytest.fixture
-    def context(self, context, value_setter):
-        context[_Ta] = fn = lambda: asyncio.sleep(0, value_setter())
+    def scope(self, scope, value_setter):
+        scope[_Ta] = fn = lambda inj: lambda: asyncio.sleep(0, value_setter())
         fn.is_async = True
-        return context
-       
+        return scope
+

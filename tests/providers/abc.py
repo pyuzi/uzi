@@ -8,7 +8,7 @@ from collections.abc import Set
 
 
 from xdi.providers import Provider
-from xdi.injectors import Injector
+from xdi import Scope
 
 from xdi import InjectionMarker, is_injectable
 
@@ -96,21 +96,22 @@ class ProviderTestCase:
         provider._freeze()
         provider.default(not provider.is_default)
 
-    def test_bind(self, provider: Provider, injector, context):
-        bound = provider.bind(injector, self.provides)
+    def test_bind(self, provider: Provider, scope, context):
+        bound = provider.bind(scope, self.provides)
         assert provider._frozen
         assert callable(bound)
         func = bound(context)
         assert callable(func)
                 
-    def test_no_binds_outside_own_scope(self, provider: Provider, injector: Injector, container):
+    def test_no_binds_outside_own_scope(self, provider: Provider, scope: Scope, Container):
         assert provider.container is None
-        assert not injector.is_scope(container)
+        container = Container()
+        assert not container in scope
         provider.set_container(container)
-        assert provider.bind(injector, self.provides) is None
+        assert provider.bind(scope, self.provides) is None
     
-    def test_provide(self, provider: Provider, injector, context):
-        bound =  provider.bind(injector, self.provides)
+    def test_provide(self, provider: Provider, scope, context):
+        bound =  provider.bind(scope, self.provides)
         func = bound(context)
         val = func()
         assert self.value is _notset or self.value == val
@@ -134,8 +135,8 @@ class AsyncProviderTestCase(ProviderTestCase):
             return val
         return fn
 
-    async def test_provide(self, provider: Provider, injector, context):
-        bound =  provider.bind(injector, self.provides)
+    async def test_provide(self, provider: Provider, scope, context):
+        bound =  provider.bind(scope, self.provides)
         func = bound(context)
         aw = func()
         assert isawaitable(aw)

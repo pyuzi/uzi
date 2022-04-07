@@ -24,9 +24,9 @@ class DepMarkerTests(ProviderTestCase):
         return Dep(_Tx, default=Dep(_Ta))
 
     @pytest.fixture
-    def context(self, context, value_setter):
-        context[_Ta] = value_setter
-        return context
+    def scope(self, scope, value_setter):
+        scope[_Ta] = lambda inj: value_setter
+        return scope
 
 
 class DepMarkerDataPathTests(DepMarkerTests):
@@ -54,14 +54,12 @@ class DepMarkerOnlySelfTests(DepMarkerTests):
         return Dep(_Tx, injector=Dep.ONLY_SELF, default=Dep(_Ta))
 
     @pytest.fixture
-    def injector(self, injector, Injector):
-        return Injector(injector)
+    def scope(self, scope, Scope, Container, value_setter):
+        scope = Scope(Container(), scope)
+        scope[_Ta] = lambda inj: value_setter
+        scope.parent[_Tx] = lambda inj: lambda: (value_setter(), object())
+        return scope
 
-    @pytest.fixture
-    def context(self, context, injector, value_setter):
-        context[_Ta] = value_setter
-        context.parent[_Tx] = lambda: (value_setter(), object())
-        return context
 
 
 class DepMarkerSkipSelfTests(DepMarkerTests):
@@ -70,14 +68,11 @@ class DepMarkerSkipSelfTests(DepMarkerTests):
         return Dep(_Tx, injector=Dep.SKIP_SELF)
 
     @pytest.fixture
-    def injector(self, injector, Injector):
-        return Injector(injector)
-
-    @pytest.fixture
-    def context(self, context, injector, value_setter):
-        context.parent[_Tx] = value_setter
-        context[_Tx] = lambda: (value_setter(), object())
-        return context
+    def scope(self, scope, Scope, Container, value_setter):
+        scope = Scope(Container(), parent=scope)
+        scope.parent[_Tx] = lambda inj: value_setter
+        scope[_Tx] = lambda inj: lambda: (value_setter(), object())
+        return scope
 
 
 class Foo:

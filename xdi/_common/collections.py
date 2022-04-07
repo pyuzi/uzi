@@ -876,7 +876,15 @@ class orderedset(_orderedsetabc[_T_Key], t.Generic[_T_Key]):
 
 _T_Seq = MutableSequence[_T_Val]
 
-class multidict(dict[_T_Key, _T_Seq]):
+class SeqMapping(Mapping[_T_Key, _T_Seq], t.Generic[_T_Key, _T_Val]):
+    __slots__ = ()
+
+    all_items = dict[_T_Key, _T_Seq].items
+    all_values = dict[_T_Key, _T_Seq].values
+
+
+@SeqMapping.register
+class MultiDict(dict[_T_Key, _T_Val]):
     
     __slots__= ()
 
@@ -884,13 +892,13 @@ class multidict(dict[_T_Key, _T_Seq]):
 
     def count(self, k: _T_Key):
         try:
-            return len(self.__getseq__(k))
+            return len(self.__getitems__(k))
         except KeyError:
             return 0
 
     def get_all(self, k: _T_Key, default: _T_Default=None):
         try:
-            return self.all(k)
+            return self.__getitems__(k)[:]
         except KeyError:
             return default
 
@@ -900,6 +908,48 @@ class multidict(dict[_T_Key, _T_Seq]):
         except KeyError:
             return default
 
+    def extend(self, arg=None, /, **kwds: Iterable[_T_Val]):
+        if isinstance(arg, SeqMapping):
+            items = (arg.all_items(), kwds.items())
+        elif isinstance(arg, Mapping):
+            items = (arg.items(), kwds.items())
+        elif arg is not None:
+            items = (arg, kwds.items())
+        else:
+            items = (kwds.items(),)
+
+        newseq = self.__seq_class__
+        for kv in items:
+            for k,v in kv:
+                self._dict_setdefault_(k, newseq()).extend(v)
+
+    def assign(self, arg=None, /, **kwds: _T_Val):
+        if isinstance(arg, Mapping):
+            items = (arg.items(), kwds.items())
+        elif arg is not None:
+            items = (arg, kwds.items())
+        else:
+            items = (kwds.items(),)
+
+        newseq = self.__seq_class__
+        for k,v in items:
+            self._dict_setdefault_(k, newseq())[:] = v,
+
+    def replace(self, arg=None, /, **kwds: Iterable[_T_Val]):
+        if isinstance(arg, SeqMapping):
+            items = (arg.all_items(), kwds.items())
+        elif isinstance(arg, Mapping):
+            items = (arg.items(), kwds.items())
+        elif arg is not None:
+            items = (arg, kwds.items())
+        else:
+            items = (kwds.items(),)
+
+        newseq = self.__seq_class__
+        for kv in items:
+            for k,v in kv:
+                self._dict_setdefault_(k, newseq())[:] = v
+
     def update(self, arg=None, /, **kwds):
         if isinstance(arg, Mapping):
             items = chain(arg.items(), kwds.items())
@@ -908,20 +958,9 @@ class multidict(dict[_T_Key, _T_Seq]):
         else:
             items = kwds.items()
 
-        for k,v in items:
-            self[k] = v
-
-    def extend(self, arg=None, /, **kwds: Iterable[_T_Val]):
-        if isinstance(arg, Mapping):
-            items = chain(arg.items(), kwds.items())
-        elif arg is not None:
-            items = chain(arg, kwds.items())
-        else:
-            items = kwds.items()
-
-        sup =  super()
-        for k,v in items:
-            sup.setdefault(k, self.__seq_class__()).extend(v)
+        newseq = self.__seq_class__
+        for k, v in items:
+            self._dict_setdefault_(k, newseq()).append(v)
 
     def items(self):
         return ItemsView[tuple[_T_Key, _T_Val]](self)
@@ -930,85 +969,110 @@ class multidict(dict[_T_Key, _T_Seq]):
         return ValuesView[_T_Val](self)
     
     def remove(self, k: _T_Key, val: _T_Val):
-        seq = self.__getseq__(k)
+        seq = self.__getitems__(k)
         seq.remove(val)
-        len(seq) > 0 or super().pop(k) 
+        seq or self._dct_pop_(k) 
 
     def setdefault(self, k: _T_Val, val: _T_Val) -> _T_Val:
-        stack = super().setdefault(k, self.__seq_class__())
-        stack or stack.append(val)
+        if stack := self._dict_setdefault_(k, self.__seq_class__()):
+            return stack[-1]    
+        stack.append(val)
         return stack[-1]
     
     if t.TYPE_CHECKING:
-        def __getseq__(self, k: _T_Key) -> MutableSequence[_T_Val]: ...
-    else:
-        __getseq__ = dict[_T_Key, MutableSequence[_T_Val]].__getitem__
+        def __getitems__(self, k: _T_Key) -> _T_Seq: ...
+
+    all_items = dict[_T_Key, _T_Seq].items
+    all_values = dict[_T_Key, _T_Seq].values
+    _dct_pop_ = dict[_T_Key, _T_Seq].pop
+    _dict_setdefault_ = dict[_T_Key,_T_Seq].setdefault
+    __setitems__ = dict[_T_Key,_T_Seq].__setitem__
+    __getitems__ = dict[_T_Key, _T_Seq].__getitem__
 
     def all(self, k: _T_Key) -> Sequence[_T_Val]:
-        return self.__getseq__(k)[:]
+        return self.__getitems__(k)[:]
     
     def __getitem__(self, k: _T_Key) -> _T_Val:
         try:
-            return self.__getseq__(k)[-1]    
+            return self.__getitems__(k)[-1]    
         except IndexError as e:
             raise KeyError(k) from e
 
     def __setitem__(self, k: _T_Key, val: _T_Val):
-        super().setdefault(k, self.__seq_class__()).append(val)
+        self._dict_setdefault_(k, self.__seq_class__()).append(val)
 
     def copy(self):
-        return self.__class__((k, self.__getseq__(k)[:]) for k in self)
+        # return self.__class__((k, self.__getitems__(k)[:]) for k, v in self)
+        return self.__class__((k, v[:]) for k, v in self.all_items())
     
     def __reduce__(self):
-        return self.__class__, ({k: self.__getseq__(k)[:] for k in self},)
+        # return self.__class__, ({k: self.__getitems__(k)[:] for k in self},)
+        return self.__class__, ({k: v[:] for k, v in self.all_items()},)
     
     __copy__ = copy
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({{ {", ".join(f"{k!r}: {self.__getseq__(k)!r}" for k in self) }}})'
+        return f'{self.__class__.__name__}({{ {", ".join(f"{k!r}: {self.__getitems__(k)!r}" for k in self) }}})'
 
     def __str__(self) -> str:
-        return f'{self.__class__.__name__}({{ {", ".join(f"{k!r}: {self.__getseq__(k)!r}" for k in self) }}})'
+        return f'{self.__class__.__name__}({{ {", ".join(f"{k!r}: {self.__getitems__(k)!r}" for k in self) }}})'
+
+    def __iadd__(self, other):
+        if isinstance(other, Mapping):
+            self.extend(other)
+            return self
+        return NotImplemented
+
+    def __add__(self, other):
+        if isinstance(other, Mapping):
+            m = self.copy()
+            m.extend(other)
+            return m
+        return NotImplemented
+
+    def __radd__(self, other):
+        if isinstance(other, Mapping):
+            m = self.__class__()
+            m.extend(other)
+            m.extend(self)
+            return m
+        return NotImplemented
 
 
 
-
+@SeqMapping.register
 class MultiChainMap(ChainMap[_T_Key, _T_Val]):
 
     __slots__ = ()
 
-    maps: list[multidict[_T_Key, _T_Val]]
+    maps: list[MultiDict[_T_Key, _T_Val]]
 
-    __map_class__ = multidict
+    __map_class__ = MultiDict
 
-    def __init__(self, map=(), *maps):
-        if not isinstance(map, self.__map_class__):
-            map = self.__map_class__(map)
-
-        self.maps = [map, *maps]
+    def __init__(self, *maps: SeqMapping[_T_Key, _T_Val]):
+        if not maps:
+            self.maps = [self.__map_class__()]
+        elif isinstance(maps[-1], SeqMapping):
+            self.maps = [*maps]
+        else:
+            self.maps = [maps[:-1], self.__map_class__(maps[-1])]
     
     def get_all(self, k: _T_Key, default: _T_Default=None):
-        if rv := list(self.__getseq__(k)):
+        if rv := [*self.__getitems__(k)]:
             return rv
         return default
 
     def all(self, k: _T_Key) -> Sequence[_T_Val]:
-        if rv := list(self.__getseq__(k)):
+        if rv := [*self.__getitems__(k)]:
             return rv
-        self.__missing__(k)
+        return self.__missing__(k)
 
     def iall(self, k: _T_Key):
-        return self.__getseq__(k)
-
-    def extend(self, *args, **kwds: Iterable[_T_Val]):
-        self.maps[0].extend(*args, **kwds)        
-
-    def remove(self, k: _T_Key, val: _T_Val):
-        self.maps[0].remove(k, val)
+        return self.__getitems__(k)
 
     def count(self, k: _T_Key):
         rv = 0
-        for m in reversed(self.maps):
+        for m in self.maps:
             try:
                 try:
                     rv += m.count(k)
@@ -1018,16 +1082,113 @@ class MultiChainMap(ChainMap[_T_Key, _T_Val]):
                 pass
         return rv
 
-    def __getseq__(self, k: _T_Key) -> Iterator[_T_Val]:
-        for m in reversed(self.maps):
+    def __getitems__(self, k: _T_Key) -> Iterator[_T_Val]:
+        for m in self.maps:
             try:
                 try:
-                    yield from m.__getseq__(k)
+                    yield from m.__getitems__(k)
                 except AttributeError:
                     yield m[k]
             except KeyError:
                 pass
+
+    def __getitem__(self, key):
+        maps = self.maps
+        lm, i = len(maps), 0
+
+        while lm + i:
+            i -= 1
+            try:
+                return maps[i][key]             # can't use 'key in mapping' with defaultdict
+            except KeyError:
+                pass
+        return self.__missing__(key)    
+
+    def copy(self):
+        'New ChainMap or subclass with a new copy of maps[0] and refs to maps[1:]'
+        return self.__class__(*self.maps[:-1], self.maps[-1].copy())
+
+    __copy__ = copy
+
+    def new_child(self, m=None):                # like Django's Context.push()
+        '''New ChainMap with a new map followed by all previous maps.
+        If no map is provided, an empty dict is used.
+        '''
+        if m is None:
+            m = self.__map_class__()
+        return self.__class__(*self.maps, m)
+
+    @property
+    def parents(self):                          # like Django's Context.pop()
+        'New ChainMap from maps[1:].'
+        return self.__class__(*self.maps[-1:])
+
+    def __setitem__(self, key, value):
+        self.maps[-1][key] = value
+
+    def __delitem__(self, key):
+        try:
+            del self.maps[-1][key]
+        except KeyError:
+            raise KeyError(f'Key not found in the first mapping: {key!r}')
+
+    def popitem(self):
+        'Remove and return an item pair from maps[0]. Raise KeyError is maps[0] is empty.'
+        try:
+            return self.maps[-1].popitem()
+        except KeyError:
+            raise KeyError('No keys found in the first mapping.')
+
+    def pop(self, key, *args):
+        'Remove *key* from maps[0] and return its value. Raise KeyError if *key* not in maps[0].'
+        try:
+            return self.maps[-1].pop(key, *args)
+        except KeyError:
+            raise KeyError(f'Key not found in the first mapping: {key!r}')
+
+    def clear(self):
+        'Clear maps[0], leaving maps[1:] intact.'
+        self.maps[-1].clear()
+
+    def assign(self, *args, **kwds: _T_Val):
+        return self.maps[-1].assign(*args, **kwds)
+
+    def extend(self, *args, **kwds: Iterable[_T_Val]):
+        return self.maps[-1].extend(*args, **kwds)
+
+    def replace(self, *args, **kwds: Iterable[_T_Val]):
+        return self.maps[-1].replace(*args, **kwds)
         
+    def update(self, *args, **kwds: _T_Val):
+        return self.maps[-1].update(*args, **kwds)
+
+    def remove(self, k: _T_Key, val: _T_Val):
+        self.maps[-1].remove(k, val)
+
+    def __ior__(self, other):
+        if isinstance(other, Mapping):
+            self.maps[-1] | other
+            return self
+        return NotImplemented
+
+    def __or__(self, other):
+        if isinstance(other, Mapping):
+            m = self.copy()
+            m.maps[-1] |= other
+            return m
+        return NotImplemented
+
+    def __ror__(self, other):
+        if not isinstance(other, Mapping):
+            rv = self.__class__()
+            m = rv.maps[-1]
+            m |= other
+            for child in self.maps:
+                m |= child
+            return rv
+        return NotImplemented
+
+
 
 
 

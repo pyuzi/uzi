@@ -1,233 +1,230 @@
+import asyncio
+from inspect import isawaitable
 import logging
 import typing as t
 from collections.abc import Callable
-from functools import update_wrapper
+from contextlib import AsyncExitStack
+from contextvars import ContextVar, Token
+from threading import Lock
+from types import MethodType
+
+import attr
+
+from xdi._common.functools import Missing, export
 from typing_extensions import Self
 
-from xdi._common.collections import (
-    MultiChainMap,
-    frozendict,
-    frozenorderedset,
-    orderedset,
-)
-from xdi._common.functools import calling_frame, export
-from xdi._common.promises import Promise
+from . import Dependency, Injectable, T_Default, T_Injectable, T_Injected
+from .util import AsyncExitStack
 
-from . import Injectable, InjectionMarker, is_injectable, ctx as ctx_module
-from .containers import Container, InjectorContainer
-from .ctx import InjectorContext, NullInjectorContext, context_partial
-from .providers import (
-    Provider,
-    Callable as CallableProvider,
-    DepMarkerProvider,
-    InjectorContextProvider,
-    AnnotatedProvider, 
-    UnionProvider,
-)
-from .providers.util import BindingsMap, ProviderRegistry, ProviderResolver
+if t.TYPE_CHECKING:
+    from .scopes import BindingsMap, Scope
+    from .scopes import Scope
+
 
 logger = logging.getLogger(__name__)
 
-_T_Fn = t.TypeVar("_T_Fn", bound=Callable)
+_T = t.TypeVar('_T')
 
 
-@t.overload
-def inject(func: _T_Fn, /, *, provider: "Provider" = None) -> _T_Fn:
-    ...
+TContextBinding = Callable[
+    ["InjectorContext", t.Optional[Injectable]], Callable[..., T_Injected]
+]
 
 
-@t.overload
-def inject(
-    func: None = None, /, *, provider: "Provider" = None
-) -> Callable[[_T_Fn], _T_Fn]:
-    ...
+class InjectorLookupError(LookupError):
 
+    key: Injectable
+    injector: "Injector"
 
-def inject(func: _T_Fn = None, /, *, provider: "Provider" = None) -> _T_Fn:
-    if provider is None:
-        provider = CallableProvider()
+    def __init__(self, key=None, injector: "Injector" = None) -> None:
+        self.key = key
+        self.injector = injector
 
-    if func is None:
-        return lambda fn: inject(fn, provider=provider)
-    else:
-        return update_wrapper(context_partial(provider.using(func)), func)
-
-
-@export
-@Injectable.register
-class Injector(ProviderRegistry):
-    """"""
-
-    __slots__ = (
-        "__name",
-        "__parent",
-        "__bindings",
-        "__container",
-        "__containers",
-        "__boot",
-        "__registry",
-        "__resolver",
-        "__bootstrapped",
-        "__autoloads",
-    )
-
-    __boot: Promise
-
-    __name: str
-    __parent: Self
-
-    __bindings: BindingsMap
-    __resolver: ProviderResolver
-    __registry: MultiChainMap[Injectable, Provider]
-
-    __container: InjectorContainer
-    __containers: orderedset[Container]
-
-    _context_class: type[InjectorContext] = InjectorContext
-    _container_class: type[InjectorContainer] = InjectorContainer
-    _resolver_class: type[ProviderResolver] = ProviderResolver
-    _bindings_class: type[ProviderResolver] = BindingsMap
-
-    # call = ctx_module.call
-    # async_call = ctx_module.async_call
-    
-    run = ctx_module.run
-    run_async = ctx_module.run_async
-    
-    context = ctx_module.context
-
-    def __init__(self, parent: "Injector" = None, *, name: str = None):
-        if name is None:
-            cf = calling_frame()
-            self.__name = cf.get("__name__") or cf.get("__package__") or "<anonymous>"
-        else:
-            self.__name = name
-
-        
-        self.__parent = parent
-        self.__bootstrapped = False
-        self.__boot = Promise().then(lambda: self.__bootstrap())
-
-        self.__container = self._container_class(self)
-        self.__registry = MultiChainMap()
-        self.__resolver = self._resolver_class(self, self.__registry)
-        self.__bindings = self._bindings_class(self, self.__resolver)
-
-    @property
-    def name(self):
-        return self.__name
-
-    @property
-    def parent(self):
-        return self.__parent
-
-    @property
-    def bindings(self):
-        return self.__bindings
-
-    @property
-    def container(self):
-        return self.__container
-
-    @property
-    def containers(self):
-        return self.__containers
-
-    def onboot(self, callback: t.Union[Promise, Callable, None] = None):
-        self.__boot.then(callback)
-
-    def bootstrap(self) -> Self:
-        self.__boot.settle()
-        return self
-
-    def set_parent(self, parent: "Injector"):
-        if not self.__parent is None:
-            if self.__parent is parent:
-                return self
-            raise TypeError(f"{self} already has parent: {self.__parent}.")
-        elif self.__boot.done():
-            raise TypeError(f"{self} already bootstrapped.")
-
-        self.__parent = parent
-        return self
-
-    def parents(self):
-        parent = self.__parent
-        while not parent is None:
-            yield parent
-            parent = parent.parent
-
-    def register(self, provider: Provider) -> Self:
-        self.__container.register(provider)
-        return self
-
-    def include(self, *containers, replace: bool = False) -> Self:
-        self.__container.include(*containers, replace=replace)
-        return self
-
-    def has_scope(self, scope: t.Union["Injector", Container, None]):
-        self.__boot.settle()
-        return self.is_scope(scope) or self.__parent.has_scope(scope)
-
-    def is_scope(self, scope: t.Union["Injector", Container, None]):
-        self.__boot.settle()
-        return scope is None or scope is self or scope in self.__containers
-
-    def is_provided(self, obj: Injectable, *, onlyself=False) -> bool:
-        self.__boot.settle()
-        if not (isinstance(obj, InjectionMarker) or obj in self.__bindings):
-            if is_injectable(obj):
-                provider = self.__resolver.resolve(obj)
-                if provider is None:
-                    if not onlyself and self.__parent:
-                        return self.__parent.is_provided(obj)
-                    return False
-            else:
-                return False
-        return True
-
-    def get_bound(self, obj: Injectable, *, onlyself=False):
-        self.__boot.settle()
-        res = self.__bindings[obj]
-        if res is None and not onlyself and is_injectable(obj) and self.__parent:
-            return self.__parent.is_provided(obj)
-        return res
-
-    def create_context(self, current: InjectorContext=NullInjectorContext()) -> InjectorContext:
-        if parent := self.__parent:
-            if not current.injector is parent:
-                current = parent.create_context(current)
-
-        self.__boot.settle()
-        ctx = self._context_class(current, self, self.__bindings)
-        if auto := self.__autoloads:
-            for d in auto:
-                ctx.make(d)
-        return ctx
-
-    def __bootstrap(self):
-        if self.__bootstrapped is False:
-            self.__bootstrapped = True
-            self.__register_default_providers()
-            comp = dict(self.__container.bind())
-            self.__containers = frozenorderedset(comp.keys())
-            self.__registry.maps = [frozendict(), *reversed(comp.values())]
-            self.onboot(lambda: self._collect_autoloaded())
-
-    def __register_default_providers(self):
-        self.register(UnionProvider().final())
-        self.register(AnnotatedProvider().final())
-        self.register(DepMarkerProvider().final())
-        self.register(InjectorContextProvider(self).autoload().final())
-
-    def _collect_autoloaded(self):
-        self.__autoloads = frozenset(
-            a
-            for c in self.__containers
-            for a in c.autoloads
-            if (p := self.__resolver.resolve(a)) and p.autoloaded
+    def __str__(self) -> str:
+        key, injector = self.key, self.injector
+        return (
+            ""
+            if key is None is injector
+            else f"{key!r}"
+            if injector is None
+            else f"at {injector!r}"
+            if key is None
+            else f"{key!r} at {injector!r}"
         )
 
+
+@attr.s(slots=True, cmp=False)
+class Injector(dict[T_Injectable, Callable[[], T_Injected]]):
+
+    # __slots__ = (
+    #     "scope",
+    #     "__parent",
+    #     "__exitstack",
+    #     "__bindings",
+    # )
+
+    parent: Self = attr.field()
+    scope: "Scope" = attr.field()
+    # __parent: Self
+    # __bindings: dict[
+    #     Injectable, Callable[[Self], Callable[[], Callable[[], T_Injected]]]
+    # ]
+
+    is_async: bool = attr.field(default=False, kw_only=True)
+    exitstack: AsyncExitStack = attr.field(init=False)
+
+    _exitstack_class: t.ClassVar[type[AsyncExitStack]] = AsyncExitStack
+
+    # def __init__(
+    #     self, parent: "InjectorContext", scope: "Scope", bindings: "BindingsMap"=None
+    # ):
+    #     self.__parent = parent
+    #     self.scope = scope
+    #     # self.__bindings = bindings
+    #     self.__exitstack = self._exitstack_class()
+
+    def __attrs_post_init__(self):
+        self.exitstack = self._exitstack_class()
+
+    @property
+    def name(self) -> str:
+        return self.scope.name
+
+    # @property
+    # def exitstack(self):
+    #     return self.exitstack
+
+    # @property
+    # def base(self) -> str:
+    #     return self
+
+    # @property
+    # def injector(self):
+    #     return self.scope
+
+    # @property
+    # def parent(self):
+    #     return self.__parent
+
+    @t.overload
+    def find(
+        self, dep: T_Injectable, *fallbacks: T_Injectable
+    ) -> Callable[[], T_Injected]:
+        ...
+
+    @t.overload
+    def find(
+        self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default
+    ) -> t.Union[Callable[[], T_Injected], T_Default]:
+        ...
+
+    def find(self, *keys, default=Missing):
+        for key in keys:
+            rv = self[key]
+            if rv is None:
+                continue
+            return rv
+
+        if default is Missing:
+            raise InjectorLookupError(key, self)
+
+        return default
+
+    def make(
+        self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing
+    ) -> T_Injected:
+        if fallbacks:
+            func = self.find(key, *fallbacks, default=None)
+        else:
+            func = self[key]
+
+        if not func is None:
+            return func()
+        elif default is Missing:
+            raise InjectorLookupError(key, self)
+        return default
+
+    def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
+        if isinstance(func, MethodType):
+            args = (func.__self__,) + args
+            func = func.__func__
+
+        return self.make(func)(*args, **kwds)
+
+    def __bool__(self):
+        return True
+        
+    def __contains__(self, x) -> bool:
+        return dict.__contains__(self, x) or x in self.parent
+
+    def __missing__(self, key):
+        # scope = self.scope
+        # if isinstance(key, Dep):
+        #     if bound := scope[key]:
+        #         return _dict_setdefault(self, key, bound(self))
+        #     elif key.loc is Dep.GLOBAL:
+        #         return _dict_setdefault(self, key, self.parent[key])
+        #     elif key.loc is Dep.SUPER:
+        #         return _dict_setdefault(self, key, self.parent[key.replace(loc=)])
+        #     if key.is_pure:
+        #         return self[key.replace(scope=scope)]
+        #     elif key.loc is Dep.SUPER:
+        #         pass
+        # else:
+        #     return self[Dep(key, scope)]
+
+        res = self.scope[key]
+        if res is None:
+            return self.__setdefault(key, self.parent[key])
+        return self.__setdefault(key, res(self) or self.parent[key])
+
+    __setdefault = dict.setdefault
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}({self.name!r})"
+
     def __repr__(self) -> str:
-        parent = self.__parent
-        return f"{self.__class__.__name__}({self.__name!r}, {parent=!s})"
+        return f"<{self!s}, {self.parent!r}>"
+
+    def __eq__(self, x):
+        return x is self
+
+    def __ne__(self, x):
+        return not self.__eq__(x)
+
+    def __hash__(self):
+        return id(self)
+
+    def not_mutable(self, *a, **kw):
+        raise TypeError(f"immutable type: {self} ")
+
+    __delitem__ = (
+        __setitem__
+    ) = (
+        setdefault
+    ) = (
+        pop
+    ) = (
+        popitem
+    ) = update = clear = copy = __copy__ = __reduce__ = __deepcopy__ = not_mutable
+    del not_mutable
+
+
+
+
+class NullInjectorContext(Injector):
+    """NullInjector Object"""
+
+    __slots__ = ()
+
+    name: t.Final = None
+    injector = parent = None
+
+    def noop(slef, *a, **kw):
+        ...
+
+    __init__ = __getitem__ = __missing__ = __contains__ = _reset = noop
+    del noop
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}()'

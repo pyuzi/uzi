@@ -2,14 +2,14 @@
 
 import passlib.hash
 
-from xdi import Injector, context
+from xdi import Scope, context
 
 
 hash_password = passlib.hash.sha256_crypt.hash
 verify_password = passlib.hash.sha256_crypt.verify
 
 
-injector = Injector()
+injector = Scope()
 injector.callable(verify_password)
 injector.callable(hash_password, salt_size=16, rounds=10000)
 

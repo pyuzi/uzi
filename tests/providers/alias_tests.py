@@ -24,9 +24,9 @@ class AliasProviderTests(ProviderTestCase):
         return Provider(type, _Ta)
 
     @pytest.fixture
-    def context(self, context, value_setter):
-        context[_Ta] = value_setter
-        return context
+    def scope(self, scope, value_setter):
+        scope[_Ta] = lambda inj: value_setter
+        return scope
 
 
 

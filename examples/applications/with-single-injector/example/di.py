@@ -9,7 +9,7 @@ import boto3
 
 from mypy_boto3_s3 import S3Client
 
-from xdi import Injector, Dep
+from xdi import Scope, Dep
 
 from . import services
 from .settings import Settings
@@ -18,7 +18,7 @@ from .settings import Settings
 
 
 
-injector = Injector()
+injector = Scope()
 
 injector.factory(logging.config.fileConfig, Path("logging.ini")).autoload()
 

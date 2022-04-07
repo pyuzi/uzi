@@ -5,9 +5,9 @@ from operator import or_
 from typing import Literal
 
 from dependency_injector import containers, providers, wiring, resources
-from xdi import Injector, context, inject
 
 from _benchmarkutil import Benchmark
+import xdi
 
 N = int(5e3)
 # N = 1
@@ -126,12 +126,12 @@ class Test(object):
 
 
 
-ioc = Injector()
+ioc = xdi.Container()
 
 ioc.factory(A)
 ioc.factory(B)#.singleton()
 ioc.singleton(C)#.singleton()
-ioc.resource(Connection, k='cm-')
+ioc.singleton(Connection, k='cm-')
 ioc.factory(Test).args('ex','why','zee').kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
@@ -142,7 +142,7 @@ class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
     b = providers.Factory(B, a)
     # b = Singleton(B, a)
-    con = providers.Resource(Connection.iconnect, a, b=b, k='gn-')
+    con = providers.Singleton(Connection, a, b=b, k='gn-')
     c = Singleton(C, a, b=b)
     test = providers.Factory(
         Test,
@@ -159,34 +159,34 @@ class Container(containers.DeclarativeContainer):
     )
 
 
-@inject
-def _inj_xdi(test: Test, a: A, b: B, c: C):
-    assert isinstance(test, Test)
-    assert isinstance(a, A)
-    assert isinstance(b, B)
-    assert isinstance(c, C)
+# # @inject
+# # def _inj_xdi(test: Test, a: A, b: B, c: C):
+# #     assert isinstance(test, Test)
+# #     assert isinstance(a, A)
+# #     assert isinstance(b, B)
+# #     assert isinstance(c, C)
 
-def _new_ctx_test():
-    with context(ioc) as ctx:
-        test = ctx[Test]()
+# def _new_ctx_test():
+#     with context(ioc) as ctx:
+#         test = ctx[Test]()
         
 
-def _new_ctx_inj():
-    with context(ioc) as ctx:
-        _inj_xdi()
+# def _new_ctx_inj():
+#     with context(ioc) as ctx:
+#         _inj_xdi()
         
 
-@wiring.inject
-def _inj_di(
-    test: Test = wiring.Provide[Container.test],
-    a: Test = wiring.Provide[Container.a],
-    b: Test = wiring.Provide[Container.b],
-    c: Test = wiring.Provide[Container.c],
-):
-    assert isinstance(test, Test)
-    assert isinstance(a, A)
-    assert isinstance(b, B)
-    assert isinstance(c, C)
+# @wiring.inject
+# def _inj_di(
+#     test: Test = wiring.Provide[Container.test],
+#     a: Test = wiring.Provide[Container.a],
+#     b: Test = wiring.Provide[Container.b],
+#     c: Test = wiring.Provide[Container.c],
+# ):
+#     assert isinstance(test, Test)
+#     assert isinstance(a, A)
+#     assert isinstance(b, B)
+#     assert isinstance(c, C)
 
 
 def main():
@@ -194,41 +194,45 @@ def main():
     c = Container()
     c.wire([__name__])
     c.init_resources()
+    inj = ioc.scope().injector()
 
-    with context(ioc) as ctx:
+    with inj.exitstack:
        
 
         ls = []
        
         
-        
-        bench = Benchmark("A.", N).run(di=Container.a, xdi=ctx[A])
+        bench = Benchmark("A.", N).run(di=Container.a, xdi=inj[A])
         # ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("B.", N).run( di=Container.b, xdi=ctx[B])
+        bench = Benchmark("B.", N).run( di=Container.b, xdi=inj[B])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("C.", N).run(di=Container.c, xdi=ctx[C])
+        bench = Benchmark("C.", N).run(di=Container.c, xdi=inj[C])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("Test.", N).run(di=Container.test, xdi=ctx[Test])
+        bench = Benchmark("Test.", N).run(di=Container.test, xdi=inj[Test])
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("inject.", N).run(di=_inj_di, xdi=_inj_xdi)
-        ls.append(bench)
-        print(bench, "\n")
+        # bench = Benchmark("inject.", N).run(di=_inj_di, xdi=_inj_xdi)
+        # ls.append(bench)
+        # print(bench, "\n")
 
 
-        bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
+        bench = Benchmark(f"Providers{[A, B, C, Test]}", N)
         bench |= reduce(or_, ls)
         print(bench, "\n")
 
+
            
     c.shutdown_resources()
+
+    print('>>', *inj.scope._resolver_map.keys(), sep='\n  - ')
+    print('>>', *inj.keys(), sep='\n  - ')
 
     # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), xdi=_new_ctx_test)
     # print(b)

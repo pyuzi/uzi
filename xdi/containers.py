@@ -3,16 +3,15 @@ from collections.abc import Callable, Iterable
 from logging import getLogger
 from typing_extensions import Self
 
-from xdi._common.collections import multidict, orderedset
+from xdi._common.collections import MultiChainMap, MultiDict, frozendict, orderedset
 from xdi._common.functools import calling_frame, export
 from xdi._common.promises import Promise
 
-from . import Injectable, T_Injected
+from . import Dependency, Injectable, T_Injected, InjectionMarker, is_injectable
 from .providers import Provider, T_UsingAny
 from .providers.util import ProviderRegistry
-
-if t.TYPE_CHECKING:
-    from .injectors import Injector
+from .typing import get_origin
+from .scopes import Scope
 
 
 logger = getLogger(__name__)
@@ -20,34 +19,45 @@ logger = getLogger(__name__)
 _T = t.TypeVar("_T")
 
 
-@export()
+
+
+@InjectionMarker.register
 class Container(ProviderRegistry):
 
     __slots__ = (
         "__name",
         "__bound",
         "__includes",
-        "__registry",
         "__boot",
         "__inline",
         "__autoloads",
+        "_ns_local",
+        "_ns_global",
+        "_ns_peer",
+        "parent"
     )
 
     __boot: Promise
 
     __name: str
-    __bound: orderedset["Injector"]
+    __bound: orderedset["Scope"]
     __autoloads: orderedset[Injectable]
 
-    __bound: orderedset["Injector"]
+    __bound: orderedset["Scope"]
     __includes: orderedset["Container"]
-    __registry: dict[Injectable, Provider[T_UsingAny, T_Injected]]
+
+    _ns_local: MultiDict[Injectable, Provider]
+    _ns_peer: MultiChainMap[Injectable, Provider]
+    _ns_global: MultiChainMap[Injectable, Provider]
+
+    parent: t.Union[Self, None]
 
     def __init__(
         self,
         name: str = None,
         include: Iterable["Container"] = (),
         *,
+        parent: Self=None,
         inline: bool = False,
     ):
 
@@ -57,56 +67,88 @@ class Container(ProviderRegistry):
 
         self.__name = name
         self.__inline = inline
+        self.parent = parent
+        self._ns_local = MultiDict()
+        self._ns_peer = MultiChainMap()
+        self._ns_global = MultiChainMap(self._ns_peer, self._ns_local)
 
         self.__bound = orderedset()
         self.__autoloads = orderedset()
-        self.__registry = multidict()
         self.__includes = orderedset()
         self.__boot = Promise()
         include and self.include(*include)
+
+    @property
+    def __dependency__(self):
+        return self
 
     @property
     def autoloads(self):
         return (*self.__autoloads,)
 
     @property
+    def locals(self):
+        return self._ns_local
+
+        
+    @property
     def name(self) -> str:
         return self.__name
+
+    def includes(self, container: "Container"):
+        return container in self.__includes \
+                or any(c.includes(container) for c in self.__includes)
 
     def include(self, *containers: "Container", replace: bool = False) -> Self:
         if self._is_bound():
             raise TypeError(f"container already bound: {self!r}")
         elif replace:
-            self.__includes = orderedset(containers)
+            self.__includes = containers = orderedset(containers)
+            self._ns_peer.maps[:-1] = [c._ns_global for c in containers]
         else:
             self.__includes |= containers
+            self._ns_peer.maps[:-1] = [c._ns_global for c in self.__includes]
         return self
 
     def register(self, provider: Provider) -> Self:
-        self.onboot(lambda: provider.set_container(self))
+        provider.set_container(self)
         return self
 
     def onboot(self, callback: t.Union[Promise, Callable, None] = None):
         self.__boot.then(callback)
 
     def add_to_registry(self, tag: Injectable, provider: Provider):
-        self.__registry[tag] = provider
+        self._ns_local[tag] = provider
         provider.autoloaded and self.__autoloads.add(tag)
         logger.debug(f'{self}.add_to_registry({tag}, {provider=!s})')
 
-    def bind(self, injector: "Injector", source: "Container" = None):
+    @t.overload
+    def scope(self, parent: 'Scope'=None) -> Scope : ...
+    def scope(self, *a, **kw):
+        return Scope(self, *a, **kw)
+
+    def bind_scope(self, scope: "Scope"):
+        if not self._is_bound(scope):
+            logger.debug(f"{self}.bind({scope=})")
+            self.__bound.add(scope)
+            # scope.onboot(self.__boot)
+            yield self, self._ns_local
+            for c in reversed(self.__includes):
+                yield from c.bind_scope(scope)
+
+    def bind(self, injector: "Scope", source: "Container" = None):
         if not self._is_bound(injector):
             logger.debug(f"{self}.bind({injector=}, {source=})")
             self.__bound.add(injector)
             injector.onboot(self.__boot)
-            yield self, self.__registry
+            yield self, self._ns_local
             yield from self._bind_included(injector)
 
-    def _bind_included(self, injector: "Injector"):
+    def _bind_included(self, injector: "Scope"):
         for c in reversed(self.__includes):
             yield from c.bind(injector, self)
 
-    def _is_bound(self, injector: "Injector" = None):
+    def _is_bound(self, injector: "Scope" = None):
         if injector is None:
             return not not self.__bound
         elif injector in self.__bound:
@@ -120,24 +162,41 @@ class Container(ProviderRegistry):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.__name!r}, {self.__bound})"
 
+    def __contains__(self, x):
+        if x in self._ns_global:
+            return True
+        elif isinstance(x, Dependency):
+            dep, scp, loc = x.dependency, x.container or self, x.loc
+            if scp is self:
+                if not loc:
+                    return dep in self._ns_global
+                elif loc is Dependency.PEER:
+                    return dep in self._ns_peer
+                elif loc is Dependency.SELF:
+                    return dep in self._ns_local
+            elif self.includes(scp):
+                return x in scp
+        elif isinstance(x, Container):
+            return x is self or self.includes(x)
+        # elif isinstance(x, InjectionMarker):
+        #     return x != x.__dependency__ and x.__dependency__ in self
+        else:
+            return not is_injectable(x) and NotImplemented or False
+    
+    def __getitem__(self, x: t.Union[Injectable, 'Dependency']):
+        if isinstance(x, Dependency):
+            dep, scp, loc = x.dependency, x.container or self, x.loc
+            if scp is self:
+                if not loc:
+                    return self._ns_global.get_all(dep)
+                elif loc is Dependency.SELF:
+                    return self._ns_local.get_all(dep)
+                elif loc is Dependency.PEER:
+                    return self._ns_peer.get_all(dep)
+            elif self.includes(scp):
+                return scp[x]
+        elif res := self._ns_global.get_all(x):
+            return res
+        # elif isinstance(x, InjectionMarker) and x != x.__dependency__:
+        #     return self[x.__dependency__]
 
-@export()
-class InjectorContainer(Container):
-
-    __slots__ = ("__injector",)
-
-    __injector: "Injector"
-
-    def __init__(self, injector: "Injector"):
-        super().__init__(injector.name)
-        self.__injector = injector
-
-    def bind(self, injector: "Injector" = None, source: "Container" = None):
-        if injector is None:
-            injector = self.__injector
-
-        if not source is None:
-            raise TypeError(f"{self} cannot be included in other containers.")
-        elif not self.__injector is injector:
-            raise TypeError(f"{self} already belongs to {self.__injector}")
-        return super().bind(injector)

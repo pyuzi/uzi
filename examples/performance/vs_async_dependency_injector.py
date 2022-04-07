@@ -6,7 +6,7 @@ from functools import reduce
 from operator import or_
 
 from dependency_injector import containers, providers, wiring
-from xdi import Injector, context, inject
+from xdi import Scope, context, inject
 
 from _benchmarkutil import Benchmark
 from vs_dependency_injector import A, B, C, Test, Connection, Container, ioc
@@ -21,7 +21,7 @@ ST = 0# .000000001
 
 
 
-ioc = Injector()
+ioc = Scope()
 
 ioc.factory(A)
 ioc.factory(B).using(B.make)#.singleton()

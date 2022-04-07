@@ -3,7 +3,7 @@ import os
 
 from after import ApiClient, Service
 
-from xdi.injectors import Injector, inject, context
+from xdi.scopes import Scope, inject, context
 
 
 
@@ -13,7 +13,7 @@ def main(service: Service):
 
 
 
-injector = Injector()
+injector = Scope()
 
 injector.factory(Service)
 injector.factory(ApiClient, os.getenv("API_URL"), os.getenv('API_KEY')).singleton()

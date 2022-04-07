@@ -79,7 +79,7 @@ class FactoryProviderTests(ProviderTestCase):
         assert provider.arguments.args == args
         assert provider.arguments.kwargs == kwd
 
-    def test_with_args(self, injector, context):
+    def test_with_args(self, scope, context):
         _default = object()
         
         def func(a: Foo, b: Bar, c=_default, /):
@@ -89,15 +89,15 @@ class FactoryProviderTests(ProviderTestCase):
 
         args = 'aaa', 123, 'xyz'
         provider.args(*args)
-        provider.bind(injector, func)(context)()
+        provider.bind(scope, func)(context)()
 
         provider = Factory(func)
 
         args = 'aaa', 123, _default
         provider.args(*args[:-1])
-        provider.bind(injector, func)(context)()
+        provider.bind(scope, func)(context)()
         
-    def test_with_kwargs(self, injector, context):
+    def test_with_kwargs(self, scope, context):
         _default = object()
         
         def func(*, a: Foo, b: Bar, c=_default):
@@ -107,13 +107,13 @@ class FactoryProviderTests(ProviderTestCase):
 
         kwargs = dict(a='aaa', b=123, c='xyz')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(context)()
+        provider.bind(scope, func)(context)()
 
         provider = Factory(func)
 
         kwargs = dict(a='BAR', b='BOO')
         provider.kwargs(**kwargs)
-        provider.bind(injector, func)(context)()
+        provider.bind(scope, func)(context)()
 
 
 class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
@@ -126,10 +126,10 @@ class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
         return factory
 
     @pytest.fixture
-    def injector(self, injector):
+    def scope(self, scope):
         tval = object()
-        injector.bindings[_T] = lambda c: lambda: tval
-        injector.bindings[_T_Async] = afn = lambda c: lambda: asyncio.sleep(0, tval)
+        scope[_T] = lambda c: lambda: tval
+        scope[_T_Async] = afn = lambda c: lambda: asyncio.sleep(0, tval)
         afn.is_async = True
-        return injector
+        return scope
 

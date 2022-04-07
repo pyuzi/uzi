@@ -49,10 +49,10 @@ class ResourceProviderTests(ProviderTestCase):
     def cm_class(self):
         return self.ContextManager
 
-    def test_exit(self, cm: ContextManager, provider: Provider, injector, ctx_manager):
-        bound = provider.bind(injector, self.provides)
-        with ctx_manager as ctx:
-            fn = bound(ctx)
+    def test_exit(self, cm: ContextManager, provider: Provider, scope, injector, ctx_manager):
+        bound = provider.bind(scope, self.provides)
+        with ctx_manager:
+            fn = bound(injector)
             assert cm.enters == 0 == cm.exits
             assert fn() is fn() is fn() is fn()
             assert cm.enters == 1

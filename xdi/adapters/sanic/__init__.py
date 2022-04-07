@@ -3,7 +3,7 @@ from collections.abc import Callable
 from functools import partial, update_wrapper
 
 
-from xdi import Injector, providers
+from xdi import Scope, providers
 from sanic import Request, Sanic
 
 
@@ -29,7 +29,7 @@ def inject(handler: Callable):
     return wrapper
 
 
-def extend_app(app: Sanic, injector: Injector, *, inject_routes: bool=True, inject_middleware=True):
+def extend_app(app: Sanic, injector: Scope, *, inject_routes: bool=True, inject_middleware=True):
 
     @app.on_request
     def setup_request_injector(request: Request):

@@ -88,12 +88,10 @@ class Scope:
                 pros = ns.get_all(key)
                 if not pros and (origin := get_origin(key)):
                     pros = ns.get_all(origin)
-
             if pros:
                 if pro := pros[0].compose(self, key, *pros[1:]):
                     resolved[ident] = dp = Dependency(key, self, pro)
                     return dp
-
             if not container.parent and loc is DependencyLocation.LOCAL:
                 return 
             container = container.parent

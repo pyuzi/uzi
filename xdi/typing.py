@@ -1,42 +1,42 @@
-
 import inspect
 import sys
-import typing as t 
+import typing as t
 from collections.abc import Callable
-
-from typing import get_args, get_origin, ForwardRef
+from importlib import import_module
+from typing import ForwardRef, get_args, get_origin
 
 from typing_extensions import Self
 
-if sys.version_info < (3, 10): # pragma: py-gt-39
-    UnionType = type(t.Union[t.Any, None]) 
-else: # pragma: py-lt-310
-    from types import UnionType 
+if sys.version_info < (3, 10):  # pragma: py-gt-39
+    UnionType = type(t.Union[t.Any, None])
+else:  # pragma: py-lt-310
+    from types import UnionType
 
 
-
-
-def typed_signature(callable: Callable[..., t.Any], *, follow_wrapped=True, globalns=None, localns=None) -> inspect.Signature:
+def typed_signature(
+    callable: Callable[..., t.Any], *, follow_wrapped=True, globalns=None, localns=None
+) -> inspect.Signature:
     sig = inspect.signature(callable, follow_wrapped=follow_wrapped)
 
     if follow_wrapped:
-        callable = inspect.unwrap(callable, stop=(lambda f: hasattr(f, "__signature__")))
-    
+        callable = inspect.unwrap(
+            callable, stop=(lambda f: hasattr(f, "__signature__"))
+        )
+
     if globalns is None:
-        from xdi._common.imports import ImportRef
-            
-        globalns = getattr(callable, '__globals__', None) \
-            or getattr(ImportRef(callable).module(None), '__dict__', None)
+        globalns = getattr(callable, "__globals__", None) or getattr(
+            import_module(callable.__module__), "__dict__", None
+        )
 
     params = (
-            p.replace(annotation=eval_type(p.annotation, globalns, localns)) 
-                for p in sig.parameters.values()
-        )
-    
+        p.replace(annotation=eval_type(p.annotation, globalns, localns))
+        for p in sig.parameters.values()
+    )
+
     return sig.replace(
-            parameters=params, 
-            return_annotation=eval_type(sig.return_annotation, globalns, localns)
-        )
+        parameters=params,
+        return_annotation=eval_type(sig.return_annotation, globalns, localns),
+    )
 
 
 def eval_type(value, globalns, localns=None):
@@ -50,4 +50,4 @@ def eval_type(value, globalns, localns=None):
         return t._eval_type(value, globalns, localns)
     except NameError:
         # this is ok, it can be fixed with update_forward_refs
-        return value        
+        return value

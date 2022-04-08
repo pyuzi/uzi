@@ -4,13 +4,12 @@ from abc import ABCMeta, abstractmethod
 from collections import ChainMap, abc
 from collections.abc import Callable as AbstractCallable, Iterable
 from collections.abc import Set
-from contextlib import AbstractContextManager
 from functools import wraps
 from inspect import Parameter, Signature, iscoroutinefunction, ismemberdescriptor
 from logging import getLogger
 
-from xdi._common.collections import Arguments
-from xdi._common.functools import Missing
+from .._common.collections import Arguments
+from .._common import Missing
 from ..typing import Self, UnionType, get_args, get_origin, typed_signature
 
 from .. import (Dep, Injectable, DependencyLocation, InjectionMarker, T_Injectable,
@@ -626,7 +625,7 @@ class DepMarkerProvider(Provider):
 _none_or_ellipsis = frozenset([None, ...])
 
 class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
-
+    
     arguments: Arguments = _Attr(default_factory=Arguments)
     is_shared: t.ClassVar[bool] = False
     
@@ -658,11 +657,13 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         self._is_registered or self._register()
     
     def args(self, *args) -> Self:
-        self.__set_attr(arguments=self.arguments.replace(args))
+        arguments = self.arguments
+        self.__set_attr(arguments=Arguments(args, arguments.kwargs))
         return self
 
     def kwargs(self, **kwargs) -> Self:
-        self.__set_attr(arguments=self.arguments.replace(kwargs=kwargs))
+        arguments = self.arguments
+        self.__set_attr(arguments=Arguments(arguments.args, kwargs))
         return self
         
     def singleton(self, is_singleton: bool = True, *, thread_safe: bool=False) -> Self:

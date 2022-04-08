@@ -20,9 +20,9 @@ from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
 from threading import Lock
 
-from xdi._common.asyncio.futures import Future
-from xdi._common.collections import Arguments, emptydict, frozendict, frozenorderedset
-from xdi._common.functools import Missing, export
+from .._common.asyncio.futures import Future
+from .._common.collections import Arguments, frozendict
+from .._common import Missing
 
 from ..typing import Self, typed_signature
 from .. import (
@@ -229,7 +229,7 @@ class FactoryBinding:
     signature: Signature
     decorators: list[Callable[[Callable], Callable]]
 
-    aws: frozenorderedset[BoundParam]
+    # aws: frozenorderedset[BoundParam]
     deps: frozenset[BoundParam]
     args: tuple[BoundParam]
     aw_args: tuple[int]
@@ -812,11 +812,11 @@ class FutureFactoryWrapper:
         cls,
         func,
         vals: Mapping = frozendict(),
-        args: '_PositionalArgs' = emptydict(),
-        kwds: '_KeywordDeps' = emptydict(),
+        args: '_PositionalArgs' = frozendict(),
+        kwds: '_KeywordDeps' = frozendict(),
         *,
-        aw_args: tuple[int] = emptydict(),
-        aw_kwds: tuple[str] = emptydict(),
+        aw_args: tuple[int] = frozendict(),
+        aw_kwds: tuple[str] = frozendict(),
         aw_call: bool = True,
     ) -> Self:
         self = _object_new(cls)
@@ -900,7 +900,7 @@ class FactoryFuture(Future):
     # _aws: tuple[Future[_T], dict[str, Future[_T]]]
 
     def __init__(
-        self, factory, aw_args=emptydict(), aw_kwds=emptydict(), *, loop=None
+        self, factory, aw_args=frozendict(), aw_kwds=frozendict(), *, loop=None
     ) -> Self:
         Future.__init__(self, loop=loop)
         self._factory = factory
@@ -950,11 +950,11 @@ class CallableFuture(Future):
     def __init__(
         self,
         factory,
-        aw_args=emptydict(),
-        aw_kwds=emptydict(),
+        aw_args=frozendict(),
+        aw_kwds=frozendict(),
         *,
         args: tuple = (),
-        kwds: dict[str, t.Any]=emptydict(),
+        kwds: dict[str, t.Any]=frozendict(),
         loop=None,
     ) -> Self:
         Future.__init__(self, loop=loop)
@@ -1014,11 +1014,11 @@ class ResourceFuture(Future):
     def __init__(
         self,
         factory,
-        aw_args=emptydict(),
-        aw_kwds=emptydict(),
+        aw_args=frozendict(),
+        aw_kwds=frozendict(),
         *,
         args: tuple = (),
-        kwds: dict[str, t.Any]=emptydict(),
+        kwds: dict[str, t.Any]=frozendict(),
         loop=None,
     ) -> Self:
         Future.__init__(self, loop=loop)

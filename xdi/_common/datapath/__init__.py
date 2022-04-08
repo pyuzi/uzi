@@ -1,13 +1,9 @@
 import typing as t
 from abc import abstractmethod
-from cmath import exp
 from collections.abc import Callable, Hashable
-from email.policy import default
 
-from xdi._common.collections import Arguments
-from typing_extensions import Self
+from ..collections import frozendict
 
-# from enum import Enum, auto
 
 
 _T_Obj = t.TypeVar("_T_Obj")
@@ -18,20 +14,11 @@ _T_Kwargs = t.TypeVar("_T_Kwargs")
 _T_Item = t.TypeVar("_T_Item", int, str, Hashable)
 
 
-_MISSING = object()
-
-# class TokenType(Enum):
-#     attribute       = auto()
-#     index           = auto()
-#     key             = auto()
-
 
 class ExpressionError(Exception):
     ...
 
 
-# class DataPathError(ExpressionError):
-#     ...
 
 
 class EvaluationError(ExpressionError):
@@ -166,16 +153,16 @@ class Slice(
         return f"[{start}:{stop}:{step}]"
 
 
-class Call(Expression[Arguments[_T_Args, _T_Kwargs], _T_Obj]):
+class Call(Expression[tuple[_T_Args, _T_Kwargs], _T_Obj]):
     __slots__ = ()
 
     __evaluation_errors__ = (CallEvaluationError,)
 
     def __eval__(self, o: _T_Obj):
         __tracebackhide__ = True
-        v = self.__expr__
+        args, kwargs = self.__expr__
         try:
-            return o(*v.args, **v.kwargs)
+            return o(*args, **kwargs)
         except TypeError as e:
             if isinstance(o, Callable):
                 raise
@@ -183,13 +170,12 @@ class Call(Expression[Arguments[_T_Args, _T_Kwargs], _T_Obj]):
             raise CallEvaluationError(e) from e
 
     def __str__(self):
-        v = self.__expr__
-        a = ", ".join(map(repr, v.args))
-        kw = ", ".join(f"{k!s}={v!r}" for k, v in v.kwargs.items())
+        args, kwargs = self.__expr__
+        a = ", ".join(map(repr, args))
+        kw = ", ".join(f"{k!s}={v!r}" for k, v in kwargs.items())
         return f'({", ".join(filter(None, (a, kw)))})'
 
 
-_default = object()
 
 
 class DataPath(
@@ -205,23 +191,6 @@ class DataPath(
             cls, __path if __path.__class__ is tuple else tuple(__path)
         )
         return self
-
-    # @property
-    # def __default__(self):
-    #     return self.__expr__[0]
-
-    # @property
-    # def __hasdefault__(self):
-    #     return not self.__default__ is _MISSING
-
-    # @property
-    # def __path__(self):
-    #     return self.__expr__[1:]
-
-    # def __add__(self, v):
-    #     if isinstance(v, DataPath) and not v.__hasdefault__:
-    #         return self.__push__(v)
-    #     return NotImplemented
 
     def __push__(self, *expr: Expression[_T_Expr, _T_Obj]):
         return self.__class__(self.__expr__ + expr)
@@ -239,7 +208,7 @@ class DataPath(
             return self.__push__(Item(k))
 
     def __call__(self, *a: _T_Args, **kw: _T_Kwargs):
-        return self.__push__(Call(Arguments(a, kw)))
+        return self.__push__(Call((a, frozendict(kw))))
 
     def __eval__(self, /, root: _T_Obj, start: int = None, stop: int = None):
         __tracebackhide__ = True

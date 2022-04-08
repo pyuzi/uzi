@@ -106,6 +106,10 @@ class ProviderTestCase:
     def test_no_binds_outside_own_scope(self, provider: Provider, scope: Scope, Container):
         assert provider.container is None
         container = Container()
+        print(f'{scope=}')
+        print(f'{container=}')
+        print(f'{scope.container.get_container(container)=}')
+        print(f'{container in scope=}')
         assert not container in scope
         provider.set_container(container)
         assert provider.bind(scope, self.provides) is None

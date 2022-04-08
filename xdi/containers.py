@@ -7,7 +7,7 @@ from xdi._common.collections import MultiChainMap, MultiDict, frozendict, ordere
 from xdi._common.functools import calling_frame, export
 from xdi._common.promises import Promise
 
-from . import Dependency, Injectable, T_Injected, InjectionMarker, is_injectable
+from . import Dependency, DependencyLocation, Injectable, T_Injected, InjectionMarker, is_injectable
 from .providers import Provider, T_UsingAny
 from .providers.util import ProviderRegistry
 from .typing import get_origin
@@ -33,7 +33,7 @@ class Container(ProviderRegistry):
         "__autoloads",
         "_ns_local",
         "_ns_global",
-        "_ns_peer",
+        "_ns_nonlocal",
         "parent"
     )
 
@@ -47,7 +47,7 @@ class Container(ProviderRegistry):
     __includes: orderedset["Container"]
 
     _ns_local: MultiDict[Injectable, Provider]
-    _ns_peer: MultiChainMap[Injectable, Provider]
+    _ns_nonlocal: MultiChainMap[Injectable, Provider]
     _ns_global: MultiChainMap[Injectable, Provider]
 
     parent: t.Union[Self, None]
@@ -69,8 +69,8 @@ class Container(ProviderRegistry):
         self.__inline = inline
         self.parent = parent
         self._ns_local = MultiDict()
-        self._ns_peer = MultiChainMap()
-        self._ns_global = MultiChainMap(self._ns_peer, self._ns_local)
+        self._ns_nonlocal = MultiChainMap()
+        self._ns_global = MultiChainMap(self._ns_nonlocal, self._ns_local)
 
         self.__bound = orderedset()
         self.__autoloads = orderedset()
@@ -95,19 +95,25 @@ class Container(ProviderRegistry):
     def name(self) -> str:
         return self.__name
 
-    def includes(self, container: "Container"):
-        return container in self.__includes \
-                or any(c.includes(container) for c in self.__includes)
-
+    def get_container(self, container: "Container"=None):
+        if (container or self) is self:
+            return self
+        elif container in self.__includes:
+            return container
+        else:
+            for con in self.__includes:
+                if con := con.get_container(container):
+                    return con
+            
     def include(self, *containers: "Container", replace: bool = False) -> Self:
         if self._is_bound():
             raise TypeError(f"container already bound: {self!r}")
         elif replace:
             self.__includes = containers = orderedset(containers)
-            self._ns_peer.maps[:-1] = [c._ns_global for c in containers]
+            self._ns_nonlocal.maps[:-1] = [c._ns_global for c in containers]
         else:
             self.__includes |= containers
-            self._ns_peer.maps[:-1] = [c._ns_global for c in self.__includes]
+            self._ns_nonlocal.maps[:-1] = [c._ns_global for c in self.__includes]
         return self
 
     def register(self, provider: Provider) -> Self:
@@ -159,44 +165,47 @@ class Container(ProviderRegistry):
                     return True
         return False
 
+    def get_registry(self, loc: DependencyLocation=DependencyLocation.GLOBAL):
+        if loc is DependencyLocation.GLOBAL:
+            return self._ns_global
+        elif loc is DependencyLocation.LOCAL:
+            return self._ns_local
+        elif loc is DependencyLocation.NONLOCAL:
+            return self._ns_nonlocal
+        raise ValueError(f'invalid argument {loc}')
+
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.__name!r}, {self.__bound})"
+        return f"{self.__class__.__name__}({self.__name!r})"
 
     def __contains__(self, x):
         if x in self._ns_global:
             return True
-        elif isinstance(x, Dependency):
-            dep, scp, loc = x.dependency, x.container or self, x.loc
-            if scp is self:
-                if not loc:
-                    return dep in self._ns_global
-                elif loc is Dependency.PEER:
-                    return dep in self._ns_peer
-                elif loc is Dependency.SELF:
-                    return dep in self._ns_local
-            elif self.includes(scp):
-                return x in scp
+        # elif isinstance(x, Dependency):
+        #     dep, scp, loc = x.provides, x.container or self, x.loc
+        #     if scp is self:
+        #         if not loc:
+        #             return dep in self._ns_global
+        #         elif loc is DependencyLocation.LOCAL:
+        #             return dep in self._ns_local
+        #         elif loc is DependencyLocation.NONLOCAL:
+        #             return dep in self._ns_nonlocal
+        #     elif self.includes(scp):
+        #         return x in scp
         elif isinstance(x, Container):
-            return x is self or self.includes(x)
-        # elif isinstance(x, InjectionMarker):
-        #     return x != x.__dependency__ and x.__dependency__ in self
+            return not not self.get_container(x) 
         else:
             return not is_injectable(x) and NotImplemented or False
     
-    def __getitem__(self, x: t.Union[Injectable, 'Dependency']):
-        if isinstance(x, Dependency):
-            dep, scp, loc = x.dependency, x.container or self, x.loc
-            if scp is self:
-                if not loc:
-                    return self._ns_global.get_all(dep)
-                elif loc is Dependency.SELF:
-                    return self._ns_local.get_all(dep)
-                elif loc is Dependency.PEER:
-                    return self._ns_peer.get_all(dep)
-            elif self.includes(scp):
-                return scp[x]
-        elif res := self._ns_global.get_all(x):
-            return res
-        # elif isinstance(x, InjectionMarker) and x != x.__dependency__:
-        #     return self[x.__dependency__]
-
+    # def __getitem__(self, x: t.Union[Injectable, 'Dependency']):
+    #     dep, scp, loc = x.provides, x.container or self, x.loc
+    #     if scp is self:
+    #         if not loc:
+    #             return self._ns_global.get_all(dep)
+    #         elif loc is DependencyLocation.LOCAL:
+    #             return self._ns_local.get_all(dep)
+    #         elif loc is DependencyLocation.NONLOCAL:
+    #             return self._ns_nonlocal.get_all(dep)
+    #     elif self.includes(scp):
+    #         return scp[x]
+        
+        

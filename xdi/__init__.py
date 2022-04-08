@@ -152,21 +152,13 @@ class DependencyLocation(IntEnum):
     GLOBAL: "DependencyLocation" = 0
     """start resolving from the current/given scope and it's parent.
     """
-
-    SELF: "DependencyLocation" = auto()
-    """Only inject from the current scope without considering parents
-    """
     
-    PEER: "DependencyLocation" = auto()
+    NONLOCAL: "DependencyLocation" = auto()
     """Skip the current/given container and resolve from it's peers or parent instead.
     """
 
     LOCAL: "DependencyLocation" = auto()
     """Only inject from the current/given container without considering it's peers and parent
-    """
-
-    SUPER: "DependencyLocation" = auto()
-    """Skip the current scope and resolve from it's parent instead.
     """
 
     @classmethod
@@ -175,44 +167,33 @@ class DependencyLocation(IntEnum):
 
 
 
-class _DependencyIdent(t.NamedTuple):
-    hash: int
-    pure: bool = False
 
 
-@InjectionMarker.register
-@attr.s(slots=True, frozen=False, cmp=False)
-class Dependency(t.Generic[T_Injected]):
+@attr.s(slots=True, frozen=True, cmp=True)
+class Dependency(t.Generic[T_Injectable]):
 
     """Marks an injectable as a `dependency` to be injected."""
 
-    dependency: T_Injectable = attr.field()
-    scope: t.Union['Container', 'Scope', None] = attr.field(default=None, repr=lambda s: f'{s.__class__.__name__}({s.name!r})')
-    loc: DependencyLocation = attr.field(default=DependencyLocation.GLOBAL, converter=DependencyLocation)
-    default: T_Injected = attr.field(default=Missing, kw_only=True)
-    container: 'Container' = attr.field(init=False, repr=False)
+    provides: T_Injectable = attr.field()
+    scope: 'Scope' = attr.field()
+    provider: 'Provider' = attr.field(repr=lambda p: str(id(p)))
 
-    _ident: _DependencyIdent = attr.field(init=False, repr=False)
+    # container: 'Container' = attr.field(default=None)
+    # loc: DependencyLocation = attr.field(default=DependencyLocation.GLOBAL, kw_only=True, converter=DependencyLocation)
 
-    GLOBAL: t.Final = DependencyLocation.GLOBAL
-    """start resolving from the current/given scope and it's parent.
-    """
+    # _ash = attr.field(init=False, repr=False)
 
-    LOCAL: t.Final = DependencyLocation.LOCAL
-    """Only inject from the current/given container without considering it's peers and parent
-    """
+    # GLOBAL: t.Final = DependencyLocation.GLOBAL
+    # """start resolving from the current/given scope and it's parent.
+    # """
 
-    SUPER: t.Final = DependencyLocation.SUPER
-    """Skip the current scope and resolve from it's parent instead.
-    """
+    # LOCAL: t.Final = DependencyLocation.LOCAL
+    # """Only inject from the current/given container without considering it's peers and parent
+    # """
     
-    PEER: t.Final = DependencyLocation.PEER
-    """Skip the current/given container and resolve from it's peers or parent instead.
-    """
-
-    SELF: t.Final = DependencyLocation.SELF
-    """Only inject from the current scope without considering parents
-    """
+    # NONLOCAL: t.Final = DependencyLocation.NONLOCAL
+    # """Skip the current/given container and resolve from it's peers or parent instead.
+    # """
 
     # def parent(self, scope: 'Scope') -> t.Union[Self, None]:
     #     if container := self.container:
@@ -223,51 +204,42 @@ class Dependency(t.Generic[T_Injected]):
 
     #         return  
 
-    @t.overload
-    def replace(self, *,
-                scope: t.Union['Container', 'Scope']=..., 
-                loc: DependencyLocation = ...,
-                default: DependencyLocation = ...,
-            ) -> Self:
-        ...
-    def replace(self, **kwds) -> Self:
-        return self.__class__(
-            self.dependency, **{
-            'scope': self.scope,
-            'loc': self.loc,
-            'default': self.default,
-            **kwds
-        })
+    # @t.overload
+    # def replace(self, *,
+    #             scope: t.Union['Container', 'Scope']=..., 
+    #             loc: DependencyLocation = ...,
+    #             default: DependencyLocation = ...,
+    #         ) -> Self:
+    #     ...
+    # def replace(self, **kwds) -> Self:
+    #     return self.__class__(
+    #         self.dependency, **{
+    #         'scope': self.scope,
+    #         'loc': self.loc,
+    #         'default': self.default,
+    #         **kwds
+    #     })
 
     def __init_subclass__(cls, *args, **kwargs):
         raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__qualname__}")
 
-    def __attrs_post_init__(self):
-        self.container = scp.container if isinstance(scp := self.scope, Scope) else scp
-        if scp or self.loc or not self.default is Missing:
-            self._ident = _DependencyIdent(hash((self.dependency, self.container, self.loc, self.default)))
-        else:
-            self._ident = _DependencyIdent(hash(self.dependency), True)
+    def __call__(self, scope: 'Scope'):
+        if provider := scope is self.scope and self.provider:
+            return provider.bind(scope, self.provides)
 
-    @property
-    def __dependency__(self):
-        if self._ident.is_pure:
-            return self.dependency
-        # elif 
-        return self.dependency if self.is_pure else self.__class__
-
-    @property
-    def is_pure(self):
-        return self._ident.pure
-
-    def __eq__(self, x) -> bool:
-        ident = self._ident
-        if isinstance(x, Dependency):
-            return x._ident == ident
-        return ident.pure and x == self.dependency
+    # def __attrs_post_init__(self):
+    #     # if not self.container:
+    #     #     container = scp.container if isinstance(scp := self.scope, Scope) else scp
+    #     #     object.__setattr__(self, 'container', container)
+        
+    #     ash = hash((self.provider, self.scope))
+    #     object.__setattr__(self, '_ash', ash)
+        
+    # def __eq__(self, x) -> bool:
+    #     return x.__class__ is Dependency and self._ash == x._ash
     
-    def __hash__(self):
-        return self._ident.hash
+    # def __hash__(self):
+    #     return self._ash
 
 
 
@@ -412,4 +384,5 @@ class Dep(DataPath[T_Injected]):
 
 
 from .containers import Container
+from .providers import Provider
 from .scopes import Scope

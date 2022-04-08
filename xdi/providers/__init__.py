@@ -721,6 +721,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected]):
         return self._binding_class(
                 scope,
                 self.uses, 
+                self.container,
                 self.get_signature(),
                 is_async=self.is_async,
                 arguments=self.arguments, 
@@ -744,6 +745,7 @@ class Singleton(Factory[T_Injected]):
         return self._binding_class(
                 scope,
                 self.uses, 
+                self.container,
                 self.get_signature(),
                 is_async=self.is_async,
                 arguments=self.arguments, 
@@ -770,6 +772,7 @@ class Resource(Singleton[T_Injected]):
         return self._binding_class(
                 scope,
                 self.uses, 
+                self.container,
                 self.get_signature(),
                 is_async=self.is_async,
                 aw_enter=self.is_awaitable,
@@ -789,6 +792,7 @@ class Partial(Factory[T_Injected]):
         return self._binding_class(
                 scope,
                 self.uses, 
+                self.container,
                 self.get_signature(),
                 is_async=self.is_async,
                 arguments=self.arguments, 

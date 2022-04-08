@@ -2,7 +2,7 @@ import typing as t
 
 import attr
 
-from xdi import Dependency
+from xdi import Dependency, DependencyLocation
 
 
 
@@ -35,5 +35,5 @@ class TestScope(Scope):
 
     def __setitem__(self, key, val):
         if not isinstance(key, Dependency):
-            key = Dependency(key, self)
-        self._resolver_map[key] = val
+            self._resolved[key][self.container, DependencyLocation.GLOBAL] = key = Dependency(key, self, None)
+        self._dependencies[key] = val

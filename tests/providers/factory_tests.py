@@ -119,17 +119,17 @@ class FactoryProviderTests(ProviderTestCase):
 class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
 
     @pytest.fixture
-    def factory(self, value_setter):
-        async def factory(a: _T, b: _T_Async):
-            assert a is b
-            return value_setter()
-        return factory
-
-    @pytest.fixture
     def scope(self, scope):
         tval = object()
         scope[_T] = lambda c: lambda: tval
         scope[_T_Async] = afn = lambda c: lambda: asyncio.sleep(0, tval)
         afn.is_async = True
         return scope
+
+    @pytest.fixture
+    def factory(self, value_setter):
+        async def factory(a: _T, b: _T_Async):
+            assert a is b
+            return value_setter()
+        return factory
 

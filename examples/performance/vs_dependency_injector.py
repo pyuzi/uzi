@@ -99,8 +99,8 @@ class Connection:
         else:
             print(f'Invalid state: {self!r}')
 
-    def __del__(self):
-        print(f'__del__ --> {self!r}')
+    # def __del__(self):
+    #     print(f'__del__ --> {self!r}')
 
 
 
@@ -130,19 +130,19 @@ ioc = xdi.Container()
 
 ioc.factory(A)
 ioc.factory(B)#.singleton()
-ioc.singleton(C)#.singleton()
-ioc.singleton(Connection, k='cm-')
+ioc.factory(C)#.singleton()
+ioc.factory(Connection, k='cm-')
 ioc.factory(Test).args('ex','why','zee').kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
-Singleton = providers.Singleton 
-# Singleton = providers.Factory 
+# Singleton = providers.Singleton 
+Singleton = providers.Factory 
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
     b = providers.Factory(B, a)
     # b = Singleton(B, a)
-    con = providers.Singleton(Connection, a, b=b, k='gn-')
+    con = Singleton(Connection, a, b=b, k='gn-')
     c = Singleton(C, a, b=b)
     test = providers.Factory(
         Test,
@@ -231,7 +231,7 @@ def main():
            
     c.shutdown_resources()
 
-    print('>>', *inj.scope._resolver_map.keys(), sep='\n  - ')
+    print('>>', *inj.scope._dependencies.keys(), sep='\n  - ')
     print('>>', *inj.keys(), sep='\n  - ')
 
     # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), xdi=_new_ctx_test)

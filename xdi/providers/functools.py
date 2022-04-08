@@ -16,7 +16,7 @@ from collections.abc import (
     ValuesView,
 )
 from enum import Enum
-from inspect import Parameter, Signature
+from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
 from threading import Lock
 
@@ -32,7 +32,9 @@ from .. import (
 )
 
 if t.TYPE_CHECKING:
-    from ..scopes import Scope, Injector
+    from ..scopes import Scope
+    from ..injectors import Injector
+    from ..containers import Container
 
 
 logger = getLogger(__name__)
@@ -84,6 +86,7 @@ class BoundParam:
         "param",
         "key",
         "value",
+        "injectable",
         "dependency",
         # "default",
         "has_value",
@@ -100,6 +103,7 @@ class BoundParam:
     annotation: t.Any
     value: _T
     default: t.Any
+    injectable: Injectable
     dependency: Injectable
     is_async: bool
     has_value: bool
@@ -114,10 +118,11 @@ class BoundParam:
         self = object.__new__(cls)
         self.param = param
         self.key = key or param.name
+        self.dependency = None
         self.has_value = self.is_async = self.has_default = self.has_dependency = False
 
         if isinstance(value, InjectionMarker):
-            self.dependency = value
+            self.injectable = value
             self.has_dependency = True
         elif not value is _EMPTY:
             self.has_value = True
@@ -125,7 +130,7 @@ class BoundParam:
 
         if isinstance(param.default, InjectionMarker):
             if self.has_dependency is False:
-                self.dependency = param.default
+                self.injectable = param.default
                 self.has_dependency = True
         else:
             self.has_default = not param.default is _EMPTY
@@ -133,7 +138,7 @@ class BoundParam:
         if False is self.has_dependency:
             annotation = param.annotation
             if is_injectable_annotation(annotation):
-                self.dependency = annotation
+                self.injectable = annotation
                 self.has_dependency = isinstance(annotation, InjectionMarker) or None
 
         return self
@@ -202,6 +207,7 @@ class FactoryBinding:
     __slots__ = (
         "factory",
         "signature",
+        "container",
         "decorators",
         "scope",
         "args",
@@ -218,6 +224,7 @@ class FactoryBinding:
 
     factory: Callable
     scope: "Scope"
+    container: 'Container'
     arguments: dict[str, t.Any]
     signature: Signature
     decorators: list[Callable[[Callable], Callable]]
@@ -235,14 +242,15 @@ class FactoryBinding:
         self,
         scope: "Scope",
         factory: Callable,
+        container: 'Container' = None,
         signature: Signature = None,
         *,
         is_async: bool = None,
         arguments: Arguments = None,
     ):
-        # self = object.__new__(cls)
         self.factory = factory
         self.scope = scope
+        self.container = container
         self.aw_call = iscoroutinefunction(factory) if is_async is None else is_async
         self.signature = signature or typed_signature(factory)
         self._evaluate(self._parse_arguments(arguments))
@@ -319,7 +327,8 @@ class FactoryBinding:
 
     def _evaluate_param_dependency(self, p: BoundParam):
         if not False is p.has_dependency:
-            if bound := self.scope[p.dependency:]:
+            dep = p.dependency = self.scope.resolve_dependency(p.injectable, self.container)
+            if bound := dep and self.scope[dep:]:
                 p.has_dependency = True
                 p.is_async = _is_aync_provider(bound)
 

@@ -7,7 +7,6 @@ from typing_extensions import Self
 
 import attr
 
-from xdi._common.collections import MultiChainMap, emptydict, frozendict, frozenorderedset, MultiDict
 
 
 from . import DependencyLocation, InjectionMarker, Injectable, Dependency
@@ -70,7 +69,7 @@ class Scope:
         if key.__class__ is Dependency:
             return self._dependencies.setdefault(key, key(self))
         elif dep := self.resolve_dependency(key):
-            return self._dependencies.setdefault(key, self[dep])
+            return self[dep]
         elif self.is_provided(key):
             return self._dependencies.setdefault(key)
 
@@ -92,6 +91,12 @@ class Scope:
                 if pro := pros[0].compose(self, key, *pros[1:]):
                     resolved[ident] = dp = Dependency(key, self, pro)
                     return dp
+            
+            if not (container is self.container or loc is DependencyLocation.LOCAL):
+                if dp := self.resolve_dependency(key, None, loc, only_self=True):
+                    resolved[ident] = dp
+                    return dp
+            
             if not container.parent and loc is DependencyLocation.LOCAL:
                 return 
             container = container.parent
@@ -111,10 +116,10 @@ class Scope:
         return self._injector_class(parent, self)
 
     def __eq__(self, o) -> bool:
-        return o == self.container
+        return o is self # isinstance(o, Scope) and o.container == self.container
 
     def __hash__(self):
-        return hash(self.container)
+        return id(self)
 
 
 

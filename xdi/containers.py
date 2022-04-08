@@ -180,32 +180,8 @@ class Container(ProviderRegistry):
     def __contains__(self, x):
         if x in self._ns_global:
             return True
-        # elif isinstance(x, Dependency):
-        #     dep, scp, loc = x.provides, x.container or self, x.loc
-        #     if scp is self:
-        #         if not loc:
-        #             return dep in self._ns_global
-        #         elif loc is DependencyLocation.LOCAL:
-        #             return dep in self._ns_local
-        #         elif loc is DependencyLocation.NONLOCAL:
-        #             return dep in self._ns_nonlocal
-        #     elif self.includes(scp):
-        #         return x in scp
         elif isinstance(x, Container):
             return not not self.get_container(x) 
         else:
             return not is_injectable(x) and NotImplemented or False
     
-    # def __getitem__(self, x: t.Union[Injectable, 'Dependency']):
-    #     dep, scp, loc = x.provides, x.container or self, x.loc
-    #     if scp is self:
-    #         if not loc:
-    #             return self._ns_global.get_all(dep)
-    #         elif loc is DependencyLocation.LOCAL:
-    #             return self._ns_local.get_all(dep)
-    #         elif loc is DependencyLocation.NONLOCAL:
-    #             return self._ns_nonlocal.get_all(dep)
-    #     elif self.includes(scp):
-    #         return scp[x]
-        
-        

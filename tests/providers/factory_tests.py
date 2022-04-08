@@ -130,6 +130,6 @@ class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
     def factory(self, value_setter):
         async def factory(a: _T, b: _T_Async):
             assert a is b
-            return value_setter()
+            return await value_setter()
         return factory
 

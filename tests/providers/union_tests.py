@@ -39,9 +39,11 @@ class UnionProviderTests(ProviderTestCase):
 
 class AsyncUnionProviderTests(UnionProviderTests, AsyncProviderTestCase):
 
+    
     @pytest.fixture
     def scope(self, scope, value_setter):
-        scope[_Ta] = fn = lambda c: lambda: asyncio.sleep(0, value_setter())
+        scope[_Ta] = fn = lambda inj: value_setter
         fn.is_async = True
         return scope
+
 

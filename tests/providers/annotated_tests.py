@@ -29,9 +29,10 @@ class AnnotatedProviderTests(ProviderTestCase):
 
 class AsyncAnnotatedProviderTests(AnnotatedProviderTests, AsyncProviderTestCase):
 
+    
     @pytest.fixture
     def scope(self, scope, value_setter):
-        scope[_Ta] = fn = lambda inj: lambda: asyncio.sleep(0, value_setter())
+        scope[_Ta] = fn = lambda inj: value_setter
         fn.is_async = True
         return scope
 

@@ -33,8 +33,8 @@ class AliasProviderTests(ProviderTestCase):
 class AsyncAliasProviderTests(AliasProviderTests, AsyncProviderTestCase):
 
     @pytest.fixture
-    def context(self, context, value_setter):
-        context[_Ta] = fn = lambda: asyncio.sleep(0, value_setter())
+    def scope(self, scope, value_setter):
+        scope[_Ta] = fn = lambda inj: value_setter
         fn.is_async = True
-        return context
-       
+        return scope
+

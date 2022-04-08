@@ -134,10 +134,10 @@ class AsyncProviderTestCase(ProviderTestCase):
 
     @pytest.fixture
     def value_setter(self, value_factory):
-        async def fn(*a, **kw):
+        async def sfn(*a, **kw):
             self.value = val = await value_factory(*a, **kw)
             return val
-        return fn
+        return sfn
 
     async def test_provide(self, provider: Provider, scope, context):
         bound =  provider.bind(scope, self.provides)

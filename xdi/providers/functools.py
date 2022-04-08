@@ -242,7 +242,7 @@ class FactoryBinding:
         self,
         scope: "Scope",
         factory: Callable,
-        container: 'Container' = None,
+        container: t.Union['Container', None]=None,
         signature: Signature = None,
         *,
         is_async: bool = None,

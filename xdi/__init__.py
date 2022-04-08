@@ -96,7 +96,7 @@ class DependencyLocation(IntEnum):
         return cls(val or 0)
 
 
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True, cmp=True, cache_hash=True)
 class Dependency(t.Generic[T_Injectable]):
 
     """Marks an injectable as a `dependency` to be injected."""

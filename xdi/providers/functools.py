@@ -19,12 +19,12 @@ from enum import Enum
 from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
 from threading import Lock
+from typing_extensions import Self
 
 from .._common.asyncio.futures import Future
 from .._common.collections import Arguments, frozendict
-from .._common import Missing
+from .._common import Missing, typed_signature
 
-from ..typing import Self, typed_signature
 from .. import (
     Injectable,
     InjectionMarker,

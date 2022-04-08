@@ -9,7 +9,6 @@ from typing_extensions import Self
 from . import Dependency, DependencyLocation, Injectable
 from .injectors import Injector, NullInjectorContext
 from .providers import Provider
-from .typing import get_origin
 
 if t.TYPE_CHECKING:
     from .containers import Container # pragma: no cover
@@ -94,7 +93,7 @@ class Scope:
             else:
                 ns = container.get_registry(loc)
                 pros = ns.get_all(key)
-                if not pros and (origin := get_origin(key)):
+                if not pros and (origin := t.get_origin(key)):
                     pros = ns.get_all(origin)
             if pros:
                 if pro := pros[0].compose(self, key, *pros[1:]):

@@ -1,12 +1,12 @@
 
+import inspect
 import sys
 import types
-
-
 import typing as t
 from collections import ChainMap
-
-
+from collections.abc import Callable
+from importlib import import_module
+from typing import ForwardRef
 
 
 def calling_frame(depth=1, *, globals: bool=None, locals: bool=None, chain: bool=None):
@@ -27,6 +27,45 @@ def calling_frame(depth=1, *, globals: bool=None, locals: bool=None, chain: bool
             scope = frame.f_locals
     finally:
         return types.MappingProxyType(scope)
+
+
+
+
+def typed_signature(
+    callable: Callable[..., t.Any], *, follow_wrapped=True, globalns=None, localns=None
+) -> inspect.Signature:
+    sig = inspect.signature(callable, follow_wrapped=follow_wrapped)
+
+    if follow_wrapped:
+        callable = inspect.unwrap(
+            callable, stop=(lambda f: hasattr(f, "__signature__"))
+        )
+
+    if globalns is None:
+        globalns = getattr(callable, "__globals__", None) or getattr(
+            import_module(callable.__module__), "__dict__", None
+        )
+
+    params = (
+        p.replace(annotation=eval_type(p.annotation, globalns, localns))
+        for p in sig.parameters.values()
+    )
+
+    return sig.replace(
+        parameters=params,
+        return_annotation=eval_type(sig.return_annotation, globalns, localns),
+    )
+
+
+def eval_type(value, globalns, localns=None):
+
+    if isinstance(value, str):
+        value = ForwardRef(value)
+    try:
+        return t._eval_type(value, globalns, localns)
+    except NameError:
+        # this is ok, it can be fixed with update_forward_refs
+        return value
 
 
 

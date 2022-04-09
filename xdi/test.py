@@ -2,10 +2,10 @@ import typing as t
 
 import attr
 
-from xdi import Dependency, DependencyLocation
+from xdi import DependencyLocation
 
 
-
+from ._dependency import SimpleDependency, Dependency
 
 
 
@@ -30,10 +30,9 @@ class TestInjectorContext(Injector):
     
 
 
-
 class TestScope(Scope):
 
     def __setitem__(self, key, val):
         if not isinstance(key, Dependency):
-            self._resolved[key][self.container, DependencyLocation.GLOBAL] = key = Dependency(key, self, None)
-        self._dependencies[key] = val
+            self._resolved[key][self.container, DependencyLocation.GLOBAL] = key = SimpleDependency(self, key, use=val)
+        self._dependencies[key] = key

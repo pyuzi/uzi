@@ -21,9 +21,12 @@ from logging import getLogger
 from threading import Lock
 from typing_extensions import Self
 
+import attr
+
 from .._common.asyncio.futures import Future
 from .._common.collections import Arguments, frozendict
 from .._common import Missing, typed_signature
+
 
 from .. import (
     Injectable,
@@ -35,6 +38,8 @@ if t.TYPE_CHECKING:
     from ..scopes import Scope
     from ..injectors import Injector
     from ..containers import Container
+    from .._dependency import Dependency
+
 
 
 logger = getLogger(__name__)
@@ -95,7 +100,6 @@ class BoundParam:
         "_value_factory",
         "_default_factory",
         "_bind_type",
-        "is_async",
     )
 
     param: Parameter
@@ -104,8 +108,7 @@ class BoundParam:
     value: _T
     default: t.Any
     injectable: Injectable
-    dependency: Injectable
-    is_async: bool
+    dependency: 'Dependency'
     has_value: bool
     has_dependency: bool
 
@@ -118,8 +121,8 @@ class BoundParam:
         self = object.__new__(cls)
         self.param = param
         self.key = key or param.name
-        self.dependency = None
-        self.has_value = self.is_async = self.has_default = self.has_dependency = False
+        self.dependency = self.injectable = None
+        self.has_value = self.has_default = self.has_dependency = False
 
         if isinstance(value, InjectionMarker):
             self.injectable = value
@@ -146,6 +149,15 @@ class BoundParam:
     @property
     def name(self):
         return self.param.name
+
+    @property
+    def is_async(self):
+        if dep := self.dependency:
+            return dep.is_async
+
+    @property
+    def is_injectable(self):
+        return not self.injectable is None
 
     @property
     def bind_type(self):
@@ -195,11 +207,143 @@ class BoundParam:
             if self.has_default is True:
                 default = self.default
                 self._default_factory = lambda: default
-            elif self.has_dependency is True:
+            elif self.dependency:
                 self._default_factory = Missing
             else:
                 raise AttributeError(f"`default_factory`")
             return self._default_factory
+
+
+
+@attr.s(slots=True, frozen=True)
+class BoundParams:
+
+    params: tuple[BoundParam] = attr.field(converter=tuple)
+
+    args: tuple[BoundParam] = attr.field(converter=tuple, kw_only=True)
+    aw_args: tuple[int] = attr.field(converter=tuple)
+    kwds: tuple[BoundParam] = attr.field(converter=tuple)
+    aw_kwds: tuple[str] = attr.field(converter=tuple)
+    is_async: bool = attr.field()
+    vals: frozendict[str, t.Any] = attr.field(converter=frozendict)
+    _pos_vals: int = attr.field(converter=int)
+    _pos_deps: int = attr.field(converter=int)
+ 
+    @property
+    def dependencies(self) -> set['Dependency']:
+        return dict.fromkeys(p.dependency for p in self.params if p.dependency).keys()
+
+    @classmethod
+    def make(cls, params: tuple[BoundParam]) -> None:
+        args = []
+        kwds = []
+        vals = {}
+        aw_args = []
+        aw_kwds = []
+        pos_vals = pos_deps = i = 0
+        skip_pos = False
+        
+        params = tuple(params)
+        for p in params:
+            if p.kind in _POSITIONAL_KINDS:
+                if skip_pos is False:
+                    if p.has_value or p.dependency:
+                        args.append(p)
+                        p.is_async and aw_args.append(i)
+                        pos_vals += p.has_value
+                        pos_deps += not not p.dependency and not p.has_value
+                    else:
+                        skip_pos = True
+                    i += 1
+                continue
+            elif p.has_value:
+                vals[p.key] = p.value
+            elif p.dependency:
+                kwds.append(p)
+                p.is_async and aw_kwds.append(p.key)
+        return cls(
+            params=params,
+            args=args,
+            kwds=kwds,
+            vals=vals,
+            pos_vals=pos_vals,
+            pos_deps=pos_deps,
+            aw_args=aw_args,
+            aw_kwds=aw_kwds,
+            is_async=not not(aw_args or aw_kwds)
+        )
+
+    @classmethod
+    def bind(cls, sig: Signature, scope: 'Scope'=None, container: 'Container'=None, args: tuple=(), kwargs: dict=frozendict()) -> Self:
+        return cls.make(cls._iter_bind(sig, scope, container, args, kwargs))        
+
+    @classmethod
+    def _iter_bind(cls, sig: Signature, scope: 'Scope'=None, container: 'Container'=None, args=(), kwargs=frozendict()):
+        bound = sig.bind_partial(*args, **kwargs).arguments
+
+        for n, p in sig.parameters.items():
+            if p.kind is Parameter.VAR_POSITIONAL:
+                p = p.replace(annotation=Parameter.empty)
+                for v in bound.get(n) or (Parameter.empty,):
+                    bp = BoundParam(p, v)
+                    if scope and bp.is_injectable:
+                        bp.dependency = scope[bp.injectable:container]
+                    yield bp
+            elif p.kind is Parameter.VAR_KEYWORD:
+                p = p.replace(annotation=Parameter.empty)
+                for k, v in (bound.get(n) or {n: Parameter.empty}).items():
+                    bp = BoundParam(p, v, key=k)
+                    if scope and bp.is_injectable:
+                        bp.dependency = scope[bp.injectable:container]
+                    yield bp
+            else:
+                bp = BoundParam(p, bound.get(n, Parameter.empty))
+                if scope and bp.is_injectable:
+                    bp.dependency = scope[bp.injectable:container]
+                yield bp
+
+    def __bool__(self): 
+        return not not self.params
+
+    def resolve_args(self, ctx: "Injector"):
+        if self.args:
+            if self._pos_vals > 0 < self._pos_deps:
+                return _PositionalArgs(
+                    (
+                        p.bind_type,
+                        p.value
+                        if p.bind_type is _PARAM_VALUE
+                        else ctx.find(p.dependency, default=p.default_factory),
+                    )
+                    for p in self.args
+                )
+            elif self._pos_deps > 0:
+                return _PositionalDeps(
+                    ctx.find(p.dependency, default=p.default_factory) for p in self.args
+                )
+            else:
+                return tuple(p.value for p in self.args)
+        return ()
+
+    def resolve_aw_args(self, ctx: "Injector"):
+        return self.resolve_args(ctx), self.aw_args
+
+    def resolve_kwargs(self, ctx: "Injector"):
+        return _KeywordDeps(
+            (p.key, ctx.find(p.dependency, default=p.default_factory))
+            for p in self.kwds
+        )
+
+    def resolve_aw_kwargs(self, ctx: "Injector"):
+        if self.aw_kwds:
+            deps = self.resolve_kwargs(ctx)
+            return deps, tuple((n, deps.pop(n)) for n in self.aw_kwds)
+        else:
+            return self.resolve_kwargs(ctx), ()
+
+
+
+
 
 
 class FactoryBinding:
@@ -220,6 +364,7 @@ class FactoryBinding:
         "_pos_vals",
         "_pos_deps",
         "_wrapper_method",
+        "params",
     )
 
     factory: Callable
@@ -242,7 +387,7 @@ class FactoryBinding:
         self,
         scope: "Scope",
         factory: Callable,
-        container: t.Union['Container', None]=None,
+        container: 'Container' = None,
         signature: Signature = None,
         *,
         is_async: bool = None,
@@ -327,11 +472,8 @@ class FactoryBinding:
 
     def _evaluate_param_dependency(self, p: BoundParam):
         if not False is p.has_dependency:
-            dep = p.dependency = self.scope.resolve_dependency(p.injectable, self.container)
-            if bound := dep and self.scope[dep:]:
-                p.has_dependency = True
-                p.is_async = _is_aync_provider(bound)
-
+            dep = p.dependency = self.scope[p.injectable:]
+            p.has_dependency = not not dep
         return p.has_dependency
 
     def resolve_args(self, ctx: "Injector"):
@@ -430,6 +572,55 @@ class FactoryBinding:
 
     def args_wrapper(self: Self, ctx: "Injector"):
         args = self.resolve_args(ctx)
+        vals = self.vals
+        func = self.factory
+        return lambda: func(*args, **vals)
+
+    def async_args_wrapper(self, ctx: "Injector"):
+        return self.args_wrapper(ctx)
+
+    def aw_args_wrapper(self: Self, ctx: "Injector"):
+        args, aw_args = self.resolve_aw_args(ctx)
+        return self.make_future_wrapper(ctx, args=args, aw_args=aw_args)
+
+    def kwds_wrapper(self: Self, ctx: "Injector"):
+        kwds = self.resolve_kwds(ctx)
+        vals = self.vals
+        func = self.factory
+        return lambda: func(**kwds, **vals)
+
+    def async_kwds_wrapper(self, ctx: "Injector"):
+        return self.kwds_wrapper(ctx)
+
+    def aw_kwds_wrapper(self: Self, ctx: "Injector"):
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return self.make_future_wrapper(ctx, kwds=kwds, aw_kwds=aw_kwds)
+
+    def args_kwds_wrapper(self: Self, ctx: "Injector"):
+        args = self.resolve_args(ctx)
+        kwds = self.resolve_kwds(ctx)
+        vals = self.vals
+        func = self.factory
+        return lambda: func(*args, **kwds, **vals)
+
+    def async_args_kwds_wrapper(self, ctx: "Injector"):
+        return self.args_kwds_wrapper(ctx)
+
+    def aw_args_kwds_wrapper(self: Self, ctx: "Injector"):
+        args, aw_args = self.resolve_aw_args(ctx)
+        kwds, aw_kwds = self.resolve_aw_kwds(ctx)
+        return self.make_future_wrapper(
+            ctx, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds
+        )
+
+    def plain_wrapper(self, injector: "Injector"):
+        return self.factory
+
+    def async_plain_wrapper(self, injector: "Injector"):
+        return self.factory
+
+    def args_wrapper(self, injector: "Injector"):
+        args = self.resolve_args(injector)
         vals = self.vals
         func = self.factory
         return lambda: func(*args, **vals)

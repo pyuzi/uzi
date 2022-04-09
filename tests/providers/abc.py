@@ -96,27 +96,23 @@ class ProviderTestCase:
         provider._freeze()
         provider.default(not provider.is_default)
 
-    def test_bind(self, provider: Provider, scope, context):
-        bound = provider.bind(scope, self.provides)
-        assert provider._frozen
-        assert callable(bound)
-        func = bound(context)
-        assert callable(func)
+    # def test_bind(self, provider: Provider, scope, context):
+    #     bound = provider.compose(scope, self.provides)
+    #     assert provider._frozen
+    #     assert callable(bound)
+    #     func = bound(context)
+    #     assert callable(func)
                 
     def test_no_binds_outside_own_scope(self, provider: Provider, scope: Scope, Container):
         assert provider.container is None
         container = Container()
-        print(f'{scope=}')
-        print(f'{container=}')
-        print(f'{scope.container.get_container(container)=}')
-        print(f'{container in scope=}')
         assert not container in scope
         provider.set_container(container)
-        assert provider.bind(scope, self.provides) is None
+        assert provider.compose(scope, self.provides) is None
     
     def test_provide(self, provider: Provider, scope, context):
-        bound =  provider.bind(scope, self.provides)
-        func = bound(context)
+        bound =  provider.compose(scope, self.provides)
+        func = bound.resolver(context)
         val = func()
         assert self.value is _notset or self.value == val
         if provider.is_shared:
@@ -140,8 +136,8 @@ class AsyncProviderTestCase(ProviderTestCase):
         return sfn
 
     async def test_provide(self, provider: Provider, scope, context):
-        bound =  provider.bind(scope, self.provides)
-        func = bound(context)
+        bound =  provider.compose(scope, self.provides)
+        func = bound.resolver(context)
         aw = func()
         assert isawaitable(aw)
         val = await aw

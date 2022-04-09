@@ -32,7 +32,8 @@ class AsyncAnnotatedProviderTests(AnnotatedProviderTests, AsyncProviderTestCase)
     
     @pytest.fixture
     def scope(self, scope, value_setter):
-        scope[_Ta] = fn = lambda inj: value_setter
+        fn = lambda inj: value_setter
         fn.is_async = True
+        scope[_Ta] = fn
         return scope
 

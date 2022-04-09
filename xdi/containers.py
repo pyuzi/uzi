@@ -28,7 +28,6 @@ DEP_GLOBAL = DependencyLocation.GLOBAL
 class Container(ProviderRegistry):
 
     name: str = attr.field(default='<anonymous>')
-
     parent: t.Union[Self, None] = attr.field(default=None)
     includes: tuple[Self] = attr.field(default=(), converter=tuple)
     inline: bool = attr.field(default=False, kw_only=True)

@@ -378,4 +378,8 @@ class Arguments(t.Generic[_T_Args, _T_Kwargs]):
     def __bool__(self):
         return not not (self.args or self.kwargs)
 
+    def __iter__(self):
+        yield self.args
+        yield self.kwargs
+        
 

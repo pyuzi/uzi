@@ -6,12 +6,13 @@ from copy import copy
 import attr
 from typing_extensions import Self
 
-from . import Dependency, DependencyLocation, Injectable
+from . import DependencyLocation, Injectable
 from .injectors import Injector, NullInjectorContext
 from .providers import Provider
+from ._dependency import Dependency
 
-if t.TYPE_CHECKING:
-    from .containers import Container # pragma: no cover
+if t.TYPE_CHECKING: # pragma: no cover
+    from .containers import Container 
 
 
 def dict_copy(obj):
@@ -56,31 +57,30 @@ class Scope:
             or (not only_self and self.parent.is_provided(key))
         )
 
-    def __getitem__(self, key):
-        try:
-            return self._dependencies[key]
-        except KeyError:
-            return self.__missing__(key)
-        except TypeError:
-            if key.__class__ is slice:
-                return self[key.start] or self.parent[key]
-            raise
+    def __getitem__(self, key) -> t.Union[Dependency, None]:
+        if key.__class__ is slice:
+            return self[key.start] or self.parent[key]
+        else:
+            try:
+                return self._dependencies[key]
+            except KeyError:
+                return self.__missing__(key)
 
     def __missing__(self, key):
-        if key.__class__ is Dependency:
-            return self._dependencies.setdefault(key, key(self))
-        elif dep := self.resolve_dependency(key):
+        if isinstance(key, Dependency):
+            return self._dependencies.setdefault(key, key)
+        elif dep := self._resolve_dependency(key):
             return self[dep]
         elif self.is_provided(key):
             return self._dependencies.setdefault(key)
 
-    def resolve_dependency(
+    def _resolve_dependency(
         self,
         key: Injectable,
         container: "Container" = None,
         loc: DependencyLocation = DependencyLocation.GLOBAL,
         *,
-        only_self: bool = False,
+        only_self: bool = True,
     ):
         if container := self.container.get_container(container):
             ident = container, loc
@@ -97,11 +97,10 @@ class Scope:
                     pros = ns.get_all(origin)
             if pros:
                 if pro := pros[0].compose(self, key, *pros[1:]):
-                    resolved[ident] = dp = Dependency(key, self, pro)
-                    return dp
+                    return resolved.setdefault(ident, pro)
 
             if not (container is self.container or loc is DependencyLocation.LOCAL):
-                if dp := self.resolve_dependency(key, None, loc, only_self=True):
+                if dp := self._resolve_dependency(key, None, loc, only_self=True):
                     resolved[ident] = dp
                     return dp
 
@@ -110,7 +109,7 @@ class Scope:
             container = container.parent
 
         if not only_self:
-            return self.parent.resolve_dependency(key, container, loc)
+            return self.parent._resolve_dependency(key, container, loc, only_self=False)
 
     def injector(self, parent: t.Union[Injector, None] = NullInjectorContext()):
         if self.parent and not (parent and self.parent in parent):
@@ -152,5 +151,5 @@ class NullScope:
     def __repr__(self):
         return f"{self.__class__.__qualname__}()"
 
-    def resolve_dependency(self, *a, **kw):
+    def _resolve_dependency(self, *a, **kw):
         return

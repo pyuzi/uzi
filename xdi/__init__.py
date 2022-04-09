@@ -96,22 +96,6 @@ class DependencyLocation(IntEnum):
         return cls(val or 0)
 
 
-@attr.s(slots=True, frozen=True, cmp=True, cache_hash=True)
-class Dependency(t.Generic[T_Injectable]):
-
-    """Marks an injectable as a `dependency` to be injected."""
-
-    provides: T_Injectable = attr.field()
-    scope: "Scope" = attr.field()
-    provider: "Provider" = attr.field(repr=lambda p: str(p and id(p)))
-
-    def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__qualname__}")
-
-    def __call__(self, scope: "Scope"):
-        if provider := scope is self.scope and self.provider:
-            return provider.bind(scope, self.provides)
-
 
 class DepInjectorFlag(Enum):
 

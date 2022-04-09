@@ -7,12 +7,12 @@ from types import MethodType
 import attr
 from typing_extensions import Self
 
-from . import Dependency, Injectable, T_Default, T_Injectable, T_Injected
+from . import Injectable, T_Default, T_Injectable, T_Injected
 from ._common import Missing
+from ._dependency import Dependency
 
 if t.TYPE_CHECKING:
     from .scopes import Scope
-
 
 logger = logging.getLogger(__name__)
 
@@ -110,15 +110,16 @@ class Injector(dict[T_Injectable, Callable[[], T_Injected]]):
     def __contains__(self, x) -> bool:
         return dict.__contains__(self, x) or x in self.parent
 
-    def __missing__(self, key):
-        if key.__class__ is Dependency:
-            res = self.scope[key]
-            if res is None:
-                return self.__setdefault(key, self.parent[key])
-            return self.__setdefault(key, res(self) or self.parent[key])
-        elif dep := self.scope.resolve_dependency(key):
-            return self[dep]
-
+    def __missing__(self, dep: Dependency):
+        try:
+            if dep.scope is self.scope:
+                return self.__setdefault(dep, dep.resolver(self))
+        except AttributeError:
+            dep = self.scope[dep]
+            return dep and self[dep]
+        else:
+            return self.__setdefault(dep, self.parent[dep])
+        
     __setdefault = dict.setdefault
 
     def __str__(self) -> str:

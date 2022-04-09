@@ -113,7 +113,7 @@ class Test(object):
         assert isinstance(c, C)
         assert isinstance(con, Connection)
         # assert con is con2
-        # assert ('x', 'y', 'z') == tuple(kw)
+        assert ('x', 'y', 'z') == tuple(kw)
 
         self.a = a
         self.b = b

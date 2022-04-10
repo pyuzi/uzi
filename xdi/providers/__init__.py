@@ -18,11 +18,8 @@ from .. import (Dep, Injectable, InjectionMarker, T_Injectable, T_Injected,
 from .._common import Missing, typed_signature
 from .._dependency import Dependency
 from .._common.collections import Arguments
-from .functools import (BoundParam, BoundParams, CallableFactoryBinding, FactoryBinding,
-                        PartialFactoryBinding, ResourceFactoryBinding,
-                        SingletonFactoryBinding)
+from .functools import BoundParams
 
-from . import wrappers
 
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
@@ -690,16 +687,16 @@ class Singleton(Factory[T_Injected]):
         self.__set_attr(is_thread_safe=is_thread_safe)
         return self
 
-    def _create_binding(self, scope: "Scope"):
-        return self._binding_class(
-                scope,
-                self.uses, 
-                self.container,
-                self.get_signature(),
-                is_async=self.is_async,
-                arguments=self.arguments, 
-                thread_safe=self.is_thread_safe
-            )
+    # def _create_binding(self, scope: "Scope"):
+    #     return self._binding_class(
+    #             scope,
+    #             self.uses, 
+    #             self.container,
+    #             self.get_signature(),
+    #             is_async=self.is_async,
+    #             arguments=self.arguments, 
+    #             thread_safe=self.is_thread_safe
+    #         )
 
     def _compose(self, scope: 'Scope', dep: T_Injectable):
         params = self._bind_params(scope, dep)
@@ -722,23 +719,23 @@ class Resource(Singleton[T_Injected]):
     is_awaitable: bool = attr.field(init=False, default=None)
     is_shared: t.ClassVar[bool] = True
 
-    _binding_class: t.ClassVar[type[ResourceFactoryBinding]] = ResourceFactoryBinding
+    # _binding_class: t.ClassVar[type[ResourceFactoryBinding]] = ResourceFactoryBinding
     _dependency_class: t.ClassVar = dependency.Resource
 
     def awaitable(self, is_awaitable=True):
         self.__set_attr(is_awaitable=is_awaitable)
         return self
         
-    def _create_binding(self, scope: "Scope"):
-        return self._binding_class(
-                scope,
-                self.uses, 
-                self.container,
-                self.get_signature(),
-                is_async=self.is_async,
-                aw_enter=self.is_awaitable,
-                arguments=self.arguments, 
-            )
+    # def _create_binding(self, scope: "Scope"):
+    #     return self._binding_class(
+    #             scope,
+    #             self.uses, 
+    #             self.container,
+    #             self.get_signature(),
+    #             is_async=self.is_async,
+    #             aw_enter=self.is_awaitable,
+    #             arguments=self.arguments, 
+    #         )
 
     def _compose(self, scope: 'Scope', dep: T_Injectable):
         params = self._bind_params(scope, dep)
@@ -755,7 +752,7 @@ class Resource(Singleton[T_Injected]):
 
 class Partial(Factory[T_Injected]):
 
-    _binding_class: t.ClassVar[type[PartialFactoryBinding]] = PartialFactoryBinding
+    # _binding_class: t.ClassVar[type[PartialFactoryBinding]] = PartialFactoryBinding
 
     def _fallback_signature(self):
         return self._arbitrary_signature
@@ -779,8 +776,9 @@ class Partial(Factory[T_Injected]):
 
 
 class Callable(Partial[T_Injected]):
+    ...
 
-    _binding_class: t.ClassVar[type[CallableFactoryBinding]] = CallableFactoryBinding
+    # _binding_class: t.ClassVar[type[CallableFactoryBinding]] = CallableFactoryBinding
 
 
 

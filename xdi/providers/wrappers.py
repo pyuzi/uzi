@@ -16,7 +16,7 @@ from threading import Lock
 import attr
 from typing_extensions import Self
 
-from .._common.asyncio.futures import Future
+from asyncio import Future
 from .._common.collections import frozendict
 
 if t.TYPE_CHECKING:
@@ -379,7 +379,6 @@ def aw_args_wrapper(func, params: "BoundParams", injector: "Injector", *, aw_cal
     return cls(func, params.vals, args=args, aw_args=aw_args, aw_call=aw_call, **kwds)
 
 aw_args_async_wrapper = partial(aw_args_wrapper, aw_call=True)
-
 resource_aw_args_wrapper = partial(aw_args_wrapper, cls=FutureResourceWrapper)
 resource_aw_args_async_wrapper = partial(aw_args_wrapper, aw_call=True, cls=FutureResourceWrapper)
 
@@ -429,9 +428,47 @@ aw_args_kwargs_async_wrapper = partial(aw_args_kwargs_wrapper, aw_call=True)
 resource_aw_args_kwargs_wrapper = partial(aw_args_kwargs_wrapper, cls=FutureResourceWrapper)
 resource_aw_args_kwargs_async_wrapper = partial(aw_args_kwargs_wrapper, aw_call=True, cls=FutureResourceWrapper)
 
-def enter_context_partial(wrap, **kwds):
+def enter_context_pipe(wrap, **kwds):
     def wrapper(func, params: "BoundParams", injector: "Injector", **kw):
         func = wrap(func, params, injector, **(kwds | kw))
         return lambda: injector.exitstack.enter(func())
     return wrapper
 
+
+
+
+def partial_plain_wrapper(func, params: "BoundParams", injector: "Injector"):
+    return params.factory
+
+def partial_args_wrapper(func, params: "BoundParams", injector: "Injector"):
+    args = params.resolve_args(injector)
+    vals = params.vals
+    def make(*a, **kw):
+        nonlocal func, args, vals
+        return func(*args, *a, **(vals | kw))
+
+    return make
+
+def partial_kwargs_wrapper(func, params: "BoundParams", injector: "Injector"):
+    kwargs = params.resolve_kwargs(injector)
+    vals = params.vals
+    def make(*a, **kw):
+        nonlocal func, kwargs, vals
+        return func(*a, **(vals | kw), **kwargs.skip(kw))
+
+    return make
+
+def partial_args_kwargs_wrapper(func, params: "BoundParams", injector: "Injector"):
+    args = params.resolve_args(injector)
+    kwargs = params.resolve_kwargs(injector)
+    vals = params.vals
+    def make(*a, **kw):
+        nonlocal func, args, kwargs, vals
+        return func(*args, *a, **(vals | kw), **kwargs.skip(kw))
+
+    return make
+
+
+# partial_aw_args_wrapper = partial(aw_args_wrapper, aw_call=True)
+# partial_aw_args_async_wrapper = partial(aw_args_wrapper, aw_call=True)
+# partial_aw_args_async_wrapper = partial(aw_args_wrapper, aw_call=True)

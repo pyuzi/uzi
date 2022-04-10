@@ -77,25 +77,6 @@ class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
         ...
 
 
-class DependencyLocation(IntEnum):
-
-    GLOBAL: "DependencyLocation" = 0
-    """start resolving from the current/given scope and it's parent.
-    """
-
-    NONLOCAL: "DependencyLocation" = auto()
-    """Skip the current/given container and resolve from it's peers or parent instead.
-    """
-
-    LOCAL: "DependencyLocation" = auto()
-    """Only inject from the current/given container without considering it's peers and parent
-    """
-
-    @classmethod
-    def coerce(cls, val):
-        return cls(val or 0)
-
-
 
 class DepInjectorFlag(Enum):
 

@@ -29,7 +29,7 @@ class frozendict(dict[_T_Key, _T_Val]):
         raise TypeError(f"immutable type: {self} ")
 
     __delitem__ = __setitem__ = setdefault = not_mutable
-    pop = popitem = update = __ior__ = not_mutable
+    clear = pop = popitem = update = __ior__ = not_mutable
     del not_mutable
 
     def __hash__(self):

@@ -1,15 +1,19 @@
 import typing as t
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Iterable
 from copy import copy
 
 import attr
 from typing_extensions import Self
 
-from . import DependencyLocation, Injectable
+from xdi._common import private_setattr
+
+from . import Injectable
 from .injectors import Injector, NullInjectorContext
 from .providers import Provider
 from ._dependency import Dependency
+
+from .containers import ContainerContext
 
 if t.TYPE_CHECKING: # pragma: no cover
     from .containers import Container 
@@ -17,6 +21,9 @@ if t.TYPE_CHECKING: # pragma: no cover
 
 def dict_copy(obj):
     return copy(obj) if isinstance(obj, Mapping) else dict(obj or ())
+
+
+
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
@@ -78,7 +85,7 @@ class Scope:
         self,
         key: Injectable,
         container: "Container" = None,
-        loc: DependencyLocation = DependencyLocation.GLOBAL,
+        loc: 'ContainerContext' = ContainerContext.GLOBAL,
         *,
         only_self: bool = True,
     ):
@@ -99,12 +106,12 @@ class Scope:
                 if pro := pros[0].compose(self, key, *pros[1:]):
                     return resolved.setdefault(ident, pro)
 
-            if not (container is self.container or loc is DependencyLocation.LOCAL):
+            if not (container is self.container or loc is ContainerContext.LOCAL):
                 if dp := self._resolve_dependency(key, None, loc, only_self=True):
                     resolved[ident] = dp
                     return dp
 
-            if not container.parent and loc is DependencyLocation.LOCAL:
+            if not container.parent and loc is ContainerContext.LOCAL:
                 return
             container = container.parent
 
@@ -153,3 +160,4 @@ class NullScope:
 
     def _resolve_dependency(self, *a, **kw):
         return
+

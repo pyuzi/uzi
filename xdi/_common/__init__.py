@@ -7,6 +7,33 @@ from collections import ChainMap
 from collections.abc import Callable
 from importlib import import_module
 from typing import ForwardRef
+from typing_extensions import Self
+
+
+_object_setattr = object.__setattr__
+
+def private_setattr(klass: type[Self]=None, *, name: str='setattr', setter=_object_setattr):
+
+    def decorator(cls: type[Self]):
+
+        def __setattr(self: Self, name=None, value=None, /, **kw):
+            name and kw.setdefault(name. value)
+            for k,v in kw.items():
+                setter(self, k, v)
+        
+        if not hasattr(cls, fn := f'_{cls.__name__}__{name}'):
+            setattr(cls, fn, __setattr)
+        
+        _base__init_subclass__ = cls.__init_subclass__
+
+        def __init_subclass__(cls, **kwargs):
+            if not hasattr(cls, fn := f'_{cls.__name__}__{name}'):
+                setattr(cls, fn, __setattr)
+            _base__init_subclass__(cls, **kwargs)
+        return cls
+        
+    return decorator(klass) if klass else decorator
+
 
 
 def calling_frame(depth=1, *, globals: bool=None, locals: bool=None, chain: bool=None):

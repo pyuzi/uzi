@@ -2,14 +2,13 @@ import typing as t
 
 import attr
 
-from xdi import DependencyLocation
 
 
 from ._dependency import SimpleDependency, Dependency
 
 
 
-from .containers import Container
+from .containers import Container, CTX_GLOBAL
 from .injectors import Injector
 from .scopes import Scope
 
@@ -34,5 +33,5 @@ class TestScope(Scope):
 
     def __setitem__(self, key, val):
         if not isinstance(key, Dependency):
-            self._resolved[key][self.container, DependencyLocation.GLOBAL] = key = SimpleDependency(self, key, use=val)
+            self._resolved[key][self.container, CTX_GLOBAL] = key = SimpleDependency(self, key, use=val)
         self._dependencies[key] = key

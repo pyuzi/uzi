@@ -185,7 +185,7 @@ class Factory(Dependency[T_Injected]):
 class Singleton(Factory[T_Injected]):
 
     _wrappers = Factory._wrappers | {
-        CallShape.plain : wrappers.enter_context_partial(wrappers.plain_wrapper),
+        CallShape.plain : wrappers.enter_context_pipe(wrappers.plain_wrapper),
         CallShape.plain_async : wrappers.plain_async_wrapper,
 
         CallShape.args : wrappers.args_wrapper,
@@ -237,6 +237,10 @@ class Resource(Singleton[T_Injected]):
         CallShape.args_async : wrappers.aw_args_async_wrapper,
         CallShape.kwargs_async : wrappers.aw_kwargs_async_wrapper,
         CallShape.args_kwargs_async : wrappers.aw_args_kwargs_async_wrapper,
+    }
+   
+    _pipes = {
+
     }
 
     aw_enter: bool = attr.field(kw_only=True)

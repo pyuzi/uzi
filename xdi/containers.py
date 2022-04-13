@@ -38,6 +38,7 @@ class Container(frozendict[Injectable, list[Provider]], ProviderRegistry):
     __setdefault: t.Callable[..., list[Provider]] = dict[Injectable, list[Provider]].setdefault
 
     @property
+    
     def included(self):
         return self._included.keys()
 
@@ -50,16 +51,19 @@ class Container(frozendict[Injectable, list[Provider]], ProviderRegistry):
         self.__setattr(_included=self._included | dict.fromkeys(containers))
         return self
     
-    def _dro_entries_(self, source: Self=None):
+    def _dro_entries_(self, source: Self):
         yield source or self, self
         if self._included:
-            it = reversed(self._included)
-            prev = next(it)
-            yield from prev._dro_entries_(self)
-            for c in it:
-                yield prev, c
-                yield from c._dro_entries_(self)
-                prev = c
+            for inc in self._included:
+                yield from inc._dro_entries_(self)
+
+            # it = reversed(self._included)
+            # prev = next(it)
+            # yield from prev._dro_entries_(self)
+            # for c in it:
+            #     yield prev, c
+            #     yield from c._dro_entries_(self)
+            #     prev = c
 
     def __setitem__(self, abstract: Injectable, provider: Provider) -> Self:
         if pro :=  provider.set_container(self):

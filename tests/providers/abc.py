@@ -118,18 +118,18 @@ class ProviderTestCase(t.Generic[_T_Pro]):
         subject.default(False)
         assert subject.is_default is False
 
-    def test_is_final(self, subject: _T_Pro):
-        subject.final()
-        assert subject.is_final is True
-        subject.final(False)
-        assert subject.is_final is False
+    # def test_is_final(self, subject: _T_Pro):
+    #     subject.final()
+    #     assert subject.is_final is True
+    #     subject.final(False)
+    #     assert subject.is_final is False
 
     @xfail(raises=AttributeError, strict=True)
     @parametrize(
         ["op", "args"],
         [
             ("default", ()),
-            ("final", ()),
+            # ("final", ()),
             ("set_container", (None,)),
         ],
     )

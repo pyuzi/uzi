@@ -1,4 +1,5 @@
 
+from copy import deepcopy
 from functools import wraps
 import inspect
 import operator
@@ -68,53 +69,6 @@ def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn
 
 
 
-
-
-@attr.s(slots=True, frozen=True)
-class protected_method:
-
-    func: Callable = attr.ib()
-
-    
-    def __set_name__(self, owner, name):
-        setattr(owner, name, self.func)
-
-
-
-# def protect():
-
-#     def decorator(cls_):
-#         if not hasattr(cls_, '__subclass_protected__'):
-#             def __subclass_protected__(cls, **kwargs):
-#                 ns = f'_{cls.__name__}__'
-#                 for k in dir(cls):
-#                     if k.startswith(ns):
-#                         n = k.replace(ns, )
-#                 if not hasattr(cls, fn := f'_{cls.__name__}__{name}'):
-#                     _setattr(cls, fn, setter)
-#                 _base__init_subclass__(**kwargs)
-            
-#             cls_.__init_subclass__ = classmethod(__init_subclass__)            
-
-#         _base__init_subclass__ = cls_.__init_subclass__
-
-#         @wraps(_base__init_subclass__)        
-#         def __init_subclass__(cls, **kwargs):
-#             if not hasattr(cls, fn := f'_{cls.__name__}__{name}'):
-#                 _setattr(cls, fn, setter)
-#             _base__init_subclass__(**kwargs)
-        
-#         cls_.__init_subclass__ = classmethod(__init_subclass__)
-
-#         if not hasattr(cls_, fn := f'_{cls_.__name__}__{name}'):
-#             _setattr(cls_, fn, setter)
-
-#         if setattr and cls_.__setattr__ is _object_setattr:
-#             cls_.__setattr__ = __setattr__
-        
-#         return cls_
-
-#     return decorator if klass is None else decorator(klass)
 
 
 
@@ -218,4 +172,65 @@ class MissingType:
 
 Missing = MissingType._makenew__('Missing')
 
+
+
+
+
+
+_T_Key = t.TypeVar("_T_Key")
+_T_Val = t.TypeVar("_T_Val", covariant=True)
+_T_Default = t.TypeVar("_T_Default", covariant=True)
+
+
+class frozendict(dict[_T_Key, _T_Val]):
+
+    __slots__ = ("_hash",)
+
+    def not_mutable(self, *a, **kw):
+        raise TypeError(f"immutable type: {self} ")
+
+    __delitem__ = __setitem__ = setdefault = not_mutable
+    clear = pop = popitem = update = __ior__ = not_mutable
+    del not_mutable
+
+    def __hash__(self):
+        try:
+            ash = self._hash
+        except AttributeError:
+            self._hash = ash = None
+            items = self._hash_items_()
+            if items is not None:
+                try:
+                    self._hash = ash = hash((frozendict, tuple(items)))
+                except TypeError as e:
+                    raise TypeError(
+                        f"unhashable type: {self.__class__.__name__!r}"
+                    ) from e
+
+        if ash is None:
+            raise TypeError(f"unhashable type: {self.__class__.__name__!r}")
+
+        return ash
+
+    def _hash_items_(self):
+        return ((k, self[k]) for k in sorted(self))
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (dict(self),),
+        )
+
+    def copy(self):
+        return self.__class__(self)
+    __copy__ = copy
+
+    def __deepcopy__(self, memo=None):
+        return self.__class__(deepcopy(dict(self), memo))
+
+    __or = dict[_T_Key, _T_Val].__or__
+
+    def __or__(self, o):
+        return self.__class__(self.__or(o))
+        
 

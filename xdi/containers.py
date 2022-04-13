@@ -9,7 +9,7 @@ import attr
 
 from . import Injectable, InjectionMarker
 from ._common import private_setattr
-from ._common.collections import frozendict
+from xdi._common import frozendict
 from .providers import Provider
 from .providers.util import ProviderRegistry
 
@@ -20,8 +20,8 @@ logger = getLogger(__name__)
 
 @InjectionMarker.register
 @private_setattr
-@attr.s(slots=True, frozen=True, repr=False, cmp=False)
-class Container(frozendict[Injectable, list[Provider]], ProviderRegistry):
+@attr.s(slots=True, frozen=True, repr=True, cmp=False)
+class Container(frozendict[Injectable, Provider], ProviderRegistry):
 
     __id = 0
     __lock = Lock()
@@ -35,7 +35,8 @@ class Container(frozendict[Injectable, list[Provider]], ProviderRegistry):
 
     name: str = attr.ib(default='<anonymous>')
     _included: frozendict[Self, Self] = attr.ib(factory=frozendict, init=False, repr=False) 
-    __setdefault: t.Callable[..., list[Provider]] = dict[Injectable, list[Provider]].setdefault
+    __setdefault: t.Callable[..., Provider] = dict[Injectable, Provider].setdefault
+    __setitem = dict[Injectable,  Provider].__setitem__
 
     @property
     
@@ -51,27 +52,17 @@ class Container(frozendict[Injectable, list[Provider]], ProviderRegistry):
         self.__setattr(_included=self._included | dict.fromkeys(containers))
         return self
     
-    def _dro_entries_(self, source: Self):
-        yield source or self, self
-        if self._included:
-            for inc in self._included:
-                yield from inc._dro_entries_(self)
-
-            # it = reversed(self._included)
-            # prev = next(it)
-            # yield from prev._dro_entries_(self)
-            # for c in it:
-            #     yield prev, c
-            #     yield from c._dro_entries_(self)
-            #     prev = c
+    def _dro_entries_(self):
+        yield self
+        for inc in reversed(self._included):
+            yield from inc._dro_entries_()
 
     def __setitem__(self, abstract: Injectable, provider: Provider) -> Self:
         if pro :=  provider.set_container(self):
-            stack = self.__setdefault(abstract, [])
-            pro in stack or stack.append(pro)
+            self.__setitem(abstract, pro)
 
     def __missing__(self, key):
-        return ()
+        return None
 
     def __bool__(self):
         return True
@@ -85,8 +76,8 @@ class Container(frozendict[Injectable, list[Provider]], ProviderRegistry):
     def __hash__(self):
         return hash(self.name)
 
-    def __str__(self) -> str:
-        return str(self.name) # f'{self.__class__.__qualname__}({self.id}, {self.name!r})'
+    # def __str__(self) -> str:
+    #     return str(self.name) # f'{self.__class__.__qualname__}({self.id}, {self.name!r})'
 
-    __repr__ = __str__
+    # __repr__ = __str__
 

@@ -18,13 +18,11 @@ from collections.abc import (
 from enum import Enum
 from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
-from threading import Lock
 from typing_extensions import Self
 
 import attr
 
-from .._common.collections import frozendict
-from .._common import Missing
+from .._common import Missing, frozendict
 
 
 from .. import (
@@ -286,19 +284,19 @@ class BoundParams:
                 for v in bound.get(n) or (Parameter.empty,):
                     bp = BoundParam(p, v)
                     if scope and bp.is_injectable:
-                        bp.dependency = scope[bp.injectable:container]
+                        bp.dependency = scope[bp.injectable]
                     yield bp
             elif p.kind is Parameter.VAR_KEYWORD:
                 p = p.replace(annotation=Parameter.empty)
                 for k, v in (bound.get(n) or {n: Parameter.empty}).items():
                     bp = BoundParam(p, v, key=k)
                     if scope and bp.is_injectable:
-                        bp.dependency = scope[bp.injectable:container]
+                        bp.dependency = scope[bp.injectable]
                     yield bp
             else:
                 bp = BoundParam(p, bound.get(n, Parameter.empty))
                 if scope and bp.is_injectable:
-                    bp.dependency = scope[bp.injectable:container]
+                    bp.dependency = scope[bp.injectable]
                 yield bp
 
     def __bool__(self): 

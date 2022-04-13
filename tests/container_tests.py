@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import  Mock
 
 from collections.abc import Callable, Iterator, Set, MutableSet, Iterable
-from xdi._common.collections import frozendict
+from xdi._common import frozendict
 
 
 from xdi.containers import Container
@@ -42,10 +42,10 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert isinstance(sub.included, Set)
         assert not isinstance(sub.included, MutableSet)
 
-        assert sub.name == 'test_ioc'
         assert sub
+        assert sub.name == 'test_ioc'
+        assert sub[_T] is None
         assert len(sub) == 0
-        assert isinstance(sub[_T], Iterable)
         
     def test_compare(self, new: _T_FnNew):
         c1, c2 = new('c'), new('c')
@@ -71,54 +71,15 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert c1.includes(c1) and c1.includes(c2) and c1.includes(c3) and c1.includes(c4)
         assert not (c2.includes(c1) or c2.includes(c3))
 
-    def test_dro_entries_basic(self, new: _T_FnNew):
-        c1, c2, c3, c4, c5, c6 = new('c1'), new('c2'), new('c3'), new('c4'), new('c5'), new('c6')
-        c1.include(c2.include(c4.include(c5, c6)))
-        c1.include(c3.include(c5))
-        it = c1._dro_entries_()
-        assert isinstance(it, Iterator)
-        edges = (c1,c1), (c1, c3), (c3, c5), (c1, c2), (c2, c4), (c4, c6), (c4, c5),
-        assert tuple(it) == edges
-
     def test_dro_entries(self, new: _T_FnNew):
-        def make(p: Container, n=3, lvl=0, depth=4):
-            if lvl < depth:
-                for x in range(1, int(n)+1):
-                    nm = f'{p.name}/{x:02d}'
-                    c = new(nm)
-                    p.include(c)
-                    print('   '*lvl, '-', c)
-                    yield p, c
-                    yield from make(c, n-.5, lvl+1, depth)
-        c = new('C')
-        ls = *make(c),
-        
-        # print('', *ls, sep='\n --> ')
-        # print('', *c._dro_entries_(), sep='\n --> ')
-
-        def dro(c: Container, *incs):
-            for inc in c.included:
-                yield from dro(inc, inc)
-                # yield inc
-            else:
-                yield from incs[::-1]
-        
-        def dro(c: Container):
-            yield c
-            for inc in reversed(c.included):
-                yield from dro(inc)
-
-        it = *c.included,
-        # it[1].include(it[2])
-
-        print('', *dro(c), sep='\n --> ')
-
         c1, c2, c3, c4, c5, c6 = new('c1'), new('c2'), new('c3'), new('c4'), new('c5'), new('c6')
         c1.include(c2.include(c4.include(c5, c6)))
         c1.include(c3.include(c5))
         it = c1._dro_entries_()
-        assert isinstance(it, Iterator)
-        assert tuple(it) == ((c4, c5), (c4, c6), (c2, c4), (c1, c2), (c3, c5), (c1, c3), (c1, c1))
+        assert isinstance(it, Iterable)
+        dro = c1, c3, c5, c2, c4, c6, c5,
+
+        assert tuple(it) == dro
 
     def test_setitem(self, new: _T_FnNew):
         pro = Mock(spec=Provider)
@@ -129,7 +90,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert _T not in sub
         sub[_T] = pro
         assert _T in sub
-        assert tuple(sub[_T]) == (pro,)
+        assert sub[_T] is pro
 
         pro.set_container.assert_called_once_with(sub)
     

@@ -1,50 +1,26 @@
-from enum import Flag, auto
-from functools import lru_cache, reduce
-from operator import or_
+from logging import getLogger
 import typing as t
 
 import attr
-import networkx as nx
 from typing_extensions import Self
+from collections.abc import Set
+from numpy import source
 
 from xdi._common import private_setattr
-from xdi._common.collections import frozendict
+from xdi._common import frozendict
 
 from . import Injectable
 from .injectors import Injector, NullInjectorContext
 from ._dependency import Dependency
 
 from .containers import Container
+from xdi import containers
 
 
-class ResolutionStrategy(Flag):
+logger = getLogger(__name__)
 
-    INNER:  'ResolutionStrategy' = auto()
-    OUTER:  'ResolutionStrategy' = auto()
-    UPPER:  'ResolutionStrategy' = auto()
-
-    @lru_cache(128)
-    def _members(self):
-        return dict.fromkeys(m for m in self.__class__ if m in self).keys()
-
-    def __iter__(self):
-        yield from self._members()
-
-
-
-
-
-@attr.s(slots=True, frozen=True, cmp=True, cache_hash=True)
-class DepKey:
-    abstract: Injectable = attr.ib()
-    container: Container = attr.ib(default=None)
-    strategy: ResolutionStrategy = attr.ib(default=reduce(or_, ResolutionStrategy))
-    # maxdepth: int = attr.ib(default=None)
-
-    def __iter__(self):
-        yield self.abstract
-        yield self.container
-        yield self.strategy
+class EmptyScopeError(RuntimeError):
+    ...
 
 
 
@@ -53,17 +29,12 @@ class DepKey:
 class Scope(frozendict[tuple, t.Union[Dependency, None]]):
 
     container: 'Container' = attr.ib(repr=True)
-    parent: Self = attr.ib(factory=lambda: NullRootScope())
-    @parent.validator
-    def _check_parent(self, attrib, val):
-        assert isinstance(val, Scope)
-
+    parent: Self = attr.ib(factory=lambda: NullScope())
+   
     path: tuple = attr.ib(init=False, repr=True)
     @path.default
     def _init_path(self):
         return  self.container, *self.parent.path,
-
-    strategy: ResolutionStrategy = attr.ib(kw_only=True, default=ResolutionStrategy.INNER, repr=False, converter=ResolutionStrategy)
 
     _v_hash: int = attr.ib(init=False, repr=False)
     @_v_hash.default
@@ -72,22 +43,13 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
 
     _injector_class: type[Injector] = attr.ib(kw_only=True, default=Injector, repr=False)
     
-    _key_class: type[DepKey] = attr.ib(init=False, repr=True)
-    @_key_class.default
-    def _init_graph(self):
-        @attr.s(slots=True, frozen=True, cmp=True, cache_hash=True)
-        class ScopeDepKey(DepKey):
-            container: Container = attr.ib(default=self.container)
-            strategy: Container = attr.ib(default=self.strategy)
-            scope = self
-        return ScopeDepKey
-
-    graph: nx.DiGraph = attr.ib(init=False, repr=True)
-    @graph.default
-    def _init_graph(self):
-        g = nx.DiGraph()
-        g.add_edges_from(self.container._dro_entries_())
-        return nx.freeze(g)
+    maps: Set[Container] = attr.ib(init=False, repr=True)
+    @maps.default
+    def _init_maps(self):
+        container, parent = self.container, self.parent
+        if dct := {c:c for c in container._dro_entries_() if not c in parent}:
+            return t.cast(Set[Container], dct.keys())
+        raise EmptyScopeError(f'{container=}, {parent=}')
 
     __contains = dict.__contains__
     __setdefault = dict.setdefault
@@ -105,102 +67,40 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
         while parent:
             yield parent
             parent = parent.parent
+ 
+    def resolve_provider(self, abstract: Injectable, source: Container=None):
+        rv = None
+        for container in self.maps:
+            if pro := container[abstract]:
+                if not pro.is_default:
+                    return pro
+                elif not rv:
+                    rv = pro
+        return rv
+        
+    # def injector(self, parent: t.Union[Injector, None] = NullInjectorContext()):
+    #     if self.parent and not (parent and self.parent in parent):
+    #         parent = self.parent.injector(parent)
+    #     elif parent and self in parent:
+    #         raise TypeError(f"Injector {parent} in scope.")
+
+    #     return self.create_injector(parent)
+
+    # def create_injector(self, parent: Injector = NullInjectorContext()):
+    #     return self._injector_class(parent, self)
 
     def __bool__(self):
         return True
- 
-    @t.overload
-    def depkey(self, abstract: Injectable, source: Container=..., strategy: ResolutionStrategy=...): ...
-    def depkey(self, abstract: Injectable, *a, **kw):
-        return self._key_class(abstract, *a, **kw)
+    
+    def __contains__(self, o) -> bool:
+        return self.__contains(o) or o in self.maps or o in self.parent
 
-    def dro_inner(self, abstract: Injectable, source: Container, *, skip_source: bool=False, depth: int=None):
-        ioc: Container
-        g = self.graph
-        if source in g:
-            if not skip_source:
-                yield from source[abstract]
-            for n, ioc in nx.bfs_edges(g, source, depth_limit=depth):
-                yield from ioc[abstract]
-
-    def dro_outer(self, abstract: Injectable, source: Container, *, skip_source: bool=False, depth: int=None):
-        ioc: Container
-        g = self.graph
-        if source in g:
-            if not skip_source:
-                yield from source[abstract]
-            for n, ioc in nx.bfs_edges(g, source, reverse=True, depth_limit=depth):
-                yield from ioc[abstract]
-
-    def dro(self, key):
-        abstract, source, strategy = key
-        if strategy & ResolutionStrategy.INNER:
-            yield self.dro_inner(abstract, source)
-
-        if strategy & ResolutionStrategy.OUTER:
-            yield self.dro_outer(abstract, source)
-
-        if strategy & ResolutionStrategy.UPPER:
-            yield from self.parent.dro(key) 
-
-    def __missing__(self, key: t.Union[DepKey, tuple]) -> t.Union[Dependency, None]:
-        if isinstance(key, DepKey):
-            it = self.dro(key)
-            if pro := next(it, None):
-                return self.__setdefault(key, pro.compose(self, key, it))
-            elif dep := self.parent[key]:
-                return self.__setdefault(key, dep)
-        elif dep := self[self.depkey(*key)]:
-            return self.__setdefault(key, dep)
-
-    # def _resolve_dependency(
-    #     self,
-    #     key: Injectable,
-    #     container: "Container" = None,
-    #     loc: '_ContainerContext' = _ContainerContext.GLOBAL,
-    #     *,
-    #     only_self: bool = True,
-    # ):
-    #     if container := self.container.get_container(container):
-    #         ident = container, loc
-    #         resolved = self._resolved[key]
-    #         if ident in resolved:
-    #             return resolved[ident]
-
-    #         if isinstance(key, Provider):
-    #             pros = [key]
-    #         else:
-    #             ns = container.get_registry(loc)
-    #             pros = ns.get_all(key)
-    #             if not pros and (origin := t.get_origin(key)):
-    #                 pros = ns.get_all(origin)
-    #         if pros:
-    #             if pro := pros[0].compose(self, key, *pros[1:]):
-    #                 return resolved.setdefault(ident, pro)
-
-    #         if not (container is self.container or loc is _ContainerContext.LOCAL):
-    #             if dp := self._resolve_dependency(key, None, loc, only_self=True):
-    #                 resolved[ident] = dp
-    #                 return dp
-
-    #         if not container.parent and loc is _ContainerContext.LOCAL:
-    #             return
-    #         container = container.parent
-
-    #     if not only_self:
-    #         return self.parent._resolve_dependency(key, container, loc, only_self=False)
-
-    def injector(self, parent: t.Union[Injector, None] = NullInjectorContext()):
-        if self.parent and not (parent and self.parent in parent):
-            parent = self.parent.injector(parent)
-        elif parent and self in parent:
-            raise TypeError(f"Injector {parent} in scope.")
-
-        return self.create_injector(parent)
-
-    def create_injector(self, parent: Injector = NullInjectorContext()):
-        return self._injector_class(parent, self)
-
+    def __missing__(self, abstract: Injectable) -> t.Union[Dependency, None]:
+        if pro := self.resolve_provider(abstract):
+            return self.__setdefault(abstract, pro.compose(self, abstract) or self.parent[abstract])
+        elif dep := self.parent[abstract]:
+            return self.__setdefault(abstract, dep)
+            
     def __eq__(self, o) -> bool:
         if isinstance(o, Scope):
             return o.path == self.path 
@@ -209,7 +109,7 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
     def __ne__(self, o) -> bool:
         if isinstance(o, Scope):
             return o.path != self.path 
-        return NotImplemented
+        return not self == o
 
     def __hash__(self):
         return self._v_hash
@@ -218,19 +118,14 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
 
 
 
-
-class NullRootScope(Scope):
+class NullScope(Scope):
     __slots__ = ()
     parent = None
     container = frozendict()
-    graph = nx.freeze(nx.DiGraph())
-
+    maps = frozenset()
     level = -1
     path = ()
     _v_hash = hash(path)
-
-    def iproviders(self, key):
-        if False: yield
 
     def __init__(self) -> None: ...
 

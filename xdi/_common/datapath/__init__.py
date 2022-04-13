@@ -2,7 +2,7 @@ import typing as t
 from abc import abstractmethod
 from collections.abc import Callable, Hashable
 
-from ..collections import frozendict
+from .. import frozendict
 
 
 
@@ -17,7 +17,6 @@ _T_Item = t.TypeVar("_T_Item", int, str, Hashable)
 
 class ExpressionError(Exception):
     ...
-
 
 
 

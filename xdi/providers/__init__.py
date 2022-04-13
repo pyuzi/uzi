@@ -1,10 +1,8 @@
 import sys
-from types import GenericAlias, new_class
+from types import GenericAlias
 import typing as t
 from abc import ABCMeta, abstractmethod
 from collections import abc
-from collections.abc import Callable as AbstractCallable
-from collections.abc import Iterable, Set
 from functools import wraps
 from inspect import (Parameter, Signature, iscoroutinefunction)
 from logging import getLogger
@@ -15,9 +13,7 @@ import attr
 
 from .. import (Dep, Injectable, InjectionMarker, T_Injectable, T_Injected,
                 is_injectable, _dependency as dependency)
-from .._common import Missing, private_setattr, typed_signature
-from .._dependency import Dependency
-from .._common.collections import Arguments, frozendict
+from .._common import Missing, private_setattr, typed_signature, frozendict
 from .functools import BoundParams
 
 
@@ -105,9 +101,9 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
     A default provider only gets used if none other was provided to override it.
     """
 
-    is_final: bool = attr.ib(kw_only=True, default=False)
-    """Whether this provider is final. Final providers cannot be overridden 
-    """
+    # is_final: bool = attr.ib(kw_only=True, default=False)
+    # """Whether this provider is final. Final providers cannot be overridden 
+    # """
 
     filters: tuple[abc.Callable[['Scope', Injectable], bool]] = attr.ib(kw_only=False, default=(), converter=tuple)
     """Called to determine whether this provider can be bound.
@@ -175,15 +171,8 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
                 return False
         return True
 
-    def compose(self, scope: 'Scope', dep: T_Injectable, overrides: Iterable[Self]=()):
-        overrides = tuple(overrides)
-        if overrides and (child := overrides[0].compose(scope, dep, overrides[1:])): 
-            if not self.is_final:
-                return child
-            raise DuplicateProviderError(
-                f"Final provider '{self}' got '{1+len(overrides)}' has overrides"
-            )
-        elif self.can_compose(scope, dep):
+    def compose(self, scope: 'Scope', dep: T_Injectable):
+        if self.can_compose(scope, dep):
             return self._compose(scope, dep)
     
     @abstractmethod
@@ -243,7 +232,7 @@ class Value(Provider[_T_Concrete, dependency.Value]):
 class Alias(Provider[_T_Concrete]):
 
     def _compose(self, scope: 'Scope', dep: T_Injectable):
-        return scope[self.concrete:self.container]
+        return scope[self.concrete]
   
   
 
@@ -260,7 +249,7 @@ class UnionProvider(Provider[_T_Concrete]):
         container = self.container
         for arg in self.get_all_args(dep):
             if is_injectable(arg):
-                if rv := scope[arg:container]:
+                if rv := scope[arg]:
                     return rv
 
 
@@ -377,7 +366,7 @@ _none_or_ellipsis = frozenset([None, ...])
 @attr.s(slots=True, init=False, frozen=True)
 class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_Injected]):
     
-    arguments: Arguments = attr.ib(factory=Arguments)
+    arguments: tuple[tuple, frozendict] = attr.ib(default=((), frozendict()))
     # is_shared: t.ClassVar[bool] = False
     
     _signature: Signature = attr.ib(init=False, default=None)
@@ -397,7 +386,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
     def __init__(self, concrete: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         self.__attrs_init__(
             concrete=concrete, 
-            arguments=Arguments(args, kwargs)
+            arguments=(args, kwargs)
         )
 
     # @Provider.concrete.setter
@@ -409,12 +398,12 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
     
     def args(self, *args) -> Self:
         arguments = self.arguments
-        self.__setattr(arguments=Arguments(args, arguments.kwargs))
+        self.__setattr(arguments=(args, *arguments[1:]))
         return self
 
     def kwargs(self, **kwargs) -> Self:
         arguments = self.arguments
-        self.__setattr(arguments=Arguments(arguments.args, kwargs))
+        self.__setattr(arguments=(*arguments[:1], frozendict(kwargs)))
         return self
         
     def singleton(self, is_singleton: bool = True, *, thread_safe: bool=False) -> Self:

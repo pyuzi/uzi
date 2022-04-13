@@ -4,7 +4,7 @@ import pickle
 import pytest
 
 
-from xdi._common.collections import frozendict
+from xdi._common import frozendict
 
 
 

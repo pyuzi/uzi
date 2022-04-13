@@ -17,7 +17,7 @@ import attr
 from typing_extensions import Self
 
 from asyncio import Future
-from ._common.collections import frozendict
+from xdi._common import frozendict
 
 if t.TYPE_CHECKING:
     from .injectors import Injector

@@ -16,7 +16,7 @@ from xdi.providers import Provider
 from xdi.providers.util import ProviderRegistry
 
 
-from .abc import BaseTestCase
+from ..abc import BaseTestCase
 
 
 xfail = pytest.mark.xfail

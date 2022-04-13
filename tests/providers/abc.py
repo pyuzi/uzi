@@ -1,7 +1,6 @@
 from copy import copy, deepcopy
 from inspect import isawaitable
-from time import sleep
-from types import GenericAlias, new_class
+from collections.abc import Callable
 import typing as t
 import attr
 import pytest
@@ -11,6 +10,8 @@ from xdi.providers import Provider
 from xdi._dependency import Dependency
 
 
+from ..abc import BaseTestCase
+
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
@@ -19,34 +20,14 @@ _notset = object()
 
 _T = t.TypeVar("_T")
 _T_Pro = t.TypeVar("_T_Pro", bound=Provider, covariant=True)
+_T_FnPro = Callable[..., _T_Pro]
 
 
-class ProviderTestCase(t.Generic[_T_Pro]):
+class ProviderTestCase(BaseTestCase[_T_Pro]):
 
     type_: t.ClassVar[type[_T_Pro]] = Provider
 
     value = _notset
-
-    _provider: _T_Pro
-
-    def __class_getitem__(cls, params: t.Union[type[_T_Pro], tuple[type[_T_Pro]]]):
-        if isinstance(params, tuple):
-            param = params[0]
-        else:
-            param = params
-
-        if isinstance(param, (type, GenericAlias)):
-            tp = new_class(
-                f"{cls.__name__}", (cls,), None, lambda ns: ns.update(type_=param)
-            )
-            params = (_T_Pro,)
-        else:
-            tp = cls
-        return GenericAlias(tp, params)
-
-    @pytest.fixture
-    def cls(self):
-        return self.type_
 
     @pytest.fixture
     def new_kwargs(self):
@@ -74,7 +55,6 @@ class ProviderTestCase(t.Generic[_T_Pro]):
         def fn(*a, **kw):
             self.value = val = value_factory(*a, **kw)
             return val
-
         return fn
 
     def test_basic(self, subject: _T_Pro, cls: type[_T_Pro]):
@@ -143,6 +123,9 @@ class ProviderTestCase(t.Generic[_T_Pro]):
     def test_make_dependency(self, subject: _T_Pro, scope):
         dep = subject._make_dependency(_T, scope)
         assert isinstance(dep, subject._dependency_class or Dependency)
+
+    def test_can_compose(self, new: _T_FnPro):
+        subject = new()
 
 
 

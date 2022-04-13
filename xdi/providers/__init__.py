@@ -40,13 +40,9 @@ _T_Concrete = t.TypeVar("_T_Concrete")
 
 _T_Dep = t.TypeVar('_T_Dep', bound=dependency.Dependency, covariant=True)
 
-T_Injectable = T_Injectable
 
 
-_missing_or_none = frozenset([Missing, None, ...])
-
-
-def _fluent_decorator(default=Missing, *, fluent: bool = False):
+def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
     def decorator(func: _T_Fn) -> _T_Fn:
         fn = func
         while hasattr(fn, "_is_fluent_decorator"):
@@ -69,13 +65,8 @@ def _fluent_decorator(default=Missing, *, fluent: bool = False):
 
         return wrapper
 
-    return decorator
+    return decorator if fn is None else decorator(fn)
 
-
-
-
-class DuplicateProviderError(ValueError):
-    pass
 
 
 
@@ -131,26 +122,18 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
             self.__setattr(filters=tuple(dict.fromkeys(filters)))
         return self
 
-    def autoload(self, autoloaded: bool = True) -> Self:
-        self.__setattr(autoloaded=autoloaded)
-        return self
-
-    def final(self, is_final: bool = True) -> Self:
-        self.__setattr(is_final=is_final)
-        return self
+    # def final(self, is_final: bool = True) -> Self:
+    #     self.__setattr(is_final=is_final)
+    #     return self
 
     def default(self, is_default: bool = True) -> Self:
         self.__setattr(is_default=is_default)
         return self
 
     @t.overload
-    def using(self) -> abc.Callable[[_T], _T]:
-        ...
-
+    def using(self) -> abc.Callable[[_T], _T]: ...
     @t.overload
-    def using(self, using: t.Any) -> Self:
-        ...
-
+    def using(self, using: t.Any) -> Self: ...
     @_fluent_decorator()
     def using(self, using):
         self.__setattr(concrete=using)
@@ -195,16 +178,6 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
         if cls := self._dependency_class:
             return cls(abstract, scope, self, **self._get_dependency_kwargs(**kwds))
         raise NotImplementedError(f'{self.__class__.__name__}.Dependency')
-
-    def _override(self, override: Self, abstract) -> Self:
-        if not self.is_final:
-            return override._set_prev(self) or self
-        raise DuplicateProviderError(
-            f"Final provider '{self}' got '{override}' has overrides"
-        )
-
-    def _set_prev(self, prev: Self):
-        return self
 
     def __eq__(self, x):
         return x is self

@@ -57,21 +57,21 @@ class frozendict(dict[_T_Key, _T_Val]):
     def __reduce__(self):
         return (
             self.__class__,
-            (self,),
+            (dict(self),),
         )
 
     def copy(self):
         return self.__class__(self)
+    __copy__ = copy
 
     def __deepcopy__(self, memo=None):
         return self.__class__(deepcopy(dict(self), memo))
 
-    # def merge(self, arg=(), /, **kwargs):
-    #     ret = self.copy()
-    #     (arg or kwargs) and dict.update(ret, arg, **kwargs)
-    #     return ret
+    __or = dict[_T_Key, _T_Val].__or__
 
-    __copy__ = copy
+    def __or__(self, o):
+        return self.__class__(self.__or(o))
+        
 
 
 ################################################################################
@@ -372,8 +372,8 @@ _T_Kwargs = t.TypeVar("_T_Kwargs")
 
 @attr.s(slots=True, frozen=True)
 class Arguments(t.Generic[_T_Args, _T_Kwargs]):
-    args: tuple[_T_Args] = attr.field(default=(), converter=tuple)
-    kwargs: frozendict[str, _T_Kwargs] = attr.field(default=frozendict(), converter=frozendict)
+    args: tuple[_T_Args] = attr.ib(default=(), converter=tuple)
+    kwargs: frozendict[str, _T_Kwargs] = attr.ib(default=frozendict(), converter=frozendict)
 
     def __bool__(self):
         return not not (self.args or self.kwargs)

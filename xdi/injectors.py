@@ -49,11 +49,11 @@ class InjectorLookupError(LookupError):
 @attr.s(slots=True, frozen=True, cmp=False)
 class Injector(dict[T_Injectable, Callable[[], T_Injected]]):
 
-    parent: Self = attr.field()
-    scope: "Scope" = attr.field()
+    parent: Self = attr.ib()
+    scope: "Scope" = attr.ib()
 
-    is_async: bool = attr.field(default=False, kw_only=True)
-    exitstack: '_InjectorExitStack' = attr.field(factory=lambda: _InjectorExitStack())
+    is_async: bool = attr.ib(default=False, kw_only=True)
+    exitstack: '_InjectorExitStack' = attr.ib(factory=lambda: _InjectorExitStack())
 
     @property
     def name(self) -> str:

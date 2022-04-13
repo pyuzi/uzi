@@ -14,17 +14,56 @@ pip install xdi
 ```
 
 ``` mermaid
-graph LR
-    A --> |A0| A;
-    A --> |A1| B;
-    A --> |A2| C;
-    A --> |A3| H;
-    A --> |A4| D;
+flowchart TB
 
-    B --> |B0| B;
-    B --> |B1| C;
-    B --> |B2| D;
-    B --> |B3| E;
+    subgraph G1
+        A --> |A0| A1
+        A --> |A1| B
+        A --> |A2| C
+        A --> |A3| H
+        A --> |A4| D
+    end
+
+    subgraph G2
+        B --> |B0| B
+        B --> |B1| C
+        B --> |B2| D
+        B --> |B3| E
+    end
+
+    G2 --> G1
+
+    C --> |C0| C;
+    C --> |C1| D;
+    C --> |C2| F;
+    C --> |C3| E;
+    C --> |C4| G;
+
+    D --> |D0| D;
+    D --> |D1| G;
+
+    E --> |E0| E;
+    F --> |E0| F;
+    G --> |G0| G;
+    H --> |H0| H;
+
+```
+
+``
+
+``` mermaid
+graph TB
+
+    A --> |A0| A1
+    A --> |A1| B
+    A --> |A2| C
+    A --> |A3| H
+    A --> |A4| D
+
+    B --> |B0| B
+    B --> |B1| C
+    B --> |B2| D
+    B --> |B3| E
 
     C --> |C0| C;
     C --> |C1| D;

@@ -10,17 +10,18 @@ import typing as t
 from collections.abc import Callable
 
 from xdi._common import Missing
-from xdi.providers import wrappers
-from xdi.providers.functools import BoundParams
-from xdi.providers.wrappers import CallShape
+from . import _wrappers as wrappers
+from ._wrappers import CallShape
 
 from . import T_Injectable, T_Injected
 
 
 if t.TYPE_CHECKING: # pragma: no cover
+    from .providers.functools import BoundParams
     from .providers import Provider
     from .scopes import Scope
     from .injectors import Injector
+    from .containers import Container
 
 
 
@@ -35,18 +36,23 @@ class Dependency(t.Generic[_T_Use]):
         def resolver(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]:
             return self.resolver(injector)
 
-    _v_resolver = attr.field(init=False, default=Missing, repr=False)
+    _v_resolver = attr.ib(init=False, default=Missing, repr=False)
 
-    scope: "Scope" = attr.field()
-    provides: T_Injectable = attr.field()
-    provider: "Provider" = attr.field(default=None, repr=lambda p: str(p and id(p)))
+    provides: T_Injectable = attr.ib()
+    scope: "Scope" = attr.ib()
+    provider: "Provider" = attr.ib(default=None, repr=lambda p: str(p and id(p)))
 
-    use: _T_Use = attr.field(kw_only=True, default=Missing, repr=True)
+    use: _T_Use = attr.ib(kw_only=True, default=Missing, repr=True)
 
-    _ash: int = attr.field(init=False, repr=False)
+    container: 'Container' = attr.ib(init=False, repr=False)
+    @container.default
+    def _default_container(self):
+        return self.provider and self.provider.container or self.scope.container
+
+    _ash: int = attr.ib(init=False, repr=False)
     @_ash.default
     def _compute_ash_value(self):
-        return hash((self.provides, self.scope, self.provider))
+        return hash((self.provides, self.scope, self.container))
 
     @property
     def container(self):
@@ -105,7 +111,7 @@ class ResolvedDependency(Dependency[_T_Use]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class Value(Dependency[T_Injected]):
 
-    use: T_Injected = attr.field(kw_only=True)
+    use: T_Injected = attr.ib(kw_only=True)
     is_async: t.Final = False
 
     def resolver(self, injector: 'Injector'):
@@ -145,11 +151,11 @@ class Factory(Dependency[T_Injected]):
 
     }
 
-    use: T_Injected = attr.field(kw_only=True)
-    async_call: bool = attr.field(default=False, kw_only=True)
-    params: BoundParams = attr.field(kw_only=True)
+    use: T_Injected = attr.ib(kw_only=True)
+    async_call: bool = attr.ib(default=False, kw_only=True)
+    params: 'BoundParams' = attr.ib(kw_only=True)
 
-    shape: CallShape = attr.field(kw_only=True, converter=CallShape)
+    shape: CallShape = attr.ib(kw_only=True, converter=CallShape)
     @shape.default
     def _default_shape(self):
         params = self.params
@@ -160,7 +166,7 @@ class Factory(Dependency[T_Injected]):
             self.async_call,
         ))
 
-    wrapper: Callable = attr.field(kw_only=True, default=None)
+    wrapper: Callable = attr.ib(kw_only=True, default=None)
     @wrapper.validator
     def _default_wrapper(self, attrib, func):
         func = self._wrappers[self.shape]
@@ -185,26 +191,13 @@ class Factory(Dependency[T_Injected]):
 class Singleton(Factory[T_Injected]):
 
     _wrappers = Factory._wrappers | {
-        CallShape.plain : wrappers.enter_context_pipe(wrappers.plain_wrapper),
-        CallShape.plain_async : wrappers.plain_async_wrapper,
-
-        CallShape.args : wrappers.args_wrapper,
-        CallShape.aw_args : wrappers.aw_args_wrapper,
-        CallShape.args_async : wrappers.args_async_wrapper,
-        CallShape.aw_args_async : wrappers.aw_args_async_wrapper,
-
-        CallShape.kwargs : wrappers.kwargs_wrapper,
-        CallShape.aw_kwargs : wrappers.aw_kwargs_wrapper,
-        CallShape.kwargs_async : wrappers.kwargs_async_wrapper,
-        CallShape.aw_kwargs_async : wrappers.aw_kwargs_async_wrapper,
-
-        CallShape.args_kwargs : wrappers.args_kwargs_wrapper,
-        CallShape.aw_args_kwargs : wrappers.aw_args_kwargs_wrapper,
-        CallShape.args_kwargs_async : wrappers.args_kwargs_async_wrapper,
-        CallShape.aw_args_kwargs_async : wrappers.aw_args_kwargs_async_wrapper,
+        CallShape.plain_async : wrappers.plain_future_wrapper,
+        CallShape.args_async : wrappers.aw_args_async_wrapper,
+        CallShape.kwargs_async : wrappers.aw_kwargs_async_wrapper,
+        CallShape.args_kwargs_async : wrappers.aw_args_kwargs_async_wrapper,
     }
-
-    thread_safe: bool = attr.field(default=False)
+    
+    thread_safe: bool = attr.ib(default=False)
 
     def resolver(self, injector: 'Injector'):
         func = self.wrapper(self.use, self.params, injector)
@@ -232,18 +225,32 @@ class Singleton(Factory[T_Injected]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class Resource(Singleton[T_Injected]):
 
-    _wrappers = Factory._wrappers | {
-        CallShape.plain_async : wrappers.plain_future_wrapper,
-        CallShape.args_async : wrappers.aw_args_async_wrapper,
-        CallShape.kwargs_async : wrappers.aw_kwargs_async_wrapper,
-        CallShape.args_kwargs_async : wrappers.aw_args_kwargs_async_wrapper,
-    }
    
+    _wrappers = Singleton._wrappers | {
+        CallShape.plain : wrappers.enter_context_pipe(wrappers.plain_wrapper),
+        CallShape.plain_async : wrappers.plain_async_wrapper,
+
+        CallShape.args : wrappers.args_wrapper,
+        CallShape.aw_args : wrappers.aw_args_wrapper,
+        CallShape.args_async : wrappers.args_async_wrapper,
+        CallShape.aw_args_async : wrappers.aw_args_async_wrapper,
+
+        CallShape.kwargs : wrappers.kwargs_wrapper,
+        CallShape.aw_kwargs : wrappers.aw_kwargs_wrapper,
+        CallShape.kwargs_async : wrappers.kwargs_async_wrapper,
+        CallShape.aw_kwargs_async : wrappers.aw_kwargs_async_wrapper,
+
+        CallShape.args_kwargs : wrappers.args_kwargs_wrapper,
+        CallShape.aw_args_kwargs : wrappers.aw_args_kwargs_wrapper,
+        CallShape.args_kwargs_async : wrappers.args_kwargs_async_wrapper,
+        CallShape.aw_args_kwargs_async : wrappers.aw_args_kwargs_async_wrapper,
+    }
+
     _pipes = {
 
     }
 
-    aw_enter: bool = attr.field(kw_only=True)
+    aw_enter: bool = attr.ib(kw_only=True)
 
     def resolver(self, injector: 'Injector'):
         func = self.wrapper(self.use, self.params, injector)

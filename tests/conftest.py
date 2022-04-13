@@ -1,6 +1,8 @@
 from functools import partial
+from unittest.mock import Mock
 import pytest
 import typing as t
+from xdi.providers import Provider
 
 
 from xdi.test import TestContainer, TestInjectorContext, TestScope
@@ -45,3 +47,17 @@ def injector(scope: TestScope):
     return scope.injector()
    
 
+
+
+@pytest.fixture
+def new_args():
+    return ()
+
+@pytest.fixture
+def new_kwargs():
+    return {}
+
+
+@pytest.fixture
+def new(cls, new_args, new_kwargs):
+    return lambda *a, **kw: cls(*a, *new_args[len(a):], **{**new_kwargs, **kw})

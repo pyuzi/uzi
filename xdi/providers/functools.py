@@ -217,16 +217,16 @@ class BoundParam:
 @attr.s(slots=True, frozen=True)
 class BoundParams:
 
-    params: tuple[BoundParam] = attr.field(converter=tuple)
+    params: tuple[BoundParam] = attr.ib(converter=tuple)
 
-    args: tuple[BoundParam] = attr.field(converter=tuple, kw_only=True)
-    aw_args: tuple[int] = attr.field(converter=tuple)
-    kwds: tuple[BoundParam] = attr.field(converter=tuple)
-    aw_kwds: tuple[str] = attr.field(converter=tuple)
-    is_async: bool = attr.field()
-    vals: frozendict[str, t.Any] = attr.field(converter=frozendict)
-    _pos_vals: int = attr.field(converter=int)
-    _pos_deps: int = attr.field(converter=int)
+    args: tuple[BoundParam] = attr.ib(converter=tuple, kw_only=True)
+    aw_args: tuple[int] = attr.ib(converter=tuple)
+    kwds: tuple[BoundParam] = attr.ib(converter=tuple)
+    aw_kwds: tuple[str] = attr.ib(converter=tuple)
+    is_async: bool = attr.ib()
+    vals: frozendict[str, t.Any] = attr.ib(converter=frozendict)
+    _pos_vals: int = attr.ib(converter=int)
+    _pos_deps: int = attr.ib(converter=int)
  
     @property
     def dependencies(self) -> set['Dependency']:

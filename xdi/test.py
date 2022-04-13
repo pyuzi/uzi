@@ -8,7 +8,7 @@ from ._dependency import SimpleDependency, Dependency
 
 
 
-from .containers import Container, CTX_GLOBAL
+from .containers import Container
 from .injectors import Injector
 from .scopes import Scope
 
@@ -32,6 +32,6 @@ class TestInjectorContext(Injector):
 class TestScope(Scope):
 
     def __setitem__(self, key, val):
-        if not isinstance(key, Dependency):
-            self._resolved[key][self.container, CTX_GLOBAL] = key = SimpleDependency(self, key, use=val)
+        # if not isinstance(key, Dependency):
+        #     self._resolved[key][self.container, _CTX_GLOBAL] = key = SimpleDependency(self, key, use=val)
         self._dependencies[key] = key

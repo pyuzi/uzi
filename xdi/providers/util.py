@@ -24,10 +24,9 @@ _T_Fn = t.TypeVar('_T_Fn', bound=AbcCallable)
 
 def _provder_factory_method(cls: _T_Fn) -> _T_Fn:
     @wraps(cls)
-    def wrapper(self: "ProviderRegistry", *a, **kw):
-        val = cls(*a, **kw)
-        self.register(val)
-        return val
+    def wrapper(self: "ProviderRegistry", abstract, *a, **kw):
+        self[abstract] = pro = cls(*a, **kw)
+        return pro
 
     return t.cast(cls, wrapper)
 
@@ -38,16 +37,22 @@ class ProviderRegistry(ABC):
     __slots__ = ()
 
     @abstractmethod
-    def register(self, provider: Provider) -> Self:
+    def __setitem__(self, abstract: Injectable, provider: Provider):
         ...
 
-
-    def provide(self, *providers: t.Union[Provider, type, GenericAlias, FunctionType]) -> Self:
+    def provide(self, *providers: t.Union[Provider, type, GenericAlias, FunctionType], **kwds) -> Self:
         for provider in providers:
+            if isinstance(provider, tuple):
+                abstract, provider = provider
+            else:
+                abstract, provider = provider, provider
+
             if isinstance(provider, Provider):
-                self.register(provider)
+                self[abstract] = provider
             elif isinstance(provider, (type, GenericAlias, FunctionType)):
-                self.factory(provider)
+                self.factory(abstract, provider, **kwds)
+            elif abstract != provider:
+                self.value(abstract, provider, **kwds)
             else:
                 raise ValueError(
                     f'providers must be of type `Provider`, `type`, '
@@ -57,22 +62,22 @@ class ProviderRegistry(ABC):
     
     if t.TYPE_CHECKING:
 
-        def alias(self, provide: Injectable, alias: t.Any, /) -> Alias:
+        def alias(self, abstract: Injectable, alias: t.Any, *a, **kw) -> Alias:
             ...
 
-        def value(self, provide: Injectable, value: t.Any, /) -> Value:
+        def value(self, abstract: Injectable, value: t.Any, *a, **kw) -> Value:
             ...
 
-        def callable(self, factory: _T_Fn=...,  *a, **kw) -> Callable:
+        def callable(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Callable:
             ...
 
-        def factory(self, factory: _T_Fn=...,  *a, **kw) -> Factory:
+        def factory(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Factory:
             ...
 
-        def resource(self, factory: _T_Fn=...,  *a, **kw) -> Resource:
+        def resource(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Resource:
             ...
             
-        def singleton(self, factory: _T_Fn=...,  *a, **kw) -> Singleton:
+        def singleton(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Singleton:
             ...
             
     else:

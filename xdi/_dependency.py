@@ -111,7 +111,7 @@ class ResolvedDependency(Dependency[_T_Use]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class Value(Dependency[T_Injected]):
 
-    use: T_Injected = attr.ib(kw_only=True)
+    use: T_Injected = attr.ib(kw_only=True, default=None)
     is_async: t.Final = False
 
     def resolver(self, injector: 'Injector'):
@@ -159,12 +159,12 @@ class Factory(Dependency[T_Injected]):
     @shape.default
     def _default_shape(self):
         params = self.params
-        return CallShape((
+        return CallShape.make(
             not not params.args, 
             not not params.kwds, 
             params.is_async,
-            self.async_call,
-        ))
+            not not self.async_call,
+        )
 
     wrapper: Callable = attr.ib(kw_only=True, default=None)
     @wrapper.validator
@@ -177,11 +177,10 @@ class Factory(Dependency[T_Injected]):
 
     @property
     def is_async(self):
-        return self.async_call or self.params.is_async
+        return not not(self.async_call or self.params.is_async)
 
     def resolver(self, injector: 'Injector'):
         return self.wrapper(self.use, self.params, injector)
-
 
 
 

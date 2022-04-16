@@ -7,17 +7,20 @@ import typing as t
 from xdi.providers import Resource as Provider
 
 
-from .abc import ProviderTestCase
+from .abc import _T_NewPro
+from .singleton_tests import SingletonProviderTests
+
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
 
+_T_NewPro =  _T_NewPro[Provider]
         
 
 
-class ResourceProviderTests(ProviderTestCase):
+class ResourceProviderTests(SingletonProviderTests[Provider]):
     
 
     class ContextManager:
@@ -37,9 +40,9 @@ class ResourceProviderTests(ProviderTestCase):
             assert self.exits == 0
             self.exits += 1
 
-    @pytest.fixture
-    def provider(self, cm):
-        return Provider(lambda: cm)
+    # @pytest.fixture
+    # def provider(self, cm):
+    #     return Provider(lambda: cm)
 
     @pytest.fixture
     def cm(self, cm_class, value_setter):
@@ -49,12 +52,12 @@ class ResourceProviderTests(ProviderTestCase):
     def cm_class(self):
         return self.ContextManager
 
-    def test_exit(self, cm: ContextManager, provider: Provider, scope, injector, ctx_manager):
-        bound = provider.compose(scope, self.provides)
-        with ctx_manager:
-            fn = bound.resolver(injector)
-            assert cm.enters == 0 == cm.exits
-            assert fn() is fn() is fn() is fn()
-            assert cm.enters == 1
-            assert cm.exits == 0
-        assert cm.enters == 1 == cm.exits
+    # def test_exit(self, cm: ContextManager, provider: Provider, scope, injector, ctx_manager):
+    #     bound = provider.resolve(scope, self.provides)
+    #     with ctx_manager:
+    #         fn = bound.resolver(injector)
+    #         assert cm.enters == 0 == cm.exits
+    #         assert fn() is fn() is fn() is fn()
+    #         assert cm.enters == 1
+    #         assert cm.exits == 0
+    #     assert cm.enters == 1 == cm.exits

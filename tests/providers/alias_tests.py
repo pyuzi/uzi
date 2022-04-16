@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import MagicMock, Mock
 import pytest
 import typing as t
 
@@ -6,8 +7,13 @@ import typing as t
 
 
 from xdi.providers import Alias as Provider
+from xdi._dependency import Dependency
+from xdi.scopes import Scope
 
-from .abc import ProviderTestCase, AsyncProviderTestCase
+
+from .abc import ProviderTestCase, AsyncProviderTestCase, _T_NewPro
+
+
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
@@ -17,25 +23,27 @@ parametrize = pytest.mark.parametrize
 _Ta = t.TypeVar('_Ta')
 
 
-class AliasProviderTests(ProviderTestCase):
+class AliasProviderTests(ProviderTestCase[Provider]):
 
     @pytest.fixture
-    def provider(self):
-        return Provider(type, _Ta)
+    def concrete(self):
+        return _Ta
 
-    @pytest.fixture
-    def scope(self, scope, value_setter):
-        scope[_Ta] = lambda inj: value_setter
-        return scope
+    def test_resolve(self, cls, abstract, concrete, new: _T_NewPro, mock_scope: Scope):
+        subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+        mock_scope.__getitem__.assert_called_once_with(concrete)
+        
 
 
 
-class AsyncAliasProviderTests(AliasProviderTests, AsyncProviderTestCase):
 
-    @pytest.fixture
-    def scope(self, scope, value_setter):
-        fn = lambda inj: value_setter
-        fn.is_async = True
-        scope[_Ta] = fn
-        return scope
+
+# class AsyncAliasProviderTests(AliasProviderTests, AsyncProviderTestCase):
+
+#     @pytest.fixture
+#     def scope(self, scope, value_setter):
+#         fn = lambda inj: value_setter
+#         fn.is_async = True
+#         scope[_Ta] = fn
+#         return scope
 

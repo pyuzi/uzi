@@ -5,11 +5,12 @@ import typing as t
 
 
 
-from xdi.providers import Factory
+from xdi.providers import Factory as Provider
 
 
 
-from .abc import ProviderTestCase, AsyncProviderTestCase
+
+from .abc import ProviderTestCase, AsyncProviderTestCase, _T_NewPro
 
 
 xfail = pytest.mark.xfail
@@ -39,17 +40,17 @@ class FooBar:
     def __init__(self) -> None:
         pass
 
+_T_NewPro =  _T_NewPro[Provider]
 
-
-class FactoryProviderTests(ProviderTestCase):
+class FactoryProviderTests(ProviderTestCase[Provider]):
     
-    @pytest.fixture
-    def provider(self, factory):
-        return Factory(factory)
+    # @pytest.fixture
+    # def provider(self, factory):
+    #     return Provider(factory)
 
-    @pytest.fixture
-    def factory(self, value_setter):
-        return value_setter
+    # @pytest.fixture
+    # def factory(self, value_setter):
+    #     return value_setter
 
     # def test_singleton(self, provider: Factory):
     #     rv = provider.singleton()
@@ -57,80 +58,79 @@ class FactoryProviderTests(ProviderTestCase):
     #     assert provider.is_shared
     #     assert not provider.singleton(False).is_shared
 
-    def test_args_kwargs(self, provider: Factory):
+    def test_args_kwargs(self, new: _T_NewPro):
+        subject = new()
+        
         args = 1,2,3
         kwd = dict(foo=Foo, bar=Bar)
 
-        assert provider.args(*args) is provider
-        assert provider.kwargs(**kwd) is provider
+        assert subject.args(*args) is subject
+        assert subject.kwargs(**kwd) is subject
+        rargs, rkwds = subject.arguments
 
-        assert provider.arguments.args == args
-        assert provider.arguments.kwargs == kwd
+        assert rargs == args
+        assert rkwds == kwd
 
         args = 4,5,7
-        provider.args(*args)
-
-        assert provider.arguments.args == args
-        assert provider.arguments.kwargs == kwd
+        subject.args(*args)
+        assert (args, kwd) == subject.arguments
 
         kwd = dict(foobar=122, baz=Baz)
-        provider.kwargs(**kwd)
+        subject.kwargs(**kwd)
+        assert (args, kwd) == subject.arguments
 
-        assert provider.arguments.args == args
-        assert provider.arguments.kwargs == kwd
-
-    def test_with_args(self, scope, context):
+    def _test_with_args(self, scope, context):
         _default = object()
         
         def func(a: Foo, b: Bar, c=_default, /):
             assert (a, b, c) == args[:3]
         
-        provider = Factory(func)
+        provider = Provider(func)
 
         args = 'aaa', 123, 'xyz'
         provider.args(*args)
-        provider.compose(scope, func).resolver(context)()
+        provider.resolve(scope, func).resolver(context)()
 
-        provider = Factory(func)
+        provider = Provider(func)
 
         args = 'aaa', 123, _default
         provider.args(*args[:-1])
-        provider.compose(scope, func).resolver(context)()
+        provider.resolve(scope, func).resolver(context)()
         
-    def test_with_kwargs(self, scope, context):
+    def _test_with_kwargs(self, scope, context):
         _default = object()
         
         def func(*, a: Foo, b: Bar, c=_default):
             assert dict(a=a, b=b, c=c) == {'c': _default } | kwargs
         
-        provider = Factory(func)
+        provider = Provider(func)
 
         kwargs = dict(a='aaa', b=123, c='xyz')
         provider.kwargs(**kwargs)
-        provider.compose(scope, func).resolver(context)()
+        provider.resolve(scope, func).resolver(context)()
 
-        provider = Factory(func)
+        provider = Provider(func)
 
         kwargs = dict(a='BAR', b='BOO')
         provider.kwargs(**kwargs)
-        provider.compose(scope, func).resolver(context)()
+        provider.resolve(scope, func).resolver(context)()
 
 
-class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
+# class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
 
-    @pytest.fixture
-    def scope(self, scope):
-        tval = object()
-        scope[_T] = lambda c: lambda: tval
-        afn = lambda c: lambda: asyncio.sleep(0, tval)
-        afn.is_async = True
-        scope[_T_Async] = afn
-        return scope
+#     @pytest.fixture
+#     def scope(self, scope):
+#         tval = object()
+#         scope[_T] = lambda c: lambda: tval
+#         afn = lambda c: lambda: asyncio.sleep(0, tval)
+#         afn.is_async = True
+#         scope[_T_Async] = afn
+#         return scope
 
-    @pytest.fixture
-    def factory(self, value_setter):
-        async def factory(a: _T, b: _T_Async):
-            assert a is b
-            return await value_setter()
-        return factory
+#     @pytest.fixture
+#     def factory(self, value_setter):
+#         async def factory(a: _T, b: _T_Async):
+#             assert a is b
+#             return await value_setter()
+#         return factory
 

@@ -58,7 +58,14 @@ class CallShape(_CallShape, Enum):
     aw_args_kwargs_async: 'CallShape' = _CallShape(args=True, kwargs=True, aws=True, async_=True)
 
 
+    @classmethod
+    def make(cls, *a, **kw):
+        return cls(_CallShape(*a, **kw))
 
+    # def __eq__(self, o) -> bool:
+    #     if isinstance(o, tuple):
+    #         return self._value_ == o
+    #     return 
 
 
 

@@ -1,7 +1,6 @@
 import sys
 from types import GenericAlias
 import typing as t
-from abc import ABCMeta, abstractmethod
 from collections import abc
 from functools import wraps
 from inspect import (Parameter, Signature, iscoroutinefunction)
@@ -11,6 +10,8 @@ from typing_extensions import Self
 
 import attr
 
+from xdi._common import lazy
+
 from .. import (Dep, Injectable, InjectionMarker, T_Injectable, T_Injected,
                 is_injectable, _dependency as dependency)
 from .._common import Missing, private_setattr, typed_signature, frozendict
@@ -19,9 +20,12 @@ from .functools import BoundParams
 
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
-    UnionType = type(t.Union[t.Any, None])
+    _UnionType = type(t.Union[t.Any, None])
 else:                           # pragma: py-lt-310
-    from types import UnionType
+    from types import UnionType as _UnionType
+
+_AnnotatedType = type(t.Annotated[t.Any, 'ann'])
+
 
 
 if t.TYPE_CHECKING:  # pragma: no cover
@@ -73,13 +77,12 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 
 
 @private_setattr(frozen='_frozen')
-@attr.s(slots=True, frozen=True, cmp=False)
+@attr.s(slots=True, frozen=True, eq=False)
 class Provider(t.Generic[_T_Concrete, _T_Dep]):
 
     _frozen: bool = attr.ib(init=False, default=False)
 
-
-    concrete: _T_Concrete = attr.ib()
+    concrete: _T_Concrete = attr.ib(default=Missing)
     """The object used to resolve 
     """
 
@@ -92,11 +95,11 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
     A default provider only gets used if none other was provided to override it.
     """
 
-    # is_final: bool = attr.ib(kw_only=True, default=False)
-    # """Whether this provider is final. Final providers cannot be overridden 
-    # """
+    is_async: bool = attr.ib(init=False, default=None)
+    """Whether this provider is final. Final providers cannot be overridden 
+    """
 
-    filters: tuple[abc.Callable[['Scope', Injectable], bool]] = attr.ib(kw_only=False, default=(), converter=tuple)
+    filters: tuple[abc.Callable[['Scope', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
     """Called to determine whether this provider can be bound.
     """
 
@@ -115,16 +118,12 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
             self.__setattr(container=container)
         return self
    
-    def when(self, *filters, append: bool=False) -> Self:
-        if append:
-            self.__setattr(filters=tuple(dict.fromkeys(self.filters + filters)))
-        else:
+    def when(self, *filters, replace: bool=False) -> Self:
+        if replace:
             self.__setattr(filters=tuple(dict.fromkeys(filters)))
+        else:
+            self.__setattr(filters=tuple(dict.fromkeys(self.filters + filters)))
         return self
-
-    # def final(self, is_final: bool = True) -> Self:
-    #     self.__setattr(is_final=is_final)
-    #     return self
 
     def default(self, is_default: bool = True) -> Self:
         self.__setattr(is_default=is_default)
@@ -139,31 +138,27 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
         self.__setattr(concrete=using)
         return self
 
-    def can_compose(self, scope: "Scope", dep: T_Injectable=None) -> bool:
-        self._freeze()
-        if self.container is None or self.container in scope:
-            return self._can_compose(scope, dep) and self._run_filters(scope, dep)
-        return False
+    def can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        return (not (container := self.container) or container in scope) \
+            and self._can_resolve(abstract, scope) \
+            and self._apply_filters(abstract, scope)
 
-    def _can_compose(self, scope: "Scope", dep: T_Injectable) -> bool:
+    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
         return True
 
-    def _run_filters(self, scope: "Scope", dep: T_Injectable) -> bool:
+    def _apply_filters(self, abstract: T_Injectable, scope: "Scope") -> bool:
         for fl in self.filters:
-            if not fl(self, scope, dep):
+            if not fl(self, abstract, scope):
                 return False
         return True
 
-    def compose(self, scope: 'Scope', dep: T_Injectable):
-        if self.can_compose(scope, dep):
-            return self._compose(scope, dep)
-    
-    @abstractmethod
-    def _compose(self, scope: 'Scope', dep: T_Injectable) -> dependency.Dependency:
-        raise NotImplementedError(f'{self.__class__.__qualname__}._compose()')
+    def resolve(self, abstract: T_Injectable, scope: 'Scope'):
+        self._freeze()
+        if self.can_resolve(abstract, scope):
+            return self._resolve(abstract, scope)
 
-    def _compose(self, scope: 'Scope', abstract: T_Injectable) -> dependency.Dependency:
-        return self._make_dependency(abstract, scope, self)
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> dependency.Dependency:
+        return self._make_dependency(abstract, scope)
 
     def _freeze(self):
         self._frozen or (self._onfreeze(), self.__setattr(_frozen=True))
@@ -177,7 +172,7 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
     def _make_dependency(self, abstract: T_Injectable, scope: 'Scope', **kwds):
         if cls := self._dependency_class:
             return cls(abstract, scope, self, **self._get_dependency_kwargs(**kwds))
-        raise NotImplementedError(f'{self.__class__.__name__}.Dependency')
+        raise NotImplementedError(f'{self.__class__.__name__}._make_dependency()') # pragma: no cover
 
     def __eq__(self, x):
         return x is self
@@ -196,7 +191,8 @@ class Value(Provider[_T_Concrete, dependency.Value]):
     _dependency_class = dependency.Value
 
     def _get_dependency_kwargs(self, **kwds):
-        return self._dependency_kwargs | { 'use': self.concrete } | kwds
+        kwds.setdefault('use', self.concrete)
+        return super()._get_dependency_kwargs(**kwds)
 
 
 
@@ -204,7 +200,7 @@ class Value(Provider[_T_Concrete, dependency.Value]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class Alias(Provider[_T_Concrete]):
 
-    def _compose(self, scope: 'Scope', dep: T_Injectable):
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
         return scope[self.concrete]
   
   
@@ -212,122 +208,68 @@ class Alias(Provider[_T_Concrete]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class UnionProvider(Provider[_T_Concrete]):
 
-    concrete = attr.ib(default=UnionType)
+    concrete = attr.ib(init=False, default=_UnionType)
 
+    def get_all_args(self, abstract: Injectable):
+        return t.get_args(abstract)
 
-    def get_all_args(self, token: Injectable):
-        return t.get_args(token)
+    def get_injectable_args(self, abstract: Injectable):
+        return filter(is_injectable, self.get_all_args(abstract))
 
-    def _compose(self, scope: 'Scope', dep: T_Injectable):
-        container = self.container
-        for arg in self.get_all_args(dep):
-            if is_injectable(arg):
-                if rv := scope[arg]:
-                    return rv
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
+        for arg in self.get_injectable_args(abstract):
+            if rv := scope[arg]:
+                return rv
+
+    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        return isinstance(abstract, self.concrete)
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AnnotatedProvider(UnionProvider[_T_Concrete]):
+    
+    concrete = attr.ib(init=False, default=_AnnotatedType)
 
-    concrete = attr.ib(default=type(t.Annotated[t.Any, 'ann']))
+    def get_all_args(self, abstract: t.Annotated):
+        for a in abstract.__metadata__[::-1]:
+            if isinstance(a, InjectionMarker):
+                yield a
+        yield abstract.__origin__
 
-    def get_all_args(self, token: t.Annotated):
-        return token.__metadata__[::-1] + (token.__args__,)
-  
   
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class DepMarkerProvider(Provider):
+class DepMarkerProvider(Value):
     
-    concrete = attr.ib(default=Dep)
-
-    def _provides_fallback(self):
-        return self.concrete
+    concrete = attr.ib(init=False, default=Dep)
+    _dependency_class = dependency.Value
 
     def _can_compose(self, scope: "Scope", obj: Dep) -> bool:
-        return isinstance(obj, self.concrete) and ( 
-                obj.__injector__ is None
-                or obj.__injector__ in Dep.Flag
-                or obj.__injector__ in scope
-            )
+        return isinstance(obj, self.concrete) and obj.scope in Dep.Scope
     
-    def _compose(self, scope: 'Scope', marker: Dep) -> dependency.Dependency:
-        dep = marker.__injects__
-        flag = marker.__injector__
-        default = marker.__default__
+    def _resolve(self, mark: Dep, scope: 'Scope') -> dependency.Dependency:
+        abstract, where = mark.abstract, mark.scope
 
-        return super()._compose(scope, dep)
+        if where == Dep.SKIP_SELF:
+            if dep := scope.find_remote(abstract): #.parent[abstract]:
+                return dep
+        elif where == Dep.ONLY_SELF:
+            dep = scope.find_local(abstract)
+            if dep and scope is dep.scope:
+                return dep
+        elif dep := scope[abstract]:
+            return dep
+        
+        if mark.injects_default:
+            return scope[mark.default]
+        elif mark.has_default:
+            return self._make_dependency(mark, scope, use=mark.default)
 
-    def _bind(self, scope: "Scope", marker: Dep):
-        dep = marker.__injects__
-        flag = marker.__injector__
-        default = marker.__default__
-        if not (inject_default := isinstance(default, InjectionMarker)):
-            default = marker.__hasdefault__ and (lambda: default) or None
-            if default:
-                default.is_async = False
 
-        if flag is Dep.ONLY_SELF:
-            def run(ctx: 'Injector'):
-                func = ctx.get(dep)
-                if None is func:
-                    return ctx[default] if inject_default is True else default
-                elif True is getattr(func, 'is_async', False):
-                    async def make():
-                        nonlocal func, marker
-                        return marker.__eval__(await func())
-                    make.is_async = True
-                    return make
-                else:
-                    async def make():
-                        nonlocal func, marker
-                        return marker.__eval__(func())
 
-                    make.is_async = False
-                    return make
-
-        elif flag is Dep.SKIP_SELF:
-            def run(ctx: 'Injector'):
-                func = ctx.parent[dep] 
-                if None is func:
-                    return ctx[default] if inject_default is True else default
-                elif True is getattr(func, 'is_async', False):
-                    async def make():
-                        nonlocal func, marker
-                        return marker.__eval__(await func())
-                    make.is_async = True
-                    return make
-                else:
-                    async def make():
-                        nonlocal func, marker
-                        return marker.__eval__(func())
-
-                    make.is_async = False
-                    return make
-        else:
-            def run(ctx: 'Injector'):
-                func = ctx[dep] 
-                if None is func:
-                    return ctx[default] if inject_default is True else default
-                elif True is getattr(func, 'is_async', False):
-                    async def make():
-                        nonlocal func, marker
-                        return marker.__eval__(await func())
-                    make.is_async = True
-                    return make
-                else:
-                    async def make():
-                        nonlocal func, marker
-                        return marker.__eval__(func())
-
-                    make.is_async = False
-                    return make
-                
-
-        return run, {dep}
 
 
 
@@ -336,7 +278,7 @@ _none_or_ellipsis = frozenset([None, ...])
 
 
 
-@attr.s(slots=True, init=False, frozen=True)
+@attr.s(slots=True, cmp=False, init=False, frozen=True)
 class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_Injected]):
     
     arguments: tuple[tuple, frozendict] = attr.ib(default=((), frozendict()))
@@ -350,10 +292,6 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
         Parameter('__Parameter_var_keyword', Parameter.VAR_KEYWORD),
     ])
 
-    # decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]] = ()
-    # _all_decorators: tuple[abc.Callable[[abc.Callable], abc.Callable]]
-
-    # _binding_class: t.ClassVar[type[FactoryBinding]] = FactoryBinding
     _dependency_class: t.ClassVar = dependency.Factory
 
     def __init__(self, concrete: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
@@ -362,13 +300,6 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
             arguments=(args, kwargs)
         )
 
-    # @Provider.concrete.setter
-    # def concrete(self, value):
-    #     if not isinstance(value, AbstractCallable):
-    #         raise ValueError(f'must be a `Callable` not `{value}`')
-    #     self.__setattr(concrete=value)
-    #     self._is_registered or self._register()
-    
     def args(self, *args) -> Self:
         arguments = self.arguments
         self.__setattr(arguments=(args, *arguments[1:]))
@@ -425,41 +356,28 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
     def _is_async_factory(self) -> bool:
         return iscoroutinefunction(self.concrete)
 
-    # def _provides_fallback(self):
-    #     return self.concrete
-
-    # def _bind(self, scope: "Scope", token: T_Injectable) :
-    #     return self._create_binding(scope), None
-
-    # def _create_binding(self, scope: "Scope"):
-    #     return self._binding_class(
-    #             scope,
-    #             self.concrete, 
-    #             self.container,
-    #             self.get_signature(),
-    #             is_async=self.is_async,
-    #             arguments=self.arguments, 
-    #         )
-
-    def _bind_params(self, scope: "Scope", dep: Injectable):
-        sig = self.get_signature(dep)
-        args, kwargs = self.arguments
+    def _bind_params(self, scope: "Scope", dep: Injectable, *, sig=None, arguments=()):
+        sig = sig or self.get_signature(dep)
+        args, kwargs = arguments or self.arguments
         return BoundParams.bind(sig, scope, self.container, args, kwargs)
 
-    def _compose(self, scope: 'Scope', dep: T_Injectable):
-        params = self._bind_params(scope, dep)
+    def _get_dependency_kwargs(self, **kwds):
+        kwds.setdefault('async_call', self.is_async)
+        kwds.setdefault('use', self.concrete)
+        return super()._get_dependency_kwargs(**kwds)
+
+    def _make_dependency(self, abstract: T_Injectable, scope: 'Scope', **kwds):
+        params = self._bind_params(scope, abstract)
         return self._dependency_class(
-            dep, scope, self, 
-            use=self.concrete, 
+            abstract, scope, self, 
             params=params, 
-            async_call=self.is_async
+            **self._get_dependency_kwargs(**kwds),
         )
+        
 
 
 
-
-
-@attr.s(slots=True, init=False)
+@attr.s(slots=True, cmp=False, init=False)
 class Singleton(Factory[T_Injected]):
 
     is_shared: t.ClassVar[bool] = True
@@ -471,32 +389,16 @@ class Singleton(Factory[T_Injected]):
         self.__setattr(is_thread_safe=is_thread_safe)
         return self
 
-    # def _create_binding(self, scope: "Scope"):
-    #     return self._binding_class(
-    #             scope,
-    #             self.concrete, 
-    #             self.container,
-    #             self.get_signature(),
-    #             is_async=self.is_async,
-    #             arguments=self.arguments, 
-    #             thread_safe=self.is_thread_safe
-    #         )
-
-    def _compose(self, scope: 'Scope', dep: T_Injectable):
-        params = self._bind_params(scope, dep)
-        return self._dependency_class(
-            dep, scope, self, 
-            use=self.concrete, 
-            params=params, 
-            async_call=self.is_async,
-            thread_safe=self.is_thread_safe
-        )
+    def _get_dependency_kwargs(self, **kwds):
+        kwds.setdefault('thread_safe', self.is_thread_safe)
+        return super()._get_dependency_kwargs(**kwds)
 
 
 
 
 
-@attr.s(slots=True, init=False)
+
+@attr.s(slots=True, cmp=False, init=False)
 class Resource(Singleton[T_Injected]):
 
     is_async: bool = attr.ib(init=False, default=None)
@@ -510,27 +412,10 @@ class Resource(Singleton[T_Injected]):
         self.__setattr(is_awaitable=is_awaitable)
         return self
         
-    # def _create_binding(self, scope: "Scope"):
-    #     return self._binding_class(
-    #             scope,
-    #             self.concrete, 
-    #             self.container,
-    #             self.get_signature(),
-    #             is_async=self.is_async,
-    #             aw_enter=self.is_awaitable,
-    #             arguments=self.arguments, 
-    #         )
+    def _get_dependency_kwargs(self, **kwds):
+        kwds.setdefault('aw_enter', self.is_awaitable)
+        return super()._get_dependency_kwargs(**kwds)
 
-    def _compose(self, scope: 'Scope', dep: T_Injectable):
-        params = self._bind_params(scope, dep)
-        return self._dependency_class(
-            dep, scope, self, 
-            use=self.concrete, 
-            params=params, 
-            async_call=self.is_async,
-            thread_safe=self.is_thread_safe,
-            aw_enter=self.is_awaitable
-        )
 
 
 
@@ -542,18 +427,8 @@ class Partial(Factory[T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature
 
-    def _create_binding(self, scope: "Scope"):
-        return self._binding_class(
-                scope,
-                self.concrete, 
-                self.container,
-                self.get_signature(),
-                is_async=self.is_async,
-                arguments=self.arguments, 
-            )
-
-    def _compose(self, scope: 'Scope', dep: T_Injectable) -> dependency.Dependency:
-        return dependency.Dependency(scope, dep, self)
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> dependency.Dependency:
+        return dependency.Dependency(scope, abstract, self)
 
 
 
@@ -567,4 +442,34 @@ class Callable(Partial[T_Injected]):
     # _binding_class: t.ClassVar[type[CallableFactoryBinding]] = CallableFactoryBinding
 
 
+
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class LazyOpMarkerProvider(Factory):
+    
+    concrete = attr.ib(init=False, default=lazy.eval)
+
+    def _bind_params(self, scope: "Scope", abstract: Injectable, *, sig=None, arguments=()):
+        arguments = arguments or ()
+        return super()._bind_params(scope, abstract, sig=sig, arguments=arguments)
+
+    def _resolve(self, mark: Dep, scope: 'Scope') -> dependency.Dependency:
+        abstract, where = mark.abstract, mark.scope
+        
+        if where == Dep.SKIP_SELF:
+            if dep := scope.parent[abstract]:
+                return dep
+        elif where == Dep.ONLY_SELF:
+            dep = scope[abstract]
+            if dep and scope is dep.scope:
+                return dep
+        elif dep := scope[abstract]:
+            return dep
+        
+        if mark.injects_default:
+            return scope[mark.default]
+        elif mark.has_default:
+            return self._make_dependency(mark, scope, use=mark.default)
 

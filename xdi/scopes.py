@@ -6,10 +6,11 @@ from typing_extensions import Self
 from collections.abc import Set
 from numpy import source
 
-from xdi._common import private_setattr
+from xdi._common import Missing, private_setattr
 from xdi._common import frozendict
+from xdi.providers import Provider
 
-from . import Injectable
+from . import Injectable, T_Default
 from .injectors import Injector, NullInjectorContext
 from ._dependency import Dependency
 
@@ -47,7 +48,7 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
     @maps.default
     def _init_maps(self):
         container, parent = self.container, self.parent
-        if dct := {c:c for c in container._dro_entries_() if not c in parent}:
+        if dct := {c: i for i, c in enumerate(container._dro_entries_()) if not c in parent}:
             return t.cast(Set[Container], dct.keys())
         raise EmptyScopeError(f'{container=}, {parent=}')
 
@@ -68,39 +69,35 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
             yield parent
             parent = parent.parent
  
-    def resolve_provider(self, abstract: Injectable, source: Container=None):
-        rv = None
-        for container in self.maps:
-            if pro := container[abstract]:
-                if not pro.is_default:
-                    return pro
-                elif not rv:
-                    rv = pro
-        return rv
+    def find_local(self, abstract: Injectable):
+        res = self.get(abstract, Missing)
+        if res is Missing:
+            res = self.__missing__(abstract, recursive=False)
         
-    # def injector(self, parent: t.Union[Injector, None] = NullInjectorContext()):
-    #     if self.parent and not (parent and self.parent in parent):
-    #         parent = self.parent.injector(parent)
-    #     elif parent and self in parent:
-    #         raise TypeError(f"Injector {parent} in scope.")
+        if res and self is res.scope:
+            return res
 
-    #     return self.create_injector(parent)
+    def find_remote(self, abstract: Injectable):
+        return self.parent[abstract]
 
-    # def create_injector(self, parent: Injector = NullInjectorContext()):
-    #     return self._injector_class(parent, self)
-
+    def resolve_providers(self, abstract: Injectable, source: Container=None):
+        rv = [p for c in self.maps if (p := c[abstract])]
+        rv and rv.sort(key=lambda p: int(not not p.is_default))
+        return rv
+    
     def __bool__(self):
         return True
     
     def __contains__(self, o) -> bool:
         return self.__contains(o) or o in self.maps or o in self.parent
 
-    def __missing__(self, abstract: Injectable) -> t.Union[Dependency, None]:
-        if pro := self.resolve_provider(abstract):
-            return self.__setdefault(abstract, pro.compose(self, abstract) or self.parent[abstract])
-        elif dep := self.parent[abstract]:
+    def __missing__(self, abstract: Injectable, *, recursive=True) -> t.Union[Dependency, None]:
+        for pro in self.resolve_providers(abstract):
+            if dep := pro.resolve(abstract, self):
+                return self.__setdefault(abstract, dep)
+        if dep := recursive and self.parent[abstract]:
             return self.__setdefault(abstract, dep)
-            
+
     def __eq__(self, o) -> bool:
         if isinstance(o, Scope):
             return o.path == self.path 

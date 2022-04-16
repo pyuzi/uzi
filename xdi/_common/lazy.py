@@ -2,7 +2,7 @@ import typing as t
 from abc import abstractmethod
 from collections.abc import Callable, Hashable
 
-from .. import frozendict
+from . import frozendict
 
 
 
@@ -177,7 +177,7 @@ class Call(Expression[tuple[_T_Args, _T_Kwargs], _T_Obj]):
 
 
 
-class DataPath(
+class LazyOp(
     Expression[tuple[t.Any, Expression[t.Any, t.Any], Expression[t.Any, t.Any]], _T_Obj]
 ):
 
@@ -237,6 +237,8 @@ class DataPath(
 
 
 def eval(
-    expr: DataPath[_T_Obj], /, root: _T_Obj, *, start: int = None, stop: int = None
+    expr: LazyOp[_T_Obj], /, root: _T_Obj, *, start: int = None, stop: int = None
 ):
     return expr.__eval__(expr, root, start=start, stop=stop)
+# if not t.TYPE_CHECKING: # pragma: no cover
+    # eval = expr.__e

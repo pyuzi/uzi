@@ -1,10 +1,14 @@
+from types import SimpleNamespace
 import typing as t
+from unittest.mock import Mock
 
 import pytest
+from tests.conftest import scope
 from xdi import Dep
 from xdi.providers import DepMarkerProvider as Provider
+from xdi.scopes import Scope
 
-from .abc import ProviderTestCase
+from .abc import ProviderTestCase, _T_NewPro
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
@@ -13,66 +17,128 @@ parametrize = pytest.mark.parametrize
 _Ta = t.TypeVar("_Ta")
 _Tx = t.TypeVar("_Tx")
 
-
-class DepMarkerTests(ProviderTestCase):
-    @pytest.fixture
-    def provider(self, marker):
-        return Provider(marker)
-
-    @pytest.fixture
-    def marker(self):
-        return Dep(_Tx, default=Dep(_Ta))
-
-    @pytest.fixture
-    def scope(self, scope, value_setter):
-        scope[_Ta] = lambda inj: value_setter
-        return scope
+_T_NewPro = _T_NewPro[Provider]
 
 
-class DepMarkerDataPathTests(DepMarkerTests):
-    @pytest.fixture
-    def marker(self):
-        return Dep(_Ta).bar.run(1, 2, 3, k1=1, k2=2).a["list"][2:-2]
-
-    @pytest.fixture
-    def value_factory(self):
-        return Foo
-
-    @pytest.fixture
-    def value_setter(self, value_factory, marker: Dep):
-        def fn(*a, **kw):
-            val = value_factory(*a, **kw)
-            self.value = marker.__eval__(val)
-            return val
-
-        return fn
+class CaseConf:
+    injects: t.Any
+    default: t.Any
+    inject_default: t.Union[t.Any, None]
 
 
-class DepMarkerOnlySelfTests(DepMarkerTests):
-    @pytest.fixture
-    def marker(self):
-        return Dep(_Tx, injector=Dep.ONLY_SELF, default=Dep(_Ta))
+
+
+
+class DepMarkerTests(ProviderTestCase[Provider]):
+
+
+    expected: dict[Dep, CaseConf] = [
+        Dep(_Tx),
+        Dep(_Tx, default='[DEFAULT]'),
+        Dep(_Tx, default=Dep(_Ta)),
+        Dep(_Tx, scope=Dep.ONLY_SELF, default='[DEFAULT]'),
+        Dep(_Tx, scope=Dep.ONLY_SELF, default=Dep(_Ta)),
+        Dep(_Tx, scope=Dep.SKIP_SELF),
+        Dep(_Tx, scope=Dep.SKIP_SELF, default='[DEFAULT]'),
+        Dep(_Tx, scope=Dep.SKIP_SELF, default=Dep(_Ta)),
+    ]
+
+    @pytest.fixture(params=expected)
+    def abstract(self, request):
+        return request.param
 
     @pytest.fixture
-    def scope(self, scope, Scope, Container, value_setter):
-        scope = Scope(Container(), scope)
-        scope[_Ta] = lambda inj: value_setter
-        scope.parent[_Tx] = lambda inj: lambda: (value_setter(), object())
-        return scope
+    def new_args(self):
+        return ()
+
+    def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
+        subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+        # expected.injects =
+        # assert res is mock_scope[abstract.__default__]
+        # assert not res is mock_scope[abstract.__injects__]
 
 
 
-class DepMarkerSkipSelfTests(DepMarkerTests):
-    @pytest.fixture
-    def marker(self):
-        return Dep(_Tx, injector=Dep.SKIP_SELF)
 
-    @pytest.fixture
-    def scope(self, scope, Scope, Container, value_setter):
-        scope = Scope(Container(), parent=scope)
-        scope.parent[_Tx] = lambda inj: value_setter
-        scope[_Tx] = lambda inj: lambda: (value_setter(), object())
-        return scope
+# class DepMarkerOnlySelfTests(DepMarkerTests):
+
+#     expected: dict[Dep, CaseConf] = {
+#         Dep(_Tx): SimpleNamespace(
+            
+#         ),
+#         Dep(_Tx, default='[DEFAULT]'): SimpleNamespace(
+            
+#         ),
+#         Dep(_Tx, default=Dep(_Ta)): SimpleNamespace(
+            
+#         ),
+#         Dep(_Tx, scope=Dep.ONLY_SELF): SimpleNamespace(
+            
+#         ),
+#         Dep(_Tx, scope=Dep.ONLY_SELF, default='[DEFAULT]'): SimpleNamespace(
+            
+#         ),
+#         Dep(_Tx, scope=Dep.ONLY_SELF, default=Dep(_Ta)): SimpleNamespace(
+            
+#         ),
+#         Dep(_Tx, scope=Dep.SKIP_SELF): SimpleNamespace(
+
+#         ),
+#         Dep(_Tx, scope=Dep.SKIP_SELF, default='[DEFAULT]'): SimpleNamespace(
+            
+#         ),
+#         Dep(_Tx, scope=Dep.SKIP_SELF, default=Dep(_Ta)): SimpleNamespace(
+            
+#         ),
+#     }
+
+#     @pytest.fixture(params=expected.keys())
+#     def abstract(self, request):
+#         return request.param
+
+#     def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
+#         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+#         expected = self.expected[abstract]
+#         # expected.injects =
+#         # assert res is mock_scope[abstract.__default__]
+#         # assert not res is mock_scope[abstract.__injects__]
+
+
+
+# class DepMarkerSkipSelfTests(DepMarkerTests):
+
+#     @pytest.fixture
+#     def abstract(self):
+#         return Dep(_Tx, scope=Dep.SKIP_SELF)
+
+#     def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
+#         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+#         assert res is mock_scope.parent[abstract.__injects__]
+#         assert not res is mock_scope[abstract.__default__]
+
+
+
+
+
+# class DepMarkerDataPathTests(DepMarkerTests):
+    
+#     @pytest.fixture
+#     def marker(self):
+#         return Dep(_Ta).bar.run(1, 2, 3, k1=1, k2=2).a["list"][2:-2]
+
+#     @pytest.fixture
+#     def value_factory(self):
+#         return Foo
+
+#     @pytest.fixture
+#     def value_setter(self, value_factory, marker: Dep):
+#         def fn(*a, **kw):
+#             val = value_factory(*a, **kw)
+#             self.value = marker.__eval__(val)
+#             return val
+
+#         return fn
+
 
 
 class Foo:

@@ -1,18 +1,12 @@
-from itertools import chain
-from os import sep
 import typing as t
 import attr
 import pytest
-import networkx as nx
 
-from unittest.mock import  MagicMock, Mock
 
 from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi._common import frozendict
 
 
-from xdi.containers import Container
-from xdi.providers import Provider
 from xdi.scopes import NullScope, Scope
 
 

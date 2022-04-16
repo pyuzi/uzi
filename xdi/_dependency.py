@@ -1,6 +1,7 @@
 
 
 
+from abc import abstractmethod
 from enum import Enum, auto
 from threading import Lock
 from typing_extensions import Self
@@ -9,15 +10,15 @@ import typing as t
 
 from collections.abc import Callable
 
-from xdi._common import Missing
+from xdi._common import Missing, private_setattr
 from . import _wrappers as wrappers
 from ._wrappers import CallShape
+from ._functools import BoundParams
 
 from . import T_Injectable, T_Injected
 
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .providers.functools import BoundParams
     from .providers import Provider
     from .scopes import Scope
     from .injectors import Injector
@@ -28,51 +29,47 @@ if t.TYPE_CHECKING: # pragma: no cover
 _T_Use = t.TypeVar('_T_Use')
 
 @attr.s(slots=True, frozen=True, cmp=False)
+@private_setattr
 class Dependency(t.Generic[_T_Use]):
 
     """Marks an injectable as a `dependency` to be injected."""
     
-    if t.TYPE_CHECKING: # pragma: no cover
-        def resolver(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]:
-            return self.resolver(injector)
+    @abstractmethod
+    def resolver(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]: ...
 
     _v_resolver = attr.ib(init=False, default=Missing, repr=False)
 
-    provides: T_Injectable = attr.ib()
+    abstract: T_Injectable = attr.ib()
     scope: "Scope" = attr.ib()
     provider: "Provider" = attr.ib(default=None, repr=lambda p: str(p and id(p)))
 
-    use: _T_Use = attr.ib(kw_only=True, default=Missing, repr=True)
+    concrete: _T_Use = attr.ib(kw_only=True, default=Missing, repr=True)
 
-    container: 'Container' = attr.ib(init=False, repr=False)
-    @container.default
-    def _default_container(self):
-        return self.provider and self.provider.container or self.scope.container
+    # container: 'Container' = attr.ib(init=False, repr=False)
+    # @container.default
+    # def _default_container(self):
+    #     return self.provider and self.provider.container or self.scope.container
 
     _ash: int = attr.ib(init=False, repr=False)
     @_ash.default
     def _compute_ash_value(self):
-        return hash((self.provides, self.scope, self.container))
+        return hash((self.abstract, self.scope, self.container))
 
     @property
     def container(self):
-        if pro := self.provider:
+        if pro := self.provider or self.scope:
             return pro.container
 
     @property
     def is_async(self):
         return getattr(self.resolver, 'is_async', False)
 
-    @property
-    def resolver(self):
-        if rv := self._v_resolver:
-            return rv
-        self.__set_attr(_v_resolver=self._make_resolver())
-        return self._v_resolver
-
-    def __init_subclass__(cls, *args, **kwargs):
-        if not hasattr(cls, fn := f'_{cls.__name__}__set_attr'):
-            setattr(cls, fn, getattr(Dependency, '_Dependency__set_attr'))
+    # @property
+    # def resolver(self):
+    #     if rv := self._v_resolver:
+    #         return rv
+    #     self.__setattr(_v_resolver=self._make_resolver())
+    #     return self._v_resolver
 
     def __eq__(self, o: Self) -> bool:
         return o.__class__ is self.__class__ and o._ash == self._ash
@@ -80,30 +77,25 @@ class Dependency(t.Generic[_T_Use]):
     def __hash__(self) -> int:
         return self._ash
 
-    def _make_resolver(self):
-        return self.provider.bind(self.scope, self.provides)
-
-    def __set_attr(self, name=None, value=None, /, **kw):
-        name and kw.setdefault(name. value)
-        for k,v in kw.items():
-            object.__setattr__(self, k, v)
+    # def _make_resolver(self):
+    #     return self.provider.bind(self.scope, self.abstract)
 
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
-class SimpleDependency(Dependency[_T_Use]):
+# @attr.s(slots=True, frozen=True, cmp=False)
+# class SimpleDependency(Dependency[_T_Use]):
 
-    def _make_resolver(self):
-        return self.use
+#     def _make_resolver(self):
+#         return self.concrete
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
-class ResolvedDependency(Dependency[_T_Use]):
+# @attr.s(slots=True, frozen=True, cmp=False)
+# class ResolvedDependency(Dependency[_T_Use]):
 
-    def resolver(self, injector: 'Injector'):
-        return self.use
+#     def resolver(self, injector: 'Injector'):
+#         return self.concrete
 
 
 
@@ -111,14 +103,14 @@ class ResolvedDependency(Dependency[_T_Use]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class Value(Dependency[T_Injected]):
 
-    use: T_Injected = attr.ib(kw_only=True, default=None)
+    concrete: T_Injected = attr.ib(kw_only=True, default=None)
     is_async: t.Final = False
 
     def resolver(self, injector: 'Injector'):
         return self
 
     def __call__(self) -> T_Injected:
-        return self.use
+        return self.concrete
 
 
 
@@ -151,9 +143,9 @@ class Factory(Dependency[T_Injected]):
 
     }
 
-    use: T_Injected = attr.ib(kw_only=True)
+    concrete: T_Injected = attr.ib(kw_only=True)
     async_call: bool = attr.ib(default=False, kw_only=True)
-    params: 'BoundParams' = attr.ib(kw_only=True)
+    params: 'BoundParams' = attr.ib(kw_only=True, default=BoundParams.make(()))
 
     shape: CallShape = attr.ib(kw_only=True, converter=CallShape)
     @shape.default
@@ -169,18 +161,18 @@ class Factory(Dependency[T_Injected]):
     wrapper: Callable = attr.ib(kw_only=True, default=None)
     @wrapper.validator
     def _default_wrapper(self, attrib, func):
-        func = self._wrappers[self.shape]
+        func = func or self._wrappers[self.shape]
         if pipes := self._pipes.get(self.shape):
             for pipe in pipes:
                 func = pipe(func)
-        self.__set_attr(wrapper=func)
+        self.__setattr(wrapper=func)
 
     @property
     def is_async(self):
         return not not(self.async_call or self.params.is_async)
 
     def resolver(self, injector: 'Injector'):
-        return self.wrapper(self.use, self.params, injector)
+        return self.wrapper(self.concrete, self.params, injector)
 
 
 
@@ -199,7 +191,7 @@ class Singleton(Factory[T_Injected]):
     thread_safe: bool = attr.ib(default=False)
 
     def resolver(self, injector: 'Injector'):
-        func = self.wrapper(self.use, self.params, injector)
+        func = self.wrapper(self.concrete, self.params, injector)
 
         value = Missing
         lock = Lock() if self.thread_safe else None
@@ -251,21 +243,21 @@ class Resource(Singleton[T_Injected]):
 
     aw_enter: bool = attr.ib(kw_only=True)
 
-    def resolver(self, injector: 'Injector'):
-        func = self.wrapper(self.use, self.params, injector)
+    # def resolver(self, injector: 'Injector'):
+    #     func = self.wrapper(self.concrete, self.params, injector)
 
-        value = Missing
-        lock = Lock() if self.thread_safe else None
+    #     value = Missing
+    #     lock = Lock() if self.thread_safe else None
         
-        def make():
-            nonlocal func, value
-            if value is Missing:
-                lock and lock.acquire(blocking=True)
-                try:
-                    if value is Missing:
-                        value = func()
-                finally:
-                    lock and lock.release()
-            return value
+    #     def make():
+    #         nonlocal func, value
+    #         if value is Missing:
+    #             lock and lock.acquire(blocking=True)
+    #             try:
+    #                 if value is Missing:
+    #                     value = func()
+    #             finally:
+    #                 lock and lock.release()
+    #         return value
 
-        return make
+    #     return make

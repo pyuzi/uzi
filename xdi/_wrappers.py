@@ -21,7 +21,7 @@ from xdi._common import frozendict
 
 if t.TYPE_CHECKING:
     from .injectors import Injector
-    from .providers.functools import BoundParams
+    from ._functools import BoundParams
 
 
 logger = getLogger(__name__)

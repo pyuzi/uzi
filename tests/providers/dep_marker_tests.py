@@ -3,7 +3,6 @@ import typing as t
 from unittest.mock import Mock
 
 import pytest
-from tests.conftest import scope
 from xdi import Dep
 from xdi.providers import DepMarkerProvider as Provider
 from xdi.scopes import Scope
@@ -52,7 +51,21 @@ class DepMarkerTests(ProviderTestCase[Provider]):
         return ()
 
     def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
+        if abstract.has_default and  abstract.scope != Dep.SKIP_SELF:
+            mock_scope[abstract.abstract] = None
+
         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+
+        if abstract.scope == Dep.SKIP_SELF:
+            assert res is mock_scope.parent[abstract.abstract]
+            assert not res is mock_scope[abstract.abstract]
+        elif abstract.has_default:
+            if abstract.injects_default:
+                assert res is mock_scope[abstract.default.abstract]
+            else:
+                assert not res is mock_scope[abstract.abstract]
+                assert isinstance(res, cls._dependency_class) 
+
         # expected.injects =
         # assert res is mock_scope[abstract.__default__]
         # assert not res is mock_scope[abstract.__injects__]

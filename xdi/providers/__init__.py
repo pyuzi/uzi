@@ -12,10 +12,10 @@ import attr
 
 from xdi._common import lazy
 
-from .. import (Dep, Injectable, InjectionMarker, T_Injectable, T_Injected,
+from .. import (Dep, Injectable, InjectionMarker, PureDep, T_Injectable, T_Injected,
                 is_injectable, _dependency as dependency)
 from .._common import Missing, private_setattr, typed_signature, frozendict
-from .functools import BoundParams
+from .._functools import BoundParams
 
 
 
@@ -191,7 +191,7 @@ class Value(Provider[_T_Concrete, dependency.Value]):
     _dependency_class = dependency.Value
 
     def _get_dependency_kwargs(self, **kwds):
-        kwds.setdefault('use', self.concrete)
+        kwds.setdefault('concrete', self.concrete)
         return super()._get_dependency_kwargs(**kwds)
 
 
@@ -244,17 +244,17 @@ class AnnotatedProvider(UnionProvider[_T_Concrete]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class DepMarkerProvider(Value):
     
-    concrete = attr.ib(init=False, default=Dep)
+    concrete = attr.ib(init=False, default=(Dep, PureDep))
     _dependency_class = dependency.Value
 
-    def _can_compose(self, scope: "Scope", obj: Dep) -> bool:
-        return isinstance(obj, self.concrete) and obj.scope in Dep.Scope
-    
-    def _resolve(self, mark: Dep, scope: 'Scope') -> dependency.Dependency:
-        abstract, where = mark.abstract, mark.scope
+    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        return isinstance(abstract, self.concrete)
+
+    def _resolve(self, marker: Dep, scope: 'Scope') -> dependency.Dependency:
+        abstract, where = marker.abstract, marker.scope
 
         if where == Dep.SKIP_SELF:
-            if dep := scope.find_remote(abstract): #.parent[abstract]:
+            if dep := scope.find_remote(abstract):
                 return dep
         elif where == Dep.ONLY_SELF:
             dep = scope.find_local(abstract)
@@ -263,18 +263,14 @@ class DepMarkerProvider(Value):
         elif dep := scope[abstract]:
             return dep
         
-        if mark.injects_default:
-            return scope[mark.default]
-        elif mark.has_default:
-            return self._make_dependency(mark, scope, use=mark.default)
+        if marker.injects_default:
+            return scope[marker.default]
+        elif marker.has_default:
+            return self._make_dependency(marker, scope, concrete=marker.default)
 
 
 
 
-
-
-
-_none_or_ellipsis = frozenset([None, ...])
 
 
 
@@ -309,18 +305,12 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
         arguments = self.arguments
         self.__setattr(arguments=(*arguments[:1], frozendict(kwargs)))
         return self
-        
-    def singleton(self, is_singleton: bool = True, *, thread_safe: bool=False) -> Self:
-        self.__setattr(is_shared=is_singleton, thread_safe=thread_safe)
-        return self
+ 
+    @t.overload
+    def using(self) -> abc.Callable[[_T], _T]: ...
 
     @t.overload
-    def using(self) -> abc.Callable[[_T], _T]:
-        ...
-
-    @t.overload
-    def using(self, using: abc.Callable, *args, **kwargs) -> Self:
-        ...
+    def using(self, using: abc.Callable, *args, **kwargs) -> Self: ...
 
     @_fluent_decorator()
     def using(self, using, *args, **kwargs):
@@ -363,7 +353,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
 
     def _get_dependency_kwargs(self, **kwds):
         kwds.setdefault('async_call', self.is_async)
-        kwds.setdefault('use', self.concrete)
+        kwds.setdefault('concrete', self.concrete)
         return super()._get_dependency_kwargs(**kwds)
 
     def _make_dependency(self, abstract: T_Injectable, scope: 'Scope', **kwds):
@@ -446,30 +436,30 @@ class Callable(Partial[T_Injected]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
-class LazyOpMarkerProvider(Factory):
+# @attr.s(slots=True, frozen=True, cmp=False)
+# class LazyOpMarkerProvider(Factory):
     
-    concrete = attr.ib(init=False, default=lazy.eval)
+#     concrete = attr.ib(init=False, default=lazy.eval)
 
-    def _bind_params(self, scope: "Scope", abstract: Injectable, *, sig=None, arguments=()):
-        arguments = arguments or ()
-        return super()._bind_params(scope, abstract, sig=sig, arguments=arguments)
+#     def _bind_params(self, scope: "Scope", abstract: Injectable, *, sig=None, arguments=()):
+#         arguments = arguments or ()
+#         return super()._bind_params(scope, abstract, sig=sig, arguments=arguments)
 
-    def _resolve(self, mark: Dep, scope: 'Scope') -> dependency.Dependency:
-        abstract, where = mark.abstract, mark.scope
+#     def _resolve(self, mark: Dep, scope: 'Scope') -> dependency.Dependency:
+#         abstract, where = mark.abstract, mark.scope
         
-        if where == Dep.SKIP_SELF:
-            if dep := scope.parent[abstract]:
-                return dep
-        elif where == Dep.ONLY_SELF:
-            dep = scope[abstract]
-            if dep and scope is dep.scope:
-                return dep
-        elif dep := scope[abstract]:
-            return dep
+#         if where == Dep.SKIP_SELF:
+#             if dep := scope.parent[abstract]:
+#                 return dep
+#         elif where == Dep.ONLY_SELF:
+#             dep = scope[abstract]
+#             if dep and scope is dep.scope:
+#                 return dep
+#         elif dep := scope[abstract]:
+#             return dep
         
-        if mark.injects_default:
-            return scope[mark.default]
-        elif mark.has_default:
-            return self._make_dependency(mark, scope, use=mark.default)
+#         if mark.injects_default:
+#             return scope[mark.default]
+#         elif mark.has_default:
+#             return self._make_dependency(mark, scope, concrete=mark.default)
 

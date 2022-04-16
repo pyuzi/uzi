@@ -2,6 +2,7 @@ import asyncio
 import pytest
 
 import typing as t
+from xdi import Dep
 
 
 
@@ -57,6 +58,11 @@ class FactoryProviderTests(ProviderTestCase[Provider]):
     #     assert rv is provider
     #     assert provider.is_shared
     #     assert not provider.singleton(False).is_shared
+
+    @pytest.fixture
+    def concrete(self):
+        def fn(a: Foo, /, b: Bar, *, z=Dep(Baz, default=None)): ...
+        return fn
 
     def test_args_kwargs(self, new: _T_NewPro):
         subject = new()

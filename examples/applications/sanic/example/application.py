@@ -10,7 +10,7 @@ from sanic.constants import HTTP_METHODS
 
 from . import handlers
 from xdi import Scope
-from xdi.providers.functools import FactoryBinding, BoundParam
+from xdi._functools import FactoryBinding, BoundParam
 from .di import injector, inject
 from .services import search, giphy
 

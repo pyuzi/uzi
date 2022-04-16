@@ -22,20 +22,20 @@ from typing_extensions import Self
 
 import attr
 
-from .._common import Missing, frozendict
+from ._common import Missing, frozendict
 
 
-from .. import (
+from . import (
     Injectable,
     InjectionMarker,
     is_injectable_annotation,
 )
 
-if t.TYPE_CHECKING:
-    from ..scopes import Scope
-    from ..injectors import Injector
-    from ..containers import Container
-    from .._dependency import Dependency
+if t.TYPE_CHECKING: # pragma: no cover
+    from .scopes import Scope
+    from .injectors import Injector
+    from .containers import Container
+    from ._dependency import Dependency
 
 
 
@@ -63,10 +63,6 @@ _object_setattr = object.__setattr__
 
 
 
-def _is_aync_provider(obj) -> bool:
-    return getattr(obj, "is_async", False) is True
-
-
 
 
 class _ParamBindType(Enum):
@@ -90,11 +86,8 @@ class BoundParam:
         "value",
         "injectable",
         "dependency",
-        # "default",
-        "has_value",
         "has_default",
-        "has_dependency",
-        "_value_factory",
+        # "_value_factory",
         "_default_factory",
         "_bind_type",
     )
@@ -106,11 +99,6 @@ class BoundParam:
     default: t.Any
     injectable: Injectable
     dependency: 'Dependency'
-    has_value: bool
-    has_dependency: bool
-
-    # _aw_value: 'AwaitValue'
-    # _aw_default: 'AwaitValue'
 
     def __new__(
         cls, param: Parameter, value: t.Any = _EMPTY, key: t.Union[str, int] = None
@@ -119,27 +107,23 @@ class BoundParam:
         self.param = param
         self.key = key or param.name
         self.dependency = self.injectable = None
-        self.has_value = self.has_default = self.has_dependency = False
+        self.has_default = False
 
         if isinstance(value, InjectionMarker):
             self.injectable = value
-            self.has_dependency = True
         elif not value is _EMPTY:
-            self.has_value = True
             self.value = value
 
         if isinstance(param.default, InjectionMarker):
-            if self.has_dependency is False:
+            if None is self.injectable:
                 self.injectable = param.default
-                self.has_dependency = True
         else:
             self.has_default = not param.default is _EMPTY
 
-        if False is self.has_dependency:
+        if None is self.injectable:
             annotation = param.annotation
             if is_injectable_annotation(annotation):
                 self.injectable = annotation
-                self.has_dependency = isinstance(annotation, InjectionMarker) or None
 
         return self
 
@@ -157,6 +141,10 @@ class BoundParam:
         return not self.injectable is None
 
     @property
+    def has_value(self):
+        return hasattr(self, 'value')
+
+    @property
     def bind_type(self):
         try:
             return self._bind_type
@@ -165,7 +153,7 @@ class BoundParam:
                 self._bind_type = _PARAM_VALUE
             elif self.is_async:
                 self._bind_type = _PARAM_AWAITABLE
-            elif self.has_dependency:
+            elif self.dependency:
                 self._bind_type = _PARAM_CALLABLE
             elif self.has_default:
                 self._bind_type = _ParamBindType.default
@@ -185,16 +173,16 @@ class BoundParam:
     def kind(self):
         return self.param.kind
 
-    @property
-    def value_factory(self) -> None:
-        try:
-            return self._value_factory
-        except AttributeError as e:
-            if not self.has_value:
-                raise AttributeError(f"`value`") from e
-            value = self.value
-            self._value_factory = lambda: value
-            return self._value_factory
+    # @property
+    # def value_factory(self) -> None:
+    #     try:
+    #         return self._value_factory
+    #     except AttributeError as e:
+    #         if not self.has_value:
+    #             raise AttributeError(f"`value`") from e
+    #         value = self.value
+    #         self._value_factory = lambda: value
+    #         return self._value_factory
 
     @property
     def default_factory(self) -> None:
@@ -302,7 +290,7 @@ class BoundParams:
     def __bool__(self): 
         return not not self.params
 
-    def resolve_args(self, ctx: "Injector"):
+    def resolve_args(self, injector: "Injector"):
         if self.args:
             if self._pos_vals > 0 < self._pos_deps:
                 return _PositionalArgs(
@@ -310,24 +298,24 @@ class BoundParams:
                         p.bind_type,
                         p.value
                         if p.bind_type is _PARAM_VALUE
-                        else ctx.find(p.dependency, default=p.default_factory),
+                        else injector.find(p.dependency, default=p.default_factory),
                     )
                     for p in self.args
                 )
             elif self._pos_deps > 0:
                 return _PositionalDeps(
-                    ctx.find(p.dependency, default=p.default_factory) for p in self.args
+                    injector.find(p.dependency, default=p.default_factory) for p in self.args
                 )
             else:
                 return tuple(p.value for p in self.args)
         return ()
 
-    def resolve_aw_args(self, ctx: "Injector"):
-        return self.resolve_args(ctx), self.aw_args
+    def resolve_aw_args(self, injector: "Injector"):
+        return self.resolve_args(injector), self.aw_args
 
-    def resolve_kwargs(self, ctx: "Injector"):
+    def resolve_kwargs(self, injector: "Injector"):
         return _KeywordDeps(
-            (p.key, ctx.find(p.dependency, default=p.default_factory))
+            (p.key, injector.find(p.dependency, default=p.default_factory))
             for p in self.kwds
         )
 

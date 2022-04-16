@@ -131,6 +131,8 @@ class PureDep(t.Generic[T_Injectable]):
 
     scope: t.Final = DepScope.any
     default: t.Final = Missing
+    has_default: t.Final = False
+    injects_default: t.Final = False
 
     def __new__(cls: type[Self], abstract: T_Injectable) -> Self:
         self = _object_new(cls)

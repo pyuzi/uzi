@@ -1,9 +1,6 @@
-from itertools import chain
-from os import sep
 import typing as t
 import attr
 import pytest
-import networkx as nx
 
 from unittest.mock import  MagicMock, Mock
 
@@ -72,11 +69,12 @@ class ScopeTest(BaseTestCase[_T_Scp]):
             else:
                 raise AssertionError(f"mutable: {atr.name!r} -> {sub}")
         
-    def test_compare(self, new: _T_FnNew, container, MockContainer: type[Container]):
-        sub1, sub2 = new(container), new(container),
-        assert sub1.container is container is sub2.container
+    def test_compare(self, new: _T_FnNew, MockContainer: type[Container]):
+        c1 = MockContainer()
+        sub1, sub2 = new(c1), new(c1),
+        assert sub1.container is c1 is sub2.container
         assert sub1 == sub2 and not (sub1 != sub2)
-        assert sub1 != container and not(sub1 == container)
+        assert sub1 != c1 and not(sub1 == c1)
         assert hash(sub1) == hash(sub2)
 
         c2 = MockContainer()

@@ -27,3 +27,10 @@ class ValueDependencyTests(DependencyTestCase[Dependency]):
     def concrete(self, value_setter):
         return value_setter()
 
+    def test_validity(self, new: _T_NewDep, mock_injector):
+        subject= new()
+        fn = subject.factory(mock_injector)
+        val = fn()
+        assert val is fn() is self.value
+        assert val is fn() is self.value
+        

@@ -95,13 +95,13 @@ class FactoryProviderTests(ProviderTestCase[Provider]):
 
         args = 'aaa', 123, 'xyz'
         provider.args(*args)
-        provider.resolve(scope, func).resolver(context)()
+        provider.resolve(scope, func).factory(context)()
 
         provider = Provider(func)
 
         args = 'aaa', 123, _default
         provider.args(*args[:-1])
-        provider.resolve(scope, func).resolver(context)()
+        provider.resolve(scope, func).factory(context)()
         
     def _test_with_kwargs(self, scope, context):
         _default = object()
@@ -113,13 +113,13 @@ class FactoryProviderTests(ProviderTestCase[Provider]):
 
         kwargs = dict(a='aaa', b=123, c='xyz')
         provider.kwargs(**kwargs)
-        provider.resolve(scope, func).resolver(context)()
+        provider.resolve(scope, func).factory(context)()
 
         provider = Provider(func)
 
         kwargs = dict(a='BAR', b='BOO')
         provider.kwargs(**kwargs)
-        provider.resolve(scope, func).resolver(context)()
+        provider.resolve(scope, func).factory(context)()
 
 
 # class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):

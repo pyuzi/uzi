@@ -12,8 +12,8 @@ from collections.abc import Callable
 
 from xdi._common import Missing, private_setattr
 from . import _wrappers as wrappers
-from ._wrappers import CallShape
-from ._functools import BoundParams
+from ._wrappers import CallShape, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
+from ._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, _PARAM_VALUE
 
 from . import T_Injectable, T_Injected
 
@@ -35,7 +35,8 @@ class Dependency(t.Generic[_T_Use]):
     """Marks an injectable as a `dependency` to be injected."""
     
     @abstractmethod
-    def resolver(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]: ...
+    def factory(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]: 
+        raise NotImplementedError(f'{self.__class__.__name__}.factory()')  # pragma: no cover
 
     _v_resolver = attr.ib(init=False, default=Missing, repr=False)
 
@@ -44,11 +45,7 @@ class Dependency(t.Generic[_T_Use]):
     provider: "Provider" = attr.ib(default=None, repr=lambda p: str(p and id(p)))
 
     concrete: _T_Use = attr.ib(kw_only=True, default=Missing, repr=True)
-
-    # container: 'Container' = attr.ib(init=False, repr=False)
-    # @container.default
-    # def _default_container(self):
-    #     return self.provider and self.provider.container or self.scope.container
+    is_async: bool = False
 
     _ash: int = attr.ib(init=False, repr=False)
     @_ash.default
@@ -60,25 +57,11 @@ class Dependency(t.Generic[_T_Use]):
         if pro := self.provider or self.scope:
             return pro.container
 
-    @property
-    def is_async(self):
-        return getattr(self.resolver, 'is_async', False)
-
-    # @property
-    # def resolver(self):
-    #     if rv := self._v_resolver:
-    #         return rv
-    #     self.__setattr(_v_resolver=self._make_resolver())
-    #     return self._v_resolver
-
     def __eq__(self, o: Self) -> bool:
         return o.__class__ is self.__class__ and o._ash == self._ash
 
     def __hash__(self) -> int:
         return self._ash
-
-    # def _make_resolver(self):
-    #     return self.provider.bind(self.scope, self.abstract)
 
 
 
@@ -106,7 +89,7 @@ class Value(Dependency[T_Injected]):
     concrete: T_Injected = attr.ib(kw_only=True, default=None)
     is_async: t.Final = False
 
-    def resolver(self, injector: 'Injector'):
+    def factory(self, injector: 'Injector'):
         return self
 
     def __call__(self) -> T_Injected:
@@ -144,7 +127,6 @@ class Factory(Dependency[T_Injected]):
     }
 
     concrete: T_Injected = attr.ib(kw_only=True)
-    async_call: bool = attr.ib(default=False, kw_only=True)
     params: 'BoundParams' = attr.ib(kw_only=True, default=BoundParams.make(()))
 
     shape: CallShape = attr.ib(kw_only=True, converter=CallShape)
@@ -171,9 +153,106 @@ class Factory(Dependency[T_Injected]):
     def is_async(self):
         return not not(self.async_call or self.params.is_async)
 
-    def resolver(self, injector: 'Injector'):
+    def factory(self, injector: 'Injector'):
         return self.wrapper(self.concrete, self.params, injector)
+    
 
+    def resolve_args(self, injector: "Injector"):
+        if self.args:
+            if self._pos_vals > 0 < self._pos_deps:
+                return _PositionalArgs(
+                    (
+                        p.bind_type,
+                        p.value
+                        if p.bind_type is _PARAM_VALUE
+                        else injector.find(p.dependency, default=p.default_factory),
+                    )
+                    for p in self.args
+                )
+            elif self._pos_deps > 0:
+                return _PositionalDeps(
+                    injector.find(p.dependency, default=p.default_factory) for p in self.args
+                )
+            else:
+                return tuple(p.value for p in self.args)
+        return ()
+
+    def resolve_kwargs(self, injector: "Injector"):
+        return _KeywordDeps(
+            (p.key, injector.find(p.dependency, default=p.default_factory))
+            for p in self.kwds
+        )
+
+    def plain_wrapper(self, ctx: "Injector"):
+        return self.concrete
+
+    def args_wrapper(self: Self, ctx: "Injector"):
+        args = self.resolve_args(ctx)
+        vals = self.params.vals
+        func = self.concrete
+        return lambda: func(*args, **vals)
+
+    def kwds_wrapper(self: Self, ctx: "Injector"):
+        kwds = self.resolve_kwargs(ctx)
+        vals = self.params.vals
+        func = self.concrete
+        return lambda: func(**kwds, **vals)
+
+    def args_kwds_wrapper(self: Self, ctx: "Injector"):
+        args = self.resolve_args(ctx)
+        kwds = self.resolve_kwargs(ctx)
+        vals = self.params.vals
+        func = self.concrete
+        return lambda: func(*args, **kwds, **vals)
+
+
+
+
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AsyncFactory(Factory[T_Injected]):
+
+    is_async: bool = True
+
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AwaitParamsFactory(Factory[T_Injected]):
+    
+    is_async: bool = True
+    async_call: bool = attr.ib(default=False, kw_only=True)
+    
+    def make_future_wrapper(self: Self, ctx: 'Injector', **kwds):
+        kwds.setdefault("aw_call", self.async_call)
+        return FutureFactoryWrapper(self.concrete, self.vals, **kwds)
+
+    def resolve_kwargs(self, ctx: "Injector"):
+        if self.params.aw_kwds:
+            deps = super().resolve_kwargs(ctx)
+            return deps, tuple((n, deps.pop(n)) for n in self.params.aw_kwds)
+        else:
+            return super().resolve_kwargs(ctx), ()
+
+    def resolve_args(self, injector: "Injector"):
+        return super().resolve_args(injector), self.params.aw_args
+
+    def args_wrapper(self: Self, ctx: "Injector"):
+        args, aw_args = self.resolve_args(ctx)
+        return self.make_future_wrapper(ctx, args=args, aw_args=aw_args)
+
+    def kwargs_wrapper(self: Self, ctx: "Injector"):
+        kwds, aw_kwds = self.resolve_kwargs(ctx)
+        return self.make_future_wrapper(ctx, kwds=kwds, aw_kwds=aw_kwds)
+
+    def args_kwargs_wrapper(self: Self, ctx: "Injector"):
+        args, aw_args = self.resolve_args(ctx)
+        kwds, aw_kwds = self.resolve_kwargs(ctx)
+        return self.make_future_wrapper(
+            ctx, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds
+        )
 
 
 
@@ -190,7 +269,7 @@ class Singleton(Factory[T_Injected]):
     
     thread_safe: bool = attr.ib(default=False)
 
-    def resolver(self, injector: 'Injector'):
+    def factory(self, injector: 'Injector'):
         func = self.wrapper(self.concrete, self.params, injector)
 
         value = Missing
@@ -238,7 +317,8 @@ class Resource(Singleton[T_Injected]):
     }
 
     _pipes = {
-
+        CallShape.plain: wrappers.enter_context_pipe,
+        CallShape.plain: wrappers.enter_context_pipe,
     }
 
     aw_enter: bool = attr.ib(kw_only=True)

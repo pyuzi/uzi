@@ -113,7 +113,7 @@ class Injector(dict[T_Injectable, Callable[[], T_Injected]]):
     def __missing__(self, dep: Dependency):
         try:
             if dep.scope is self.scope:
-                return self.__setdefault(dep, dep.resolver(self))
+                return self.__setdefault(dep, dep.factory(self))
         except AttributeError:
             dep = self.scope[dep]
             return dep and self[dep]

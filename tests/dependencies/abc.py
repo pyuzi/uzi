@@ -62,7 +62,7 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         assert subject.__class__ is cls
         assert cls.__slots__ is cls.__dict__["__slots__"]
         assert subject.is_async in (True, False)
-        assert callable(subject.resolver)
+        assert callable(subject.factory)
         return subject
 
 
@@ -97,13 +97,12 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
             else:
                 raise AssertionError(f"mutable: {atr.name!r} -> {subject}")
         return subject
-
-    def test_resolver(self, new: _T_NewDep, mock_injector: Injector):
+        
+    def test_factory(self, new: _T_NewDep, mock_injector: Injector):
         subject= new()
-        fn = subject.resolver(mock_injector)
+        fn = subject.factory(mock_injector)
         assert callable(fn)
         val = fn()
         assert val is self.value
         
-
         

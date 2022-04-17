@@ -264,7 +264,6 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
 
 
 
-
 class AsyncProviderTestCase(ProviderTestCase):
 
     @pytest.fixture

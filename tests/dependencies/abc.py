@@ -1,6 +1,7 @@
 from copy import copy, deepcopy
 from collections.abc import Callable
 import typing as t
+from unittest.mock import MagicMock
 import attr
 import pytest
 from xdi._common import Missing
@@ -33,9 +34,13 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
     def abstract(self):
         return _T
 
+    # @pytest.fixture
+    # def concrete(self, value_setter):
+    #     return value_setter
+
     @pytest.fixture
-    def concrete(self):
-        return Missing
+    def concrete(self, value_setter):
+        return MagicMock(value_setter, wraps=value_setter)
 
     @pytest.fixture
     def new_args(self, abstract, new_args):
@@ -47,7 +52,7 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
 
     @pytest.fixture
     def value_factory(self):
-        return lambda: object()
+        return lambda *a, **kw: object()
 
     @pytest.fixture
     def value_setter(self, value_factory):
@@ -62,7 +67,7 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         assert subject.__class__ is cls
         assert cls.__slots__ is cls.__dict__["__slots__"]
         assert subject.is_async in (True, False)
-        assert callable(subject.factory)
+        assert callable(subject.bind)
         return subject
 
 
@@ -73,12 +78,12 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         assert cp == subject
         return subject, cp
 
-    def test_deepcopy(self, new: _T_NewDep):
-        subject = new()
-        cp = deepcopy(subject)
-        assert cp.__class__ is subject.__class__
-        assert cp == subject
-        return subject, cp
+    # def test_deepcopy(self, new: _T_NewDep):
+    #     subject = new()
+    #     cp = deepcopy(subject)
+    #     assert cp.__class__ is subject.__class__
+    #     assert cp == subject
+    #     return subject, cp
 
     def test_compare(self, new: _T_NewDep):
         subject, subject_2 = new(), new()
@@ -100,7 +105,7 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         
     def test_factory(self, new: _T_NewDep, mock_injector: Injector):
         subject= new()
-        fn = subject.factory(mock_injector)
+        fn = subject.bind(mock_injector)
         assert callable(fn)
         val = fn()
         assert val is self.value

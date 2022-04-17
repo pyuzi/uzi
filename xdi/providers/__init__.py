@@ -289,6 +289,8 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
     ])
 
     _dependency_class: t.ClassVar = dependency.Factory
+    _async_dependency_class: t.ClassVar = dependency.AsyncFactory
+    _async_params_dependency_class: t.ClassVar = dependency.AsyncParamsFactory
 
     def __init__(self, concrete: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         self.__attrs_init__(
@@ -352,13 +354,20 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
         return BoundParams.bind(sig, scope, self.container, args, kwargs)
 
     def _get_dependency_kwargs(self, **kwds):
-        kwds.setdefault('async_call', self.is_async)
         kwds.setdefault('concrete', self.concrete)
         return super()._get_dependency_kwargs(**kwds)
 
     def _make_dependency(self, abstract: T_Injectable, scope: 'Scope', **kwds):
         params = self._bind_params(scope, abstract)
-        return self._dependency_class(
+        if params.is_async:
+            kwds.setdefault('async_call', self.is_async)
+            cls = self._async_params_dependency_class
+        elif self.is_async:
+            cls = self._async_dependency_class
+        else:
+            cls = self._dependency_class
+
+        return cls(
             abstract, scope, self, 
             params=params, 
             **self._get_dependency_kwargs(**kwds),
@@ -373,7 +382,10 @@ class Singleton(Factory[T_Injected]):
     is_shared: t.ClassVar[bool] = True
     is_thread_safe: bool = attr.ib(init=False, default=True)
     # _binding_class: t.ClassVar[type[SingletonFactoryBinding]] = SingletonFactoryBinding
+
     _dependency_class: t.ClassVar = dependency.Singleton
+    _async_dependency_class: t.ClassVar = dependency.AsyncSingleton
+    _async_params_dependency_class: t.ClassVar = dependency.AsyncParamsSingleton
 
     def thread_safe(self, is_thread_safe=True):
         self.__setattr(is_thread_safe=is_thread_safe)

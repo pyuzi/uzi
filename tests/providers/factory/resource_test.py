@@ -7,8 +7,7 @@ import typing as t
 from xdi.providers import Resource as Provider
 
 
-from .abc import _T_NewPro
-from .singleton_tests import SingletonProviderTests
+from ..abc import _T_NewPro, ProviderTestCase
 
 
 xfail = pytest.mark.xfail
@@ -20,7 +19,7 @@ _T_NewPro =  _T_NewPro[Provider]
         
 
 
-class ResourceProviderTests(SingletonProviderTests[Provider]):
+class ResourceProviderTests(ProviderTestCase[Provider]):
     
 
     class ContextManager:

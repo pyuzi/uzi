@@ -1,20 +1,18 @@
 import asyncio
 from unittest import mock
-from collections.abc import Iterable
 import pytest
 
 import typing as t
-from tests.conftest import mock_scope
 
 
 
-from xdi.providers import UnionProvider as Provider, Factory, _UnionType
+from xdi.providers import UnionProvider as Provider
 
-from xdi import Dep, Scope, is_injectable
+from xdi import Scope, is_injectable
 
  
 
-from .abc import ProviderTestCase, AsyncProviderTestCase, _T_NewPro
+from .abc import ProviderTestCase, _T_NewPro
 
 
 xfail = pytest.mark.xfail
@@ -25,6 +23,9 @@ _Ta = t.TypeVar('_Ta')
 _Tb = t.TypeVar('_Tb')
 _Tc = t.TypeVar('_Tc')
 _Td = t.TypeVar('_Td')
+
+
+_T_NewPro = _T_NewPro[Provider]
 
 
 
@@ -49,13 +50,13 @@ class UnionProviderTests(ProviderTestCase[Provider]):
     def abstract(self, request):
         return request.param
 
-    def test_get_all_args(self, abstract, new: _T_NewPro[Provider]):
+    def test_get_all_args(self, abstract, new: _T_NewPro):
         subject, result = new(), ()
         result = tuple(subject.get_all_args(abstract))
         assert result == self.expected[abstract][0]
         return subject, result
 
-    def test_get_injectable_args(self, abstract, new: _T_NewPro[Provider]):
+    def test_get_injectable_args(self, abstract, new: _T_NewPro):
         subject, result = new(), ()
         result = tuple(subject.get_injectable_args(abstract))
         assert result == self.expected[abstract][1]

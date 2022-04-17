@@ -9,8 +9,7 @@ from xdi.injectors import Injector
 
 
 Dependency = Dependency
-from .abc import _T_NewDep
-from .factory_tests import FactoryDependencyTests
+from .abc import _T_NewDep, DependencyTestCase
 
 
 
@@ -23,12 +22,12 @@ parametrize = pytest.mark.parametrize
 _T_NewDep = _T_NewDep[Dependency]
 
 
-class SingletonDependencyTests(FactoryDependencyTests[Dependency]):
+class SingletonDependencyTests(DependencyTestCase[Dependency]):
 
 
     def test_validity(self, new: _T_NewDep, mock_injector: Injector):
         subject= new()
-        fn = subject.factory(mock_injector)
+        fn = subject.bind(mock_injector)
         val = fn()
         assert val is fn() is self.value
         assert val is fn() is self.value

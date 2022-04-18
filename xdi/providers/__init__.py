@@ -48,20 +48,14 @@ _T_Dep = t.TypeVar('_T_Dep', bound=dependency.Dependency, covariant=True)
 
 def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
     def decorator(func: _T_Fn) -> _T_Fn:
-        fn = func
-        while hasattr(fn, "_is_fluent_decorator"):
-            fn = fn.__wrapped__
-
         @wraps(func)
         def wrapper(self, v=default, /, *args, **kwds):
             nonlocal func, default, fluent
             if v is default:
-
                 def decorator(val: _T) -> _T:
                     nonlocal func, v, args, kwds
                     rv = func(self, val, *args, **kwds)
                     return rv if fluent is True else val
-
                 return decorator
             return func(self, v, *args, **kwds)
 
@@ -130,11 +124,11 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
         return self
 
     @t.overload
-    def using(self) -> abc.Callable[[_T], _T]: ...
+    def use(self) -> abc.Callable[[_T], _T]: ...
     @t.overload
-    def using(self, using: t.Any) -> Self: ...
+    def use(self, using: t.Any) -> Self: ...
     @_fluent_decorator()
-    def using(self, using):
+    def use(self, using):
         self.__setattr(concrete=using)
         return self
 
@@ -315,13 +309,13 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
         return self
  
     @t.overload
-    def using(self) -> abc.Callable[[_T], _T]: ...
+    def use(self) -> abc.Callable[[_T], _T]: ...
 
     @t.overload
-    def using(self, using: abc.Callable, *args, **kwargs) -> Self: ...
+    def use(self, using: abc.Callable, *args, **kwargs) -> Self: ...
 
     @_fluent_decorator()
-    def using(self, using, *args, **kwargs):
+    def use(self, using, *args, **kwargs):
         self.__setattr(concrete=using)
         args and self.args(*args)
         kwargs and self.kwargs(**kwargs)
@@ -414,8 +408,6 @@ class Resource(Singleton[T_Injected]):
     is_async: bool = attr.ib(init=False, default=None)
     is_awaitable: bool = attr.ib(init=False, default=None)
     is_shared: t.ClassVar[bool] = True
-
-    _sync_dependency_class: t.ClassVar = dependency.Resource
 
     def awaitable(self, is_awaitable=True):
         self.__setattr(is_awaitable=is_awaitable)

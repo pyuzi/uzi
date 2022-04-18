@@ -46,6 +46,7 @@ def new_kwargs(new_kwargs, bound_params):
 
 class SingletonDependencyTests(DependencyTestCase[Dependency]):
 
+
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
@@ -62,7 +63,6 @@ class SingletonDependencyTests(DependencyTestCase[Dependency]):
         val = fn()
         assert val is fn() is self.value
         assert val is fn() is self.value
-        
 
 
 
@@ -70,6 +70,7 @@ class SingletonDependencyTests(DependencyTestCase[Dependency]):
 from xdi._dependency import AsyncSingleton as Dependency
 
 class AsyncSingletonDependencyTests(DependencyTestCase[Dependency]):
+
 
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: Injector):
@@ -95,6 +96,7 @@ class AsyncSingletonDependencyTests(DependencyTestCase[Dependency]):
 from xdi._dependency import AwaitParamsSingleton as Dependency
 
 class AwaitParamsSingletonDependencyTests(DependencyTestCase[Dependency]):
+
 
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
@@ -122,6 +124,7 @@ class AwaitParamsSingletonDependencyTests(DependencyTestCase[Dependency]):
 from xdi._dependency import AwaitParamsAsyncSingleton as Dependency
 
 class AwaitParamsAsyncSingletonDependencyTests(DependencyTestCase[Dependency]):
+
 
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):

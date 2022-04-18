@@ -1,3 +1,4 @@
+from inspect import ismethod
 from types import GenericAlias, new_class
 import typing as t
 import pytest
@@ -37,3 +38,24 @@ class BaseTestCase(t.Generic[_T_Sub]):
     def cls(self):
         return self.type_
 
+    @pytest.fixture
+    def value_setter(self, value_factory):
+        def fn(*a, **kw):
+            self.value = val = value_factory(*a, **kw)
+            return val
+        return fn
+
+    @pytest.fixture
+    def immutable_attrs(self, cls):
+        return [a for a in dir(cls) if a[:1] != '_' and not ismethod(getattr(cls, a))]
+
+    def assert_immutable(self, sub: _T_Sub, immutable_attrs):
+        it = iter(immutable_attrs)
+        for atr in it:
+            try:
+                setattr(sub, atr, getattr(sub, atr, None))
+            except AttributeError:
+                continue
+            else:
+                raise AssertionError(f"attribute `{sub.__class__.__qualname__}.{atr}` is mutable")
+        return sub

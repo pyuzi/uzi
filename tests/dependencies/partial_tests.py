@@ -65,7 +65,6 @@ class PartialDependencyTests(DependencyTestCase[Dependency]):
     _call_args: tuple = ()
     _call_kwargs: dict = frozendict()
 
-
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())

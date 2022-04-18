@@ -31,6 +31,11 @@ def new(cls, new_args, new_kwargs):
 
 
 @pytest.fixture
+def immutable_attrs(cls):
+    return ()
+
+
+@pytest.fixture
 def value_factory_spec():
     return object
 

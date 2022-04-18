@@ -45,6 +45,7 @@ class Dependency(ABC, t.Generic[_T_Use]):
     concrete: _T_Use = attr.ib(kw_only=True, default=Missing, repr=True)
 
     is_async: bool = False
+    dependencies = frozenset[Self]()
 
     _v_ident: tuple = attr.ib(init=False, repr=False)
     @_v_ident.default
@@ -88,19 +89,21 @@ class LookupErrorDependency:
     scope: 'Scope'
     container = None
     is_async: bool = False
+    dependencies = frozenset[Self]()
 
-    def __new__(cls: type[Self], abstract=None, scope: 'Scope'=None) -> Self:
-        if cls is abstract.__class__:
-            return abstract
+    def __new__(cls: type[Self], abstract=None, scope: 'Scope'=None, provider=None, concrete=None) -> Self:
         self = _object_new(cls)
         self.__setattr(abstract=abstract, scope=scope)
         return self
 
-    def __bool__(self, *a, **kw): 
+    def __bool__(self): 
         return False
 
+    def __reduce__(self): 
+        return self.__class__, (self.abstract, self.scope)
+
     def __eq__(self, o):
-        return o.abstract == self.abstract
+        return self.abstract == o
 
     def __ne__(self, o):
         return not self == o
@@ -109,22 +112,18 @@ class LookupErrorDependency:
         return hash(self.abstract)
 
     def bind(self, injector: 'Injector'):
-        raise InjectorLookupError(self.abstract, self.scope)
-
-
-# @attr.s(slots=True, frozen=True, cmp=False)
-# class SimpleDependency(Dependency[_T_Use]):
-
-#     def _make_resolver(self):
-#         return self.concrete
+        raise InjectorLookupError(self.abstract, self.scope or injector.scope)
 
 
 
-# @attr.s(slots=True, frozen=True, cmp=False)
-# class ResolvedDependency(Dependency[_T_Use]):
 
-#     def resolver(self, injector: 'Injector'):
-#         return self.concrete
+@attr.s(slots=True, frozen=True, cmp=False)
+class SimpleDependency(Dependency[_T_Use]):
+
+    def bind(self, injector: 'Injector'):
+        return self.concrete(injector)
+
+
 
 
 
@@ -151,7 +150,10 @@ class Factory(Dependency[T_Injected]):
     concrete: T_Injected = attr.ib(kw_only=True)
     params: 'BoundParams' = attr.ib(kw_only=True, default=BoundParams.make(()))
     thread_safe: bool = attr.ib(kw_only=True, default=False)
-    # async_call: bool = attr.ib(default=False, kw_only=True)
+
+    @property
+    def dependencies(self):
+        return self.params.dependencies
 
     def bind(self: Self, injector: "Injector"):
         if self.params:
@@ -304,17 +306,6 @@ class AwaitParamsSingleton(Singleton[T_Injected], AwaitParamsFactory[T_Injected]
 class AwaitParamsAsyncSingleton(AwaitParamsSingleton[T_Injected]):
     
     async_call: bool = True
-
-
-
-
-
-
-
-@attr.s(slots=True, frozen=True, cmp=False)
-class Resource(Singleton[T_Injected]):
-
-    aw_enter: bool = attr.ib(kw_only=True, default=False)
 
 
 

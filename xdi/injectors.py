@@ -66,10 +66,10 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
         return True
         
     def __contains__(self, x) -> bool:
-        return self.__contains(x) or x in self.scope
+        return self.__contains(x) or x in self.parent
 
     def __missing__(self, dep: Dependency):
-        if dep.scope is self.scope:
+        if dep and dep.scope is self.scope:
             return self.__setdefault(dep, dep.bind(self))
         return self.__setdefault(dep, self.parent[dep])
         
@@ -84,7 +84,7 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
 
     __copy__ = copy
 
-    def __reduce__(self):
+    def __reduce__(self): # pragma: no cover 
         return self.__class__, (self.scope, self.parent)
 
     def __str__(self) -> str:
@@ -387,7 +387,7 @@ class _InjectorExitStack(list[tuple[bool, _T_Fn]]): # pragma: no cover
 
 
 
-def _fix_exception_context(new_exc, old_exc, frame_exc):
+def _fix_exception_context(new_exc, old_exc, frame_exc): # pragma: no cover
     # Context may not be correct, so find the end of the chain
     while 1:
         exc_context = new_exc.__context__

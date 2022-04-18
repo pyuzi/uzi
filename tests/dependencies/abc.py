@@ -1,6 +1,6 @@
 from copy import copy, deepcopy
 from collections.abc import Callable
-from inspect import isawaitable
+from inspect import isawaitable, ismethod
 import typing as t
 from unittest.mock import AsyncMock, MagicMock
 import attr
@@ -9,7 +9,7 @@ from xdi._common import Missing
 
 
 # from xdi.providers import 
-from xdi._dependency import Dependency
+from xdi._dependency import Dependency, SimpleDependency
 from xdi.injectors import Injector
 
 from ..abc import BaseTestCase
@@ -35,20 +35,17 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
     def abstract(self):
         return _T
 
-    # @pytest.fixture
-    # def concrete(self, value_setter):
-    #     return value_setter
-
     @pytest.fixture
     def concrete(self, value_setter):
-        return value_setter #MagicMock(value_setter, wraps=value_setter)
+        return MagicMock(value_setter, wraps=value_setter)
 
     @pytest.fixture
-    def value_setter(self, value_factory):
-        def fn(*a, **kw):
-            self.value = val = value_factory(*a, **kw)
-            return val
-        return fn
+    def subject(self, new: _T_NewDep):
+        return new()
+
+    @pytest.fixture
+    def bound(self, subject: _T_Dep, mock_injector: Injector):
+        return subject.bind(mock_injector)
 
     def check_deps(self, deps: dict, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, AsyncMock]]):
         for _t, _v in deps.items():
@@ -76,40 +73,29 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         assert cp == subject
         return subject, cp
 
-    # def test_deepcopy(self, new: _T_NewDep):
-    #     subject = new()
-    #     cp = deepcopy(subject)
-    #     assert cp.__class__ is subject.__class__
-    #     assert cp == subject
-    #     return subject, cp
-
-    def test_compare(self, new: _T_NewDep):
+    def test_compare(self, new: _T_NewDep, abstract, mock_scope):
         subject, subject_2 = new(), new()
+        mock = mock_scope[abstract]
         assert subject.__class__ is subject_2.__class__
         assert subject == subject_2
+        assert subject != mock
+        assert subject != object()
+        assert not subject == mock
+        assert not subject != subject_2
+        assert not subject == object()
         assert hash(subject) == hash(subject_2)
         return subject, subject_2
 
-    def test_not_mutable(self, new: _T_NewDep):
-        subject = new()
-        for atr in attr.fields(subject.__class__):
-            try:
-                subject.__setattr__(atr.name, getattr(subject, atr.name, None))
-            except AttributeError:
-                continue
-            else:
-                raise AssertionError(f"mutable: {atr.name!r} -> {subject}")
-        return subject
-        
-    async def test_factory(self, new: _T_NewDep, mock_injector: Injector):
-        subject= new()
-        fn = subject.bind(mock_injector)
-        assert callable(fn)
-        val = fn()
-        if subject.is_async:
-            assert isawaitable(val)
+    def test_immutable(self, new: _T_NewDep, immutable_attrs):
+        self.assert_immutable(new(), immutable_attrs)
+
+    async def test_bind(self, subject: _T_Dep, bound):
+        assert callable(bound)
+        val = bound()
+        if subject.is_async and isawaitable(val):
             val = await val
-        assert self.value is _notset or val is self.value
+        if not self.value is _notset:
+            assert val is self.value
         
     def test_validity(self):
         assert False, "No validity tests"

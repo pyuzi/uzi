@@ -141,13 +141,14 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         fn(*args)
         return subject
 
-    def test_using(self, new: _T_NewPro, concrete):
+    def test_use(self, new: _T_NewPro, concrete):
         subject = new()
         orig = subject.concrete
         mock = Mock(orig)
 
         assert subject.concrete is orig
-        assert subject is subject.using(mock)
+        assert subject is subject.use(mock)
+        assert subject.use()(mock) in (subject, mock)
         assert subject.concrete is mock
 
     def test_filters(self, new: _T_NewPro):

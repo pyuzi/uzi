@@ -1,10 +1,11 @@
 
 from functools import cache
 from typing import Union
-from xdi import Container
+from xdi import Container, Scope
 
 
 from _benchmarkutil import Benchmark, Timer
+from xdi.injectors import Injector
 
 
 
@@ -60,8 +61,8 @@ ioc = Container()
 ioc.factory(Foo)
 ioc.factory(Bar)
 ioc.factory(Baz)
-ioc.factory(FooBar)
-ioc.factory(FooBarBaz)
+ioc.singleton(FooBar)
+ioc.singleton(FooBarBaz)
 ioc.factory(Service)
 
 
@@ -98,42 +99,39 @@ mkservice = lambda: Service(mkfoo(), mkbar(), mkbaz(), foobar=mkfoobar(), foobar
 # mkinject_2 = lambda: inject_2.__wrapped__(mkfoo(), mkbar(), mkbaz())
 # mkinject_3 = lambda: inject_3.__wrapped__(mkfoobar(), mkfoobarbaz(), mkservice())
 
-_n = int(.5e2)
+_n = int(5e3)
 
 with Timer() as tm:
-    scp = ioc.scope()
-    ctx = scp.injector()
-        # with context(ioc) as ctx:
-    if True:   
-        # [ctx[d]() for d in (Foo, Bar, Baz, FooBar, FooBarBaz, Service)]
-        
-        bfoo = Benchmark('Foo.', _n).run(py=mkfoo, xdi=ctx[Foo])
-        bbar = Benchmark('Bar.', _n).run(py=mkbar, xdi=ctx[Bar])
-        bbaz = Benchmark('Baz.', _n).run(py=mkbaz, xdi=ctx[Baz])
-        print(bfoo, bbar, bbaz, sep='\n')
-        # bench = Benchmark(str(Union[Foo, Bar, Baz]), _n)
-        # bench |= bfoo | bbar | bbaz 
-        # print(bench, '\n')
+    scp = Scope(ioc)
+    inj = Injector(scp)
+
+    bfoo = Benchmark('Foo.', _n).run(py=mkfoo, xdi=inj.bound(Foo))
+    bbar = Benchmark('Bar.', _n).run(py=mkbar, xdi=inj.bound(Bar))
+    bbaz = Benchmark('Baz.', _n).run(py=mkbaz, xdi=inj.bound(Baz))
+    print(bfoo, bbar, bbaz, sep='\n')
+    # bench = Benchmark(str(Union[Foo, Bar, Baz]), _n)
+    # bench |= bfoo | bbar | bbaz 
+    # print(bench, '\n')
 
 
-        bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, xdi=ctx[FooBar])
-        bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, xdi=ctx[FooBarBaz])
-        bservice    = Benchmark('Service.', _n).run(py=mkservice, xdi=ctx[Service])
+    bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, xdi=inj.bound(FooBar))
+    bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, xdi=inj.bound(FooBarBaz))
+    bservice    = Benchmark('Service.', _n).run(py=mkservice, xdi=inj.bound(Service))
 
-        print('', bfoobar, bfoobarbaz, bservice, sep='\n')
+    print('', bfoobar, bfoobarbaz, bservice, sep='\n')
 
-        # bench = Benchmark(str(Union[FooBar, FooBarBaz, Service]), _n)
-        # bench |= bfoobar | bfoobarbaz | bservice
-        # print(bench, '\n')
+    # bench = Benchmark(str(Union[FooBar, FooBarBaz, Service]), _n)
+    # bench |= bfoobar | bfoobarbaz | bservice
+    # print(bench, '\n')
 
-        # binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, xdi=inject_1)
-        # binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, xdi=inject_2)
-        # binject_3 = Benchmark('inject_3.', _n).run(py=mkinject_3, xdi=inject_3)
+    # binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, xdi=inject_1)
+    # binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, xdi=inject_2)
+    # binject_3 = Benchmark('inject_3.', _n).run(py=mkinject_3, xdi=inject_3)
 
 
-        # bench = Benchmark('INJECT', _n)
-        # bench |= binject_1 | binject_2 | binject_3
-        # print(bench, '\n')
+    # bench = Benchmark('INJECT', _n)
+    # bench |= binject_1 | binject_2 | binject_3
+    # print(bench, '\n')
         
 
 print(f'TOTAL: {tm}')

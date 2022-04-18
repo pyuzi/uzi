@@ -44,17 +44,17 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
     def name(self) -> str:
         return self.scope.name
 
-    def bound(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
+    def bound(self, abstract: T_Injectable) -> T_Injected:
         return self[self.scope[abstract]]
 
     def call(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
-        return self[self.scope[abstract]]()(*args, **kwds)
+        return self[self.scope[abstract]](*args, **kwds)
 
     def make(self, abstract: T_Injectable) -> T_Injected:
         return self[self.scope[abstract]]()
 
-    def run(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
-        return self[self.scope[abstract]](*args, **kwds)
+    # def run(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
+    #     return self[self.scope[abstract]](*args, **kwds)
 
     # def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
     #     if isinstance(func, MethodType):

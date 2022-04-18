@@ -6,14 +6,12 @@ from functools import reduce
 from operator import or_
 
 from dependency_injector import containers, providers, wiring
-from xdi import Scope, context, inject
 
 from _benchmarkutil import Benchmark
 from vs_dependency_injector import A, B, C, Test, Connection, Container, ioc
+import xdi
 
 
-
-N = int(2e3)
 # N = 1
 
 ST = 0# .000000001
@@ -21,13 +19,13 @@ ST = 0# .000000001
 
 
 
-ioc = Scope()
+ioc = xdi.Container()
 
 ioc.factory(A)
-ioc.factory(B).using(B.make)#.singleton()
-ioc.singleton(C).using(C.make)#.singleton()
-ioc.resource(Connection, k='cm-')
-ioc.factory(Test).using(Test.make, 'ex','why','zee', x='ex', y='why', z='zee')  # .singleton()
+ioc.factory(B).use(B.make)#.singleton()
+ioc.singleton(C).use(C.make)#.singleton()
+ioc.factory(Connection, k='cm-')
+ioc.factory(Test).use(Test.make, 'ex','why','zee', x='ex', y='why', z='zee')  # .singleton()
 
 
 Singleton = providers.Singleton 
@@ -38,7 +36,7 @@ class Container(containers.DeclarativeContainer):
     b = providers.Factory(B.make, a)
     # b = Singleton(B.make, a)
     c = Singleton(C.make, a, b=b)
-    con = providers.Resource(Connection, a, b=b, k='gn-')
+    con = providers.Factory(Connection, a, b=b, k='gn-')
     test = providers.Factory(
         Test.make,
         'ex','why','zee', 
@@ -48,25 +46,25 @@ class Container(containers.DeclarativeContainer):
     )
 
 
-@inject
-async def _inj_xdi(test: Test, a: A, b: B, c: C):
-    assert isinstance(test, Test)
-    assert isinstance(a, A)
-    assert isinstance(b, B)
-    assert isinstance(c, C)
+# @inject
+# async def _inj_xdi(test: Test, a: A, b: B, c: C):
+#     assert isinstance(test, Test)
+#     assert isinstance(a, A)
+#     assert isinstance(b, B)
+#     assert isinstance(c, C)
 
 
-@wiring.inject
-async def _inj_di(
-    test: Test = wiring.Provide[Container.test],
-    a: Test = wiring.Provide[Container.a],
-    b: Test = wiring.Provide[Container.b],
-    c: Test = wiring.Provide[Container.c],
-):
-    assert isinstance(test, Test)
-    assert isinstance(a, A)
-    assert isinstance(b, B)
-    assert isinstance(c, C)
+# @wiring.inject
+# async def _inj_di(
+#     test: Test = wiring.Provide[Container.test],
+#     a: Test = wiring.Provide[Container.a],
+#     b: Test = wiring.Provide[Container.b],
+#     c: Test = wiring.Provide[Container.c],
+# ):
+#     assert isinstance(test, Test)
+#     assert isinstance(a, A)
+#     assert isinstance(b, B)
+#     assert isinstance(c, C)
 
 
 
@@ -77,32 +75,38 @@ async def main():
     # print('created...')
     # await aw
     # print('done...')
+    N = int(10e3)
+
 
     c = Container()
     c.wire([__name__])
-    c.init_resources()
+    # c.init_resources()
 
-    async with context(ioc) as ctx:
+    scope = xdi.Scope(ioc)
+
+    if inj := xdi.injectors.Injector(scope):
+
+    # async with context(ioc) as ctx:
         ls = []
        
         pre =None # lambda k, b: print(f'----------------{k}--------------')
-        bench = await Benchmark("B.", N).arun(pre, di=Container.b, xdi=ctx[B])
+        bench = await Benchmark("B.", N).arun(pre, di=Container.b, xdi=inj.bound(B))
         ls.append(bench)
         print(bench, "\n")
 
 
-        bench = await Benchmark("C.", N).arun(pre, di=Container.c, xdi=ctx[C])
+        bench = await Benchmark("C.", N).arun(pre, di=Container.c, xdi=inj.bound(C))
         ls.append(bench)
         print(bench, "\n")
 
-        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, xdi=ctx[Test])
+        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, xdi=inj.bound(Test))
         ls.append(bench)
         print(bench, "\n")
 
 
         print('----------------------------------------')
         # fut = c.test()
-        fut = ctx[Test]()
+        fut = inj.bound(Test)()
         # await asyncio.sleep(1.25)
         print(f'{fut}')
         print('----------------------------------------')
@@ -114,16 +118,15 @@ async def main():
         # bench |= reduce(or_, ls)
         # print(bench, "\n")
 
-        b = await Benchmark("inject.", N).arun(pre, di=_inj_di, xdi=_inj_xdi)
-        print(b, "\n")
+        # b = await Benchmark("inject.", N).arun(pre, di=_inj_di, xdi=_inj_xdi)
+        # print(b, "\n")
 
-    c.shutdown_resources()
+    # c.shutdown_resources()
 
 
 if __name__ == '__main__':
     import uvloop
 
     # uvloop.install()
-
   
     asyncio.run(main(), debug=False)

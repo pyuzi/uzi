@@ -9,7 +9,6 @@ from dependency_injector import containers, providers, wiring, resources
 from _benchmarkutil import Benchmark
 import xdi
 
-N = int(5e3)
 # N = 1
 
 res: dict[str, tuple[float, float]] = {}
@@ -168,7 +167,7 @@ class Container(containers.DeclarativeContainer):
 
 # def _new_ctx_test():
 #     with context(ioc) as ctx:
-#         test = ctx[Test]()
+#         test = ctx.bound(Test)()
         
 
 # def _new_ctx_inj():
@@ -190,31 +189,37 @@ class Container(containers.DeclarativeContainer):
 
 
 def main():
+    
+    N = int(5e3)
+
 
     c = Container()
     c.wire([__name__])
-    c.init_resources()
-    inj = ioc.scope().injector()
+    # c.init_resources()
 
-    with inj.exitstack:
-       
+    scope = xdi.Scope(ioc)
+
+    inj = xdi.injectors.Injector(scope)
+
+    # with inj.exitstack:
+    if True:
 
         ls = []
        
         
-        bench = Benchmark("A.", N).run(di=Container.a, xdi=inj[A])
+        bench = Benchmark("A.", N).run(di=Container.a, xdi=inj.bound(A))
         # ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("B.", N).run( di=Container.b, xdi=inj[B])
+        bench = Benchmark("B.", N).run( di=Container.b, xdi=inj.bound(B))
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("C.", N).run(di=Container.c, xdi=inj[C])
+        bench = Benchmark("C.", N).run(di=Container.c, xdi=inj.bound(C))
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("Test.", N).run(di=Container.test, xdi=inj[Test])
+        bench = Benchmark("Test.", N).run(di=Container.test, xdi=inj.bound(Test))
         ls.append(bench)
         print(bench, "\n")
 
@@ -229,10 +234,8 @@ def main():
 
 
            
-    c.shutdown_resources()
-
-    print('>>', *inj.scope._dependencies.keys(), sep='\n  - ')
-    print('>>', *inj.keys(), sep='\n  - ')
+    # c.shutdown_resources()
+    
 
     # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), xdi=_new_ctx_test)
     # print(b)

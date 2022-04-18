@@ -11,9 +11,7 @@ import typing as t
 from collections.abc import Callable
 
 from xdi._common import Missing, private_setattr
-from . import _wrappers as wrappers
-from ._wrappers import CallShape, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
-from ._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, _PARAM_VALUE
+from ._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
 
 from . import T_Injectable, T_Injected
 
@@ -111,10 +109,10 @@ class Factory(Dependency[T_Injected]):
     def bind(self: Self, injector: "Injector"):
         if self.params:
             args = self.resolve_args(injector)
-            kwds = self.resolve_kwargs(injector)
+            kwargs = self.resolve_kwargs(injector)
             vals = self.params.vals
             func = self.concrete
-            return lambda: func(*args, **kwds, **vals)
+            return lambda: func(*args, **kwargs, **vals)
         else:
             return self.concrete
 
@@ -149,26 +147,26 @@ class Factory(Dependency[T_Injected]):
 class AsyncFactory(Factory[T_Injected]):
 
     is_async: bool = True
+    async_call: bool = True
 
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class AsyncParamsFactory(Factory[T_Injected]):
+class AwaitParamsFactory(Factory[T_Injected]):
     
     is_async: bool = True
+    async_call: bool = False
      
     def bind(self: Self, injector: "Injector"):
         args, aw_args = self.resolve_args(injector)
-        kwds, aw_kwds = self.resolve_kwargs(injector)
-        return self.make_future_wrapper(
-            injector, args=args, kwds=kwds, aw_args=aw_args, aw_kwds=aw_kwds
+        kwargs, aw_kwargs = self.resolve_kwargs(injector)
+        return FutureFactoryWrapper(
+            self.concrete, self.params.vals, 
+            aw_call=self.async_call, 
+            args=args, kwargs=kwargs, aw_args=aw_args, aw_kwargs=aw_kwargs
         )
 
-    def make_future_wrapper(self: Self, injector: 'Injector', **kwds):
-        kwds.setdefault("aw_call", self.async_call)
-        return FutureFactoryWrapper(self.concrete, self.params.vals, **kwds)
-   
     def resolve_kwargs(self, injector: "Injector"):
         if self.params.aw_kwds:
             deps = super().resolve_kwargs(injector)
@@ -181,6 +179,11 @@ class AsyncParamsFactory(Factory[T_Injected]):
 
 
 
+@attr.s(slots=True, frozen=True, cmp=False)
+class AwaitParamsAsyncFactory(AwaitParamsFactory[T_Injected]):
+    
+    async_call: bool = True
+
 
 
 
@@ -188,15 +191,15 @@ class AsyncParamsFactory(Factory[T_Injected]):
 @attr.s(slots=True, frozen=True, cmp=False)
 class Singleton(Factory[T_Injected]):
 
-    aw_enter: bool = attr.ib(kw_only=True, default=False)
+    # aw_enter: bool = attr.ib(kw_only=True, default=False)
 
     def factory(self, injector: 'Injector'):
         if self.params:
             args = self.resolve_args(injector)
-            kwds = self.resolve_kwargs(injector)
+            kwargs = self.resolve_kwargs(injector)
             vals = self.params.vals
             func = self.concrete
-            return lambda: func(*args, **kwds, **vals)
+            return lambda: func(*args, **kwargs, **vals)
         else:
             return self.concrete
 
@@ -226,25 +229,33 @@ class Singleton(Factory[T_Injected]):
 class AsyncSingleton(Singleton[T_Injected]):
 
     is_async: bool = True
+    async_call: bool = True
 
     def factory(self, injector: 'Injector'):
         if params := self.params:
-            args, kwds = self.resolve_args(injector), self.resolve_kwargs(injector)
-            return FutureFactoryWrapper(self.concrete, params.vals, args=args, kwargs=kwds, aw_call=True)
+            args, kwargs = self.resolve_args(injector), self.resolve_kwargs(injector)
+            return FutureFactoryWrapper(self.concrete, params.vals, args=args, kwargs=kwargs, aw_call=self.async_call)
         else:
-            return FutureFactoryWrapper(self.concrete, self.params.vals, aw_call=True)
+            return FutureFactoryWrapper(self.concrete, self.params.vals, aw_call=self.async_call)
 
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class AsyncParamsSingleton(Singleton[T_Injected], AsyncParamsFactory[T_Injected]):
+class AwaitParamsSingleton(Singleton[T_Injected], AwaitParamsFactory[T_Injected]):
 
     is_async: bool = True
+    async_call: bool = False
 
     def factory(self, injector: 'Injector'):
-        (args, aw_args), (kwds, aw_kwargs) = self.resolve_args(injector), self.resolve_kwargs(injector)
-        return FutureFactoryWrapper(self.concrete, self.params.vals, args=args, kwargs=kwds, aw_args=aw_args, aw_kwargs=aw_kwargs, aw_call=True)
+        (args, aw_args), (kwargs, aw_kwargs) = self.resolve_args(injector), self.resolve_kwargs(injector)
+        return FutureFactoryWrapper(self.concrete, self.params.vals, args=args, kwargs=kwargs, aw_args=aw_args, aw_kwargs=aw_kwargs, aw_call=self.async_call)
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AwaitParamsAsyncSingleton(AwaitParamsSingleton[T_Injected]):
+    
+    async_call: bool = True
 
 
 
@@ -257,3 +268,82 @@ class Resource(Singleton[T_Injected]):
 
     aw_enter: bool = attr.ib(kw_only=True, default=False)
 
+
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class Partial(Factory[T_Injected]):
+
+    def factory(self: Self, injector: "Injector"):
+        args = self.resolve_args(injector)
+        kwargs = self.resolve_kwargs(injector)
+        vals = self.vals
+        func = self.factory
+
+        def make(*a, **kw):
+            nonlocal func, args, kwargs, vals
+            return func(*args, *a, **(vals | kw), **kwargs.skip(kw))
+
+        return make
+
+    def bind(self: Self, injector: "Injector"):
+        return self.factory(injector)
+
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AsyncPartial(Partial[T_Injected]):
+
+    async_call: bool = True
+    is_async: bool = True
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AwaitParamsPartial(Partial[T_Injected], AwaitParamsFactory[T_Injected]):
+    
+    async_call: bool = False
+    is_async: bool = True
+    
+    def factory(self: Self, injector: 'Injector'):
+        (args, aw_args), (kwargs, aw_kwargs) = self.resolve_args(injector), self.resolve_kwargs(injector)
+        return FutureCallableWrapper(self.concrete, self.params.vals, args=args, kwargs=kwargs, aw_args=aw_args, aw_kwargs=aw_kwargs, aw_call=self.async_call)
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AwaitParamsAsyncPartial(AwaitParamsPartial[T_Injected]):
+    
+    async_call: bool = True
+
+
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class Callable(Partial[T_Injected]):
+
+    def bind(self: Self, injector: "Injector"):
+        func = self.factory(injector)
+        return lambda: func
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AsyncCallable(Callable[T_Injected], AsyncPartial[T_Injected]):
+    is_async: bool = True
+
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AwaitParamsCallable(Callable[T_Injected], AwaitParamsPartial[T_Injected]):
+    
+    is_async: bool = True
+
+
+@attr.s(slots=True, frozen=True, cmp=False)
+class AwaitParamsAsyncCallable(Callable[T_Injected], AwaitParamsAsyncPartial[T_Injected]):
+    
+    async_call: bool = True

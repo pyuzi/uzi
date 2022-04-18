@@ -1,7 +1,8 @@
 from copy import copy, deepcopy
 from collections.abc import Callable
+from inspect import isawaitable
 import typing as t
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 import attr
 import pytest
 from xdi._common import Missing
@@ -43,23 +44,20 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         return MagicMock(value_setter, wraps=value_setter)
 
     @pytest.fixture
-    def new_args(self, abstract, new_args):
-        return (abstract, *new_args)
-
-    @pytest.fixture
-    def new_kwargs(self, new_kwargs, concrete, mock_scope, mock_provider):
-        return new_kwargs | dict(scope=mock_scope, provider=mock_provider, concrete=concrete)
-
-    @pytest.fixture
-    def value_factory(self):
-        return lambda *a, **kw: object()
-
-    @pytest.fixture
     def value_setter(self, value_factory):
         def fn(*a, **kw):
             self.value = val = value_factory(*a, **kw)
             return val
         return fn
+
+    def check_deps(self, deps: dict, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, AsyncMock]]):
+        for _t, _v in deps.items():
+            d = mock_scope[_t]
+            _x = mock_injector[d]
+            _x.assert_called()
+            if getattr(d, 'is_async', False):
+               _x.assert_awaited()
+            assert all(_ is _t or not deps[_] is _v for _ in deps)
 
     def test_basic(self, new: _T_NewDep, cls: type[_T_Dep]):
         subject = new()
@@ -103,11 +101,15 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
                 raise AssertionError(f"mutable: {atr.name!r} -> {subject}")
         return subject
         
-    def test_factory(self, new: _T_NewDep, mock_injector: Injector):
+    async def test_factory(self, new: _T_NewDep, mock_injector: Injector):
         subject= new()
         fn = subject.bind(mock_injector)
         assert callable(fn)
         val = fn()
-        assert val is self.value
+        if subject.is_async:
+            assert isawaitable(val)
+            val = await val
+        assert self.value is _notset or val is self.value
         
-        
+    def test_validity(self):
+        assert False, "No validity tests"

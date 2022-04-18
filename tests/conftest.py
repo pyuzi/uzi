@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
@@ -27,6 +28,14 @@ def new(cls, new_args, new_kwargs):
     return lambda *a, **kw: cls(*a, *new_args[len(a):], **{**new_kwargs, **kw})
 
 
+@pytest.fixture
+def value_factory_spec():
+    return object
+
+@pytest.fixture
+def value_factory(value_factory_spec):
+    return MagicMock(value_factory_spec, wraps=value_factory_spec)
+
 
 
 @pytest.fixture
@@ -44,13 +53,47 @@ def MockContainer():
 
 
 @pytest.fixture
+def MockDependency():
+    def make(abstract=None, scope=None, **kw):
+        mk = MagicMock(Dependency)
+
+        if not abstract is None:
+            kw['abstract'] = abstract
+
+        if not scope is None:
+            kw['scope'] = scope
+        
+        kw.setdefault('is_async', False)
+
+        for k,v in kw.items():
+            setattr(mk, k, v)
+        return mk
+
+    return MagicMock(type[Dependency], wraps=make)
+
+
+
+
+@pytest.fixture
 def Mockinjector(MockScope):
     def make(spec=Injector, *, scope=None, parent=True, **kw):
         mi: Injector = NonCallableMagicMock(spec, **kw)
         mi.__bool__.return_value = True
         mi.scope = scope or MockScope()
-        # mi.__getitem__.return_value = None
-        
+        def mock_dep(k):
+            if getattr(k, 'is_async', False):
+                # mi = Mock()
+                # def wrap(*a, **kw):
+                #     return asyncio.sleep(0, mi)
+                mk = MagicMock(asyncio.sleep)
+            else:
+                mk = MagicMock(t.Callable)
+            return mk
+
+        deps = {}
+        mi.__getitem__ = mi.find_local = Mock(wraps=lambda k: deps.get(k) or deps.setdefault(k, mock_dep(k)))
+        mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))
+
         return mi
     return MagicMock(type[Injector], wraps=make)
 
@@ -58,18 +101,14 @@ def Mockinjector(MockScope):
 
 
 @pytest.fixture
-def MockProvider():
+def MockProvider(MockDependency):
     def make(spec=Provider, **kw):
         mi: Provider = NonCallableMagicMock(spec, **kw)
         deps = {}
         def mock_dep(a, s):
-            if mk := deps.get((a,s)):
-                return mk
-            deps[a,s] = mk = Mock(Dependency)
-            mk.scope = s
-            mk.provides = a
-            mk.provider = mi
-            return mk
+            if not (a, s) in deps:
+                deps[a,s] = MockDependency(a, s, provider=mi)
+            return deps[a,s]
 
         mi.resolve = MagicMock(wraps=mock_dep)
         return mi
@@ -78,20 +117,15 @@ def MockProvider():
 
 
 @pytest.fixture
-def MockScope(MockContainer):
+def MockScope(MockContainer, MockDependency):
     def make(spec=Scope, *, parent=True, **kw):
         mi = NonCallableMagicMock(spec, **kw)
         mi.container = cm = MockContainer()
         mi.maps = dict.fromkeys((cm, MockContainer())).keys()
         mi.__contains__.return_value = True 
-        def mock_dep(k):
-            mk = Mock(Dependency)
-            mk.scope = mi
-            mk.provides = k
-            return mk
-
+        
         deps = {}
-        mi.__getitem__ = mi.find_local = Mock(wraps=lambda k: deps.get(k) or deps.setdefault(k, mock_dep(k)))
+        mi.__getitem__ = mi.find_local = Mock(wraps=lambda k: deps[k] if k in deps else deps.setdefault(k, MockDependency(abstract=k, scope=mi)))
         mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))
         if parent:
             mi.parent = make(parent=parent-1, **kw)

@@ -3,11 +3,9 @@
 # cython: wraparound=False
 
 
-import asyncio
 from contextlib import AbstractAsyncContextManager
 import typing as t
-from asyncio import AbstractEventLoop, ensure_future
-from asyncio import get_running_loop
+from asyncio import AbstractEventLoop, ensure_future, get_running_loop
 from collections.abc import (
     Callable,
     ItemsView,
@@ -19,6 +17,16 @@ from enum import Enum
 from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
 from typing_extensions import Self
+from logging import getLogger
+
+import attr
+from typing_extensions import Self
+
+from asyncio import Future
+from xdi._common import frozendict
+
+if t.TYPE_CHECKING:
+    from .injectors import Injector
 
 import attr
 
@@ -56,6 +64,8 @@ _EMPTY = Parameter.empty
 _T = t.TypeVar("_T")
 
 
+
+_frozendict = frozendict()
 
 
 _object_new = object.__new__
@@ -433,5 +443,575 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
 
 
 
+
+
+
+
+
+
+
+class FutureFactoryWrapper:
+
+    __slots__ = "_func", "_args", "_kwargs", "_vals", "_aw_args", "_aw_kwargs", "_aw_call"
+
+    _func: Callable
+    _args: "_PositionalArgs"
+    _kwargs: "_KeywordDeps"
+    _vals: Mapping
+
+    def __new__(
+        cls,
+        func,
+        vals: Mapping = frozendict(),
+        args: "_PositionalArgs" = frozendict(),
+        kwargs: "_KeywordDeps" = frozendict(),
+        *,
+        aw_args: tuple[int] = frozendict(),
+        aw_kwargs: tuple[str] = frozendict(),
+        aw_call: bool = True,
+    ) -> Self:
+        self = _object_new(cls)
+        self._func = func
+        self._vals = vals
+        self._args = args
+        self._kwargs = kwargs
+        self._aw_args = aw_args
+        self._aw_kwargs = aw_kwargs
+        self._aw_call = aw_call
+        return self
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}:{self._func.__module__}.{self._func.__qualname__}()"
+
+    def __call__(self):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwargs := self._aw_kwargs:
+            aw_kwargs = {n: ensure_future(d(), loop=loop) for n, d in aw_kwargs}
+
+        return FactoryFuture(self, aw_args, aw_kwargs, loop=loop)
+
+
+class FutureCallableWrapper(FutureFactoryWrapper):
+
+    __slots__ = ()
+
+    def __call__(self, *a, **kw):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwargs := self._aw_kwargs:
+            aw_kwargs = {
+                n: ensure_future(d(), loop=loop) for n, d in aw_kwargs if not n in kw
+            }
+
+        return CallableFuture(self, aw_args, aw_kwargs, args=a, kwargs=kw, loop=loop)
+
+
+class FutureResourceWrapper(FutureFactoryWrapper):
+
+    __slots__ = (
+        "_aw_enter",
+        "_ctx",
+    )
+
+    _aw_enter: bool
+    _ctx: "Injector"
+
+    if not t.TYPE_CHECKING:
+
+        def __new__(cls, ctx, *args, aw_enter: bool = None, **kwargs):
+            self = super().__new__(cls, *args, **kwargs)
+            self._ctx = ctx
+            self._aw_enter = aw_enter
+            return self
+
+    def __call__(self, *a, **kw):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwargs := self._aw_kwargs:
+            aw_kwargs = {n: ensure_future(d(), loop=loop) for n, d in aw_kwargs}
+
+        return ResourceFuture(self, aw_args, aw_kwargs, loop=loop)
+
+
+# class FactoryFuture(Future):
+
+#     _asyncio_future_blocking = False
+#     _loop: AbstractEventLoop
+#     _factory: FutureFactoryWrapper
+#     _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+#     # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+
+#     def __init__(
+#         self, factory, aw_args=frozendict(), aw_kwargs=_frozendict, *, loop=None
+#     ) -> Self:
+#         Future.__init__(self, loop=loop)
+#         self._factory = factory
+#         self._aws = aw_args, aw_kwargs
+
+#     def __await__(self):
+#         if not self.done():
+#             self._asyncio_future_blocking = True
+#             factory = self._factory
+#             aw_args, aw_kwargs = self._aws
+
+#             if aw_args:
+#                 for k in aw_args:
+#                     aw_args[k] = yield from aw_args[k]
+#                 _args = factory._args
+#                 args = (
+#                     aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+#                 )
+#             else:
+#                 args = factory._args
+
+#             if aw_kwargs:
+#                 for k in aw_kwargs:
+#                     aw_kwargs[k] = yield from aw_kwargs[k]
+#             else:
+#                 aw_kwargs = _frozendict
+
+#             res = factory._func(*args, **aw_kwargs, **factory._kwargs, **factory._vals)
+#             if factory._aw_call:
+#                 res = yield from ensure_future(res, loop=self._loop)
+#             self.set_result(res)  # res
+#             return res
+#         return self.result()
+
+#     __iter__ = __await__
+
+
+class CallableFuture(Future):
+
+    _asyncio_future_blocking = False
+    _loop: AbstractEventLoop
+    _factory: FutureCallableWrapper
+    _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+    _extra_args: tuple[t.Any]
+    _extra_kwargs: Mapping[str, t.Any]
+
+    def __init__(
+        self,
+        factory,
+        aw_args=frozendict(),
+        aw_kwargs=frozendict(),
+        *,
+        args: tuple = (),
+        kwargs: dict[str, t.Any] = frozendict(),
+        loop=None,
+    ) -> Self:
+        Future.__init__(self, loop=loop)
+        self._factory = factory
+        self._aws = aw_args, aw_kwargs
+        self._extra_args = args
+        self._extra_kwargs = kwargs
+
+    def __await__(self):
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwargs = self._aws
+
+            if aw_args:
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
+                _args = factory._args
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
+            else:
+                args = factory._args
+
+            if aw_kwargs:
+                for k, aw in aw_kwargs.items():
+                    aw_kwargs[k] = yield from aw_kwargs[k]
+
+            if kwargs := self._extra_kwargs:
+                vals = factory._vals | kwargs
+                kwargs = factory._kwargs.skip(kwargs)
+            else:
+                vals = factory._vals
+                kwargs = factory._kwargs
+
+            res = factory._func(*args, *self._extra_args, **aw_kwargs, **kwargs, **vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+            self.set_result(res)  # res
+            return res
+        return self.result()
+
+    __iter__ = __await__
+
+
+class ResourceFuture(Future):
+
+    _asyncio_future_blocking = False
+    _loop: AbstractEventLoop
+    _factory: FutureResourceWrapper
+    _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+    _extra_args: tuple[t.Any]
+    _extra_kwargs: Mapping[str, t.Any]
+
+    def __init__(
+        self,
+        factory,
+        aw_args=frozendict(),
+        aw_kwargs=frozendict(),
+        *,
+        args: tuple = (),
+        kwargs: dict[str, t.Any] = frozendict(),
+        loop=None,
+    ) -> Self:
+        Future.__init__(self, loop=loop)
+        self._factory = factory
+        self._aws = aw_args, aw_kwargs
+        self._extra_args = args
+        self._extra_kwargs = kwargs
+
+    def __await__(self):
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwargs = self._aws
+
+            if aw_args:
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
+                _args = factory._args
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
+            else:
+                args = factory._args
+
+            if aw_kwargs:
+                for k, aw in aw_kwargs.items():
+                    aw_kwargs[k] = yield from aw_kwargs[k]
+
+            if kwargs := self._extra_kwargs:
+                vals = factory._vals | kwargs
+                kwargs = factory._kwargs.skip(kwargs)
+            else:
+                vals = factory._vals
+                kwargs = factory._kwargs
+
+            res = factory._func(*args, *self._extra_args, **aw_kwargs, **kwargs, **vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+
+            aw_enter = factory._aw_enter
+            cm = factory._ctx.exitstack
+            if aw_enter is False:
+                res = cm.enter(res)
+            elif aw_enter is True:
+                res = yield from self._loop.create_task(cm.enter_async(res))
+            elif isinstance(res, AbstractAsyncContextManager):
+                factory._aw_enter = True
+                res = yield from self._loop.create_task(cm.enter_async(res))
+            else:
+                factory._aw_enter = False
+                res = cm.enter(res)
+
+            self.set_result(res)  # res
+            return res
+        return self.result()
+
+    __iter__ = __await__
+
+
+
+
+
+
+
+
+class FutureFactoryWrapper:
+
+    __slots__ = "_func", "_args", "_kwargs", "_vals", "_aw_args", "_aw_kwargs", "_aw_call"
+
+    _func: Callable
+    _args: "_PositionalArgs"
+    _kwargs: "_KeywordDeps"
+    _vals: Mapping
+
+    def __new__(
+        cls,
+        func,
+        vals: Mapping = frozendict(),
+        args: "_PositionalArgs" = frozendict(),
+        kwargs: "_KeywordDeps" = frozendict(),
+        *,
+        aw_args: tuple[int] = frozendict(),
+        aw_kwargs: tuple[str] = frozendict(),
+        aw_call: bool = True,
+    ) -> Self:
+        self = _object_new(cls)
+        self._func = func
+        self._vals = vals
+        self._args = args
+        self._kwargs = kwargs
+        self._aw_args = aw_args
+        self._aw_kwargs = aw_kwargs
+        self._aw_call = aw_call
+        return self
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}:{self._func.__module__}.{self._func.__qualname__}()"
+
+    def __call__(self):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwargs := self._aw_kwargs:
+            aw_kwargs = {n: ensure_future(d(), loop=loop) for n, d in aw_kwargs}
+
+        return FactoryFuture(self, aw_args, aw_kwargs, loop=loop)
+
+
+class FutureCallableWrapper(FutureFactoryWrapper):
+
+    __slots__ = ()
+
+    def __call__(self, *a, **kw):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwargs := self._aw_kwargs:
+            aw_kwargs = {
+                n: ensure_future(d(), loop=loop) for n, d in aw_kwargs if not n in kw
+            }
+
+        return CallableFuture(self, aw_args, aw_kwargs, args=a, kwargs=kw, loop=loop)
+
+
+class FutureResourceWrapper(FutureFactoryWrapper):
+
+    __slots__ = (
+        "_aw_enter",
+        "_ctx",
+    )
+
+    _aw_enter: bool
+    _ctx: "Injector"
+
+    if not t.TYPE_CHECKING:
+
+        def __new__(cls, ctx, *args, aw_enter: bool = None, **kwargs):
+            self = super().__new__(cls, *args, **kwargs)
+            self._ctx = ctx
+            self._aw_enter = aw_enter
+            return self
+
+    def __call__(self, *a, **kw):
+        loop = get_running_loop()
+        if aw_args := self._aw_args:
+            _args = self._args
+            aw_args = {i: ensure_future(_args[i], loop=loop) for i in aw_args}
+        if aw_kwargs := self._aw_kwargs:
+            aw_kwargs = {n: ensure_future(d(), loop=loop) for n, d in aw_kwargs}
+
+        return ResourceFuture(self, aw_args, aw_kwargs, loop=loop)
+
+
+
+class FactoryFuture(Future):
+
+    _asyncio_future_blocking = False
+    _loop: AbstractEventLoop
+    _factory: FutureFactoryWrapper
+    _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+
+    def __init__(
+        self, factory, aw_args=frozendict(), aw_kwargs=frozendict(), *, loop=None
+    ) -> Self:
+        Future.__init__(self, loop=loop)
+        self._factory = factory
+        self._aws = aw_args, aw_kwargs
+
+    def __await__(self):
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwargs = self._aws
+
+            if aw_args:
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
+                _args = factory._args
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
+            else:
+                args = factory._args
+
+            if aw_kwargs:
+                for k in aw_kwargs:
+                    aw_kwargs[k] = yield from aw_kwargs[k]
+            else:
+                aw_kwargs = _frozendict
+                
+            logger.info(f'{aw_kwargs=!r}')
+            logger.info(f'{factory._vals=!r}')
+            logger.info(f'{factory._vals=!r}')
+
+            res = factory._func(*args, **aw_kwargs, **factory._kwargs, **factory._vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+            self.set_result(res)  # res
+            return res
+        return self.result()
+
+    __iter__ = __await__
+
+
+class CallableFuture(Future):
+
+    _asyncio_future_blocking = False
+    _loop: AbstractEventLoop
+    _factory: FutureCallableWrapper
+    _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+    _extra_args: tuple[t.Any]
+    _extra_kwargs: Mapping[str, t.Any]
+
+    def __init__(
+        self,
+        factory,
+        aw_args=frozendict(),
+        aw_kwargs=frozendict(),
+        *,
+        args: tuple = (),
+        kwargs: dict[str, t.Any] = frozendict(),
+        loop=None,
+    ) -> Self:
+        Future.__init__(self, loop=loop)
+        self._factory = factory
+        self._aws = aw_args, aw_kwargs
+        self._extra_args = args
+        self._extra_kwargs = kwargs
+
+    def __await__(self):
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwargs = self._aws
+
+            if aw_args:
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
+                _args = factory._args
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
+            else:
+                args = factory._args
+
+            if aw_kwargs:
+                for k, aw in aw_kwargs.items():
+                    aw_kwargs[k] = yield from aw_kwargs[k]
+
+            if kwargs := self._extra_kwargs:
+                vals = factory._vals | kwargs
+                kwargs = factory._kwargs.skip(kwargs)
+            else:
+                vals = factory._vals
+                kwargs = factory._kwargs
+
+            res = factory._func(*args, *self._extra_args, **aw_kwargs, **kwargs, **vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+            self.set_result(res)  # res
+            return res
+        return self.result()
+
+    __iter__ = __await__
+
+
+class ResourceFuture(Future):
+
+    _asyncio_future_blocking = False
+    _loop: AbstractEventLoop
+    _factory: FutureResourceWrapper
+    _aws: tuple[dict[int, Future[_T]], dict[str, Future[_T]]]
+    # _aws: tuple[Future[_T], dict[str, Future[_T]]]
+    _extra_args: tuple[t.Any]
+    _extra_kwargs: Mapping[str, t.Any]
+
+    def __init__(
+        self,
+        factory,
+        aw_args=frozendict(),
+        aw_kwargs=frozendict(),
+        *,
+        args: tuple = (),
+        kwargs: dict[str, t.Any] = frozendict(),
+        loop=None,
+    ) -> Self:
+        Future.__init__(self, loop=loop)
+        self._factory = factory
+        self._aws = aw_args, aw_kwargs
+        self._extra_args = args
+        self._extra_kwargs = kwargs
+
+    def __await__(self):
+        if not self.done():
+            self._asyncio_future_blocking = True
+            factory = self._factory
+            aw_args, aw_kwargs = self._aws
+
+            if aw_args:
+                for k in aw_args:
+                    aw_args[k] = yield from aw_args[k]
+                _args = factory._args
+                args = (
+                    aw_args[i] if i in aw_args else _args[i] for i in range(len(_args))
+                )
+            else:
+                args = factory._args
+
+            if aw_kwargs:
+                for k, aw in aw_kwargs.items():
+                    aw_kwargs[k] = yield from aw_kwargs[k]
+
+            if kwargs := self._extra_kwargs:
+                vals = factory._vals | kwargs
+                kwargs = factory._kwargs.skip(kwargs)
+            else:
+                vals = factory._vals
+                kwargs = factory._kwargs
+
+            res = factory._func(*args, *self._extra_args, **aw_kwargs, **kwargs, **vals)
+            if factory._aw_call:
+                res = yield from ensure_future(res, loop=self._loop)
+
+            aw_enter = factory._aw_enter
+            cm = factory._ctx.exitstack
+            if aw_enter is False:
+                res = cm.enter(res)
+            elif aw_enter is True:
+                res = yield from self._loop.create_task(cm.enter_async(res))
+            elif isinstance(res, AbstractAsyncContextManager):
+                factory._aw_enter = True
+                res = yield from self._loop.create_task(cm.enter_async(res))
+            else:
+                factory._aw_enter = False
+                res = cm.enter(res)
+
+            self.set_result(res)  # res
+            return res
+        return self.result()
+
+    __iter__ = __await__
 
 

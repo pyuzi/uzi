@@ -72,10 +72,10 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 
 
 @private_setattr(frozen='_frozen')
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True, cache_hash=True, cmp=True)
 class Provider(t.Generic[_T_Concrete, _T_Dep]):
 
-    _frozen: bool = attr.ib(init=False, cmp=True, default=False)
+    _frozen: bool = attr.ib(init=False, cmp=False, default=False)
 
     concrete: _T_Concrete = attr.ib(default=Missing)
     """The object used to resolve 
@@ -169,17 +169,17 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
             return cls(abstract, scope, self, **self._get_dependency_kwargs(**kwds))
         raise NotImplementedError(f'{self.__class__.__name__}._make_dependency()') # pragma: no cover
 
-    # def __eq__(self, x):
-    #     return x is self
+    def __eq__(self, x):
+        return x is self
 
-    # def __hash__(self):
-    #     return id(self)
-
-
+    def __hash__(self):
+        return id(self)
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
+
+
+@attr.s(slots=True, frozen=True, cmp=True)
 class Value(Provider[_T_Concrete, dependency.Value]):
     """Provides given value as it is."""
 
@@ -192,7 +192,7 @@ class Value(Provider[_T_Concrete, dependency.Value]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
+@attr.s(slots=True, frozen=True, cmp=True)
 class Alias(Provider[_T_Concrete]):
 
     def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
@@ -200,7 +200,7 @@ class Alias(Provider[_T_Concrete]):
   
   
 
-@attr.s(slots=True, frozen=True, cmp=False)
+@attr.s(slots=True, frozen=True, cmp=True)
 class UnionProvider(Provider[_T_Concrete]):
 
     abstract = t.get_origin(t.Union[t.Any, None])
@@ -224,7 +224,7 @@ class UnionProvider(Provider[_T_Concrete]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
+@attr.s(slots=True, frozen=True, cmp=True)
 class AnnotatedProvider(UnionProvider[_T_Concrete]):
 
     abstract = t.get_origin(t.Annotated[t.Any, None])
@@ -240,7 +240,7 @@ class AnnotatedProvider(UnionProvider[_T_Concrete]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
+@attr.s(slots=True, frozen=True, cmp=True)
 class DepMarkerProvider(Provider[_T_Concrete]):
     
     abstract = Dep
@@ -274,7 +274,7 @@ class DepMarkerProvider(Provider[_T_Concrete]):
 
 
 
-@attr.s(slots=True, cmp=False, init=False, frozen=True)
+@attr.s(slots=True, cmp=True, init=False, frozen=True)
 class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_Injected]):
     
     arguments: tuple[tuple, frozendict] = attr.ib(default=((), frozendict()))
@@ -296,7 +296,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
     def __init__(self, concrete: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
         self.__attrs_init__(
             concrete=concrete, 
-            arguments=(args, kwargs)
+            arguments=(args, frozendict(kwargs))
         )
 
     def args(self, *args) -> Self:
@@ -379,7 +379,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
 
 
 
-@attr.s(slots=True, cmp=False, init=False)
+@attr.s(slots=True, cmp=True, init=False)
 class Singleton(Factory[T_Injected]):
 
     is_shared: t.ClassVar[bool] = True
@@ -403,7 +403,7 @@ class Singleton(Factory[T_Injected]):
 
 
 
-@attr.s(slots=True, cmp=False, init=False)
+@attr.s(slots=True, cmp=True, init=False)
 class Resource(Singleton[T_Injected]):
 
     is_async: bool = attr.ib(init=False, default=None)
@@ -421,7 +421,7 @@ class Resource(Singleton[T_Injected]):
 
 
 
-@attr.s(slots=True, init=False)
+@attr.s(slots=True, init=False, cmp=True)
 class Partial(Factory[T_Injected]):
 
     _sync_dependency_class: t.ClassVar = dependency.Partial
@@ -432,15 +432,12 @@ class Partial(Factory[T_Injected]):
     def _fallback_signature(self):
         return self._arbitrary_signature
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> dependency.Dependency:
-        return dependency.Dependency(scope, abstract, self)
 
 
 
 
 
-
-@attr.s(slots=True, init=False)
+@attr.s(slots=True, init=False, cmp=True)
 class Callable(Partial[T_Injected]):
 
     _sync_dependency_class: t.ClassVar = dependency.Callable
@@ -453,7 +450,7 @@ class Callable(Partial[T_Injected]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=False)
+@attr.s(slots=True, frozen=True, cmp=True)
 class ProvidedMarkerProvider(Factory):
     
     abstract = Provided

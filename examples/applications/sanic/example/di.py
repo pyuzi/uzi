@@ -2,42 +2,21 @@
 
 from collections.abc import Callable
 from functools import partial, update_wrapper, wraps
-from aiohttp import ClientSession
-from xdi import Scope, providers
+from xdi import Container, providers
+from xdi.adapters.sanic import inject
 from sanic import Request
 
-from .services import search, giphy, T_HttpClient
+from .services import search, giphy
 
 
 
-injector = Scope()
+ioc = Container()
 
 # injector.factory(T_HttpClient).using(ClientSession, timeout=10)#.awaitable()
 
-injector.provide(
+ioc.provide(
     giphy.GiphyClient,
     search.SearchService
 )
-
-
-def inject(handler: Callable):
-    if isinstance(handler, partial):
-        func = handler.func
-    else:
-        func = handler      
-
-    if hasattr(func, '__dependency__'):
-        return handler
-
-    provider = providers.Partial(func)
-
-    def wrapper(req: Request, *a, **kw):
-        nonlocal provider
-        return req.ctx.injector_context[provider](req, *a, **kw)
-    
-    update_wrapper(wrapper, func)
-    wrapper.__dependency__ = provider
-
-    return wrapper
 
 

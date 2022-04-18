@@ -71,9 +71,9 @@ class InjectorTests(BaseTestCase[Injector]):
         sub = new()
         assert not key in sub
         if isinstance(key, Dependency):
-            new()[key]
+            sub[key]
         else:
-            sub.make(key)
+            sub(key)
 
    
        

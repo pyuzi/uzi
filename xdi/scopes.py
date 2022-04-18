@@ -11,7 +11,7 @@ from xdi._common import Missing, private_setattr
 from xdi._common import frozendict
 from xdi.providers import Provider
 
-from . import Injectable, T_Default
+from . import Injectable, T_Default, is_injectable
 # from .injectors import Injector
 from ._dependency import Dependency, LookupErrorDependency
 
@@ -106,8 +106,10 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
                 return self.__setdefault(abstract, dep)
         if dep := recursive and self.parent[abstract]:
             return self.__setdefault(abstract, dep)
-        else:
+        elif is_injectable(abstract):
             return LookupErrorDependency(abstract, self)
+        else:
+            raise TypeError(f'Scope keys must be `Injectable` not {abstract.__class__.__qualname__}')
 
     def __eq__(self, o) -> bool:
         if isinstance(o, Scope):

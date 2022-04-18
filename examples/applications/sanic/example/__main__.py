@@ -17,7 +17,7 @@ if '--test' in sys.argv:
         et = time()
         print(f'async x {n:,}: took: {et-st:.4f} secs, {n*(1/(et-st)):.4} req/sec')
 
-    n = 750
+    n = 500
     print(*sys.argv[1:])
     asyncio.run(test_async(create_app('--di' in sys.argv), n))
 

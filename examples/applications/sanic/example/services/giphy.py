@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from . import T_HttpClient
-from aiohttp import ClientSession
 
 
 

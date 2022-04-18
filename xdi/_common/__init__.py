@@ -182,7 +182,7 @@ _T_Val = t.TypeVar("_T_Val", covariant=True)
 _T_Default = t.TypeVar("_T_Default", covariant=True)
 
 
-class frozendict(dict[_T_Key, _T_Val]):
+class   frozendict(dict[_T_Key, _T_Val]):
 
     __slots__ = ("_hash",)
 
@@ -207,7 +207,7 @@ class frozendict(dict[_T_Key, _T_Val]):
             _object_setattr(self, '_hash', ash)
 
         if ash is None:
-            raise TypeError(f"unhashable type: {self.__class__.__name__!r}")
+            raise TypeError(f"un---hashable type: {self.__class__.__name__!r}")
 
         return ash
 

@@ -47,20 +47,11 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
     def bound(self, abstract: T_Injectable) -> T_Injected:
         return self[self.scope[abstract]]
 
-    def call(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
-        return self[self.scope[abstract]](*args, **kwds)
+    def __call__(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
+        return self.bound(abstract)(*args, **kwds)
 
-    def make(self, abstract: T_Injectable) -> T_Injected:
-        return self[self.scope[abstract]]()
-
-    # def run(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
-    #     return self[self.scope[abstract]](*args, **kwds)
-
-    # def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
-    #     if isinstance(func, MethodType):
-    #         args = (func.__self__,) + args
-    #         func = func.__func__
-    #     return self.make(func)(*args, **kwds)
+    # def make(self, abstract: T_Injectable) -> T_Injected:
+    #     return self.bound(abstract)()
 
     def __bool__(self):
         return True
@@ -69,23 +60,21 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
         return self.__contains(x) or x in self.parent
 
     def __missing__(self, dep: Dependency):
-        if dep and dep.scope is self.scope:
-            return self.__setdefault(dep, dep.bind(self))
-        return self.__setdefault(dep, self.parent[dep])
+        try:
+            return self.__setdefault(dep, (dep.scope is self.scope and dep.bind(self)) or self.parent[dep])   
+        except AttributeError as e:
+            raise TypeError(f'Injector key must be a `Dependency` not `{dep.__class__.__qualname__}`')
         
     __setdefault = dict.setdefault
     __contains = dict.__contains__
     __ior = dict.__ior__
 
     def copy(self):
-        new = self.__class__(self.scope, self.parent)
-        self and new.__ior(self)
-        return new
+        return self.__class__(self.scope, self.parent).__ior(self)
 
     __copy__ = copy
 
-    def __reduce__(self): # pragma: no cover 
-        return self.__class__, (self.scope, self.parent)
+    def __reduce__(self): return self.__class__, (self.scope, self.parent)
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.name!r})"
@@ -125,6 +114,8 @@ class NullInjector(Injector):
 
     def __init__(self, *a, **kw) -> None: ...
     
+    def __reduce__(self): return self.__class__, ()
+
     def __getitem__(self, dep: Dependency):
         try:
             dep.bind(self)

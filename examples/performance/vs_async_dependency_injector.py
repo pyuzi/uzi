@@ -69,13 +69,7 @@ class Container(containers.DeclarativeContainer):
 
 
 async def main():
-    # print('init...')
-    # aw = c.c()
-    # await asyncio.sleep(1)
-    # print('created...')
-    # await aw
-    # print('done...')
-    N = int(10e3)
+    N = int(5e3)
 
 
     c = Container()
@@ -104,29 +98,21 @@ async def main():
         print(bench, "\n")
 
 
-        print('----------------------------------------')
-        # fut = c.test()
-        fut = inj.bound(Test)()
-        # await asyncio.sleep(1.25)
-        print(f'{fut}')
-        print('----------------------------------------')
-        # print(f'{await fut}')
-        # print(f'{await fut=}')
-        # print(f'{await fut=}')
-
-        # bench = Benchmark(f"Providers[{A | B | C | Test}]", N)
-        # bench |= reduce(or_, ls)
-        # print(bench, "\n")
-
-        # b = await Benchmark("inject.", N).arun(pre, di=_inj_di, xdi=_inj_xdi)
-        # print(b, "\n")
-
-    # c.shutdown_resources()
-
 
 if __name__ == '__main__':
-    import uvloop
 
-    # uvloop.install()
-  
+    print('----------------------------------------')
+    print('---         without uvloop           ---')
+    print('----------------------------------------')
     asyncio.run(main(), debug=False)
+
+
+    print('----------------------------------------')
+    print('---           with  uvloop           ---')
+    print('----------------------------------------')
+
+    import uvloop
+    uvloop.install()
+
+    asyncio.run(main(), debug=False)
+

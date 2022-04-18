@@ -129,19 +129,19 @@ ioc = xdi.Container()
 
 ioc.factory(A)
 ioc.factory(B)#.singleton()
-ioc.factory(C)#.singleton()
+ioc.singleton(C)#.singleton()
 ioc.factory(Connection, k='cm-')
 ioc.factory(Test).args('ex','why','zee').kwargs(x='ex', y='why', z='zee')  # .singleton()
 
 
-# Singleton = providers.Singleton 
-Singleton = providers.Factory 
+Singleton = providers.Singleton 
+# Singleton = providers.Factory 
 
 class Container(containers.DeclarativeContainer):
     a = providers.Factory(A)
     b = providers.Factory(B, a)
     # b = Singleton(B, a)
-    con = Singleton(Connection, a, b=b, k='gn-')
+    con = providers.Factory(Connection, a, b=b, k='gn-')
     c = Singleton(C, a, b=b)
     test = providers.Factory(
         Test,

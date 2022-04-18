@@ -25,6 +25,8 @@ _T_Fn = t.TypeVar('_T_Fn', bound=AbcCallable)
 def _provder_factory_method(cls: _T_Fn) -> _T_Fn:
     @wraps(cls)
     def wrapper(self: "ProviderRegistry", abstract, *a, **kw):
+        if not a:
+            a = abstract,
         self[abstract] = pro = cls(*a, **kw)
         return pro
 
@@ -37,7 +39,7 @@ class ProviderRegistry(ABC):
     __slots__ = ()
 
     @abstractmethod
-    def __setitem__(self, abstract: Injectable, provider: Provider):
+    def __setitem__(self, abstract: Injectable, provider: Provider): # pragma: no cover
         ...
 
     def provide(self, *providers: t.Union[Provider, type, GenericAlias, FunctionType], **kwds) -> Self:
@@ -60,7 +62,7 @@ class ProviderRegistry(ABC):
                 )
         return self
     
-    if t.TYPE_CHECKING:
+    if t.TYPE_CHECKING: # pragma: no cover
 
         def alias(self, abstract: Injectable, alias: t.Any, *a, **kw) -> Alias:
             ...

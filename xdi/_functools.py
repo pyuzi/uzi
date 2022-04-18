@@ -132,7 +132,7 @@ class BoundParam:
 
         if None is self.injectable:
             annotation = param.annotation
-            if is_injectable_annotation(annotation):
+            if not annotation is _EMPTY and is_injectable_annotation(annotation):
                 self.injectable = annotation
 
         return self

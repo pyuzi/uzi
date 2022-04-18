@@ -1,7 +1,9 @@
 import asyncio
+import operator
 from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
+from xdi import is_injectable
 from xdi.containers import Container
 from xdi.injectors import Injector
 from xdi.providers import Provider
@@ -122,7 +124,7 @@ def MockScope(MockContainer, MockDependency):
         mi = NonCallableMagicMock(spec, **kw)
         mi.container = cm = MockContainer()
         mi.maps = dict.fromkeys((cm, MockContainer())).keys()
-        mi.__contains__.return_value = True 
+        mi.__contains__ = MagicMock(operator.__contains__, wraps=lambda k: deps.get(k) or is_injectable(k)) 
         
         deps = {}
         mi.__getitem__ = mi.find_local = Mock(wraps=lambda k: deps[k] if k in deps else deps.setdefault(k, MockDependency(abstract=k, scope=mi)))
@@ -151,8 +153,8 @@ def mock_provider(MockProvider):
 
 
 @pytest.fixture
-def mock_injector(Mockinjector):
-    return Mockinjector()
+def mock_injector(Mockinjector, mock_scope):
+    return Mockinjector(scope=mock_scope)
 
 
 

@@ -233,16 +233,14 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         orig = cls._get_dependency_kwargs
         with patch.object(cls, '_get_dependency_kwargs', wraps=lambda *a, **kw: orig(subject, *a, **kw)):
             subject = new()
-            dep = subject._make_dependency(_T, mock_scope)
+            dep = subject._make_dependency(abstract, mock_scope)
             assert isinstance(dep, Dependency)
-            assert isinstance(dep, subject._dependency_class)
             subject._get_dependency_kwargs.assert_called_once()
             return subject, dep
 
     def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_NewPro, mock_scope: Scope):
         subject = new()
         res = subject.resolve(abstract, mock_scope)
-        assert isinstance(res, Dependency)
         assert isinstance(res, Dependency)
         assert subject._frozen
         return subject, res    
@@ -261,6 +259,18 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
             res = subject.resolve(abstract, mock_scope)
             subject.can_resolve.assert_called_once_with(abstract, mock_scope)        
             return subject, res    
+
+    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_NewPro, mock_scope: Scope, mock_injector):
+        subject = new()
+        dep = subject.resolve(abstract, mock_scope)
+        assert isinstance(dep, Dependency)
+        func = dep.bind(mock_injector)
+        assert callable(func)
+        res = func()
+        if dep.is_async:
+            assert isawaitable(res)
+            res = await res
+        return subject, res    
 
 
 

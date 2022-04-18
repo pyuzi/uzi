@@ -7,7 +7,7 @@ import sys
 import types
 import typing as t
 from collections import ChainMap
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from importlib import import_module
 from typing import ForwardRef, TypeVar
 from typing_extensions import Self
@@ -197,23 +197,22 @@ class frozendict(dict[_T_Key, _T_Val]):
         try:
             ash = self._hash
         except AttributeError:
-            self._hash = ash = None
+            ash = None
             items = self._hash_items_()
             if items is not None:
                 try:
-                    self._hash = ash = hash((frozendict, tuple(items)))
-                except TypeError as e:
-                    raise TypeError(
-                        f"unhashable type: {self.__class__.__name__!r}"
-                    ) from e
+                    ash = hash(items)
+                except TypeError:
+                    pass
+            _object_setattr(self, '_hash', ash)
 
         if ash is None:
             raise TypeError(f"unhashable type: {self.__class__.__name__!r}")
 
         return ash
 
-    def _hash_items_(self):
-        return ((k, self[k]) for k in sorted(self))
+    def _hash_items_(self) -> Hashable:
+        return *((k, self[k]) for k in sorted(self)),
 
     def __reduce__(self):
         return (

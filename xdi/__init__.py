@@ -1,4 +1,5 @@
 from collections import namedtuple
+from inspect import Parameter
 import operator
 import typing as t
 from abc import ABCMeta, abstractmethod
@@ -7,6 +8,7 @@ from logging import getLogger
 from types import FunctionType, GenericAlias, MethodType
 
 from typing_extensions import Self
+from weakref import WeakSet
 
 import attr
 
@@ -33,7 +35,20 @@ _NoneType = type(None)
 _BLACKLIST = frozenset({
     None, 
     _NoneType,
+    t.Any,
     type(t.Literal[1]),
+
+    str,
+    bytes,
+    bytearray,
+    tuple,
+    
+    int, 
+    float,
+    frozenset,
+    Parameter.empty,
+    Missing,
+
 })
 
 
@@ -48,6 +63,7 @@ def is_injectable_annotation(obj):
 
 
 class _PrivateABCMeta(ABCMeta):
+    
     def register(self, subclass):
         if not (calling_frame().get("__package__") or "").startswith(__package__):
             raise TypeError(f"virtual subclasses not allowed for {self.__name__}")
@@ -55,14 +71,54 @@ class _PrivateABCMeta(ABCMeta):
         return super().register(subclass)
 
 
-class Injectable(metaclass=_PrivateABCMeta):
+
+class InjectableType(_PrivateABCMeta):
+    
+    _abc_blacklist: WeakSet
+
+    def __new__(mcls, name, bases, namespace, /, **kwargs):
+        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        cls._abc_blacklist = WeakSet()
+        return cls
+
+    def blacklist(self, cls):
+        self._abc_blacklist.add(cls)
+        return cls
+    
+    def blacklisted(self, cls):
+        return cls in self._abc_blacklist
+
+    def __instancecheck__(self, instance):
+        """Override for isinstance(instance, cls)."""
+        return not instance.__class__ in self._abc_blacklist \
+            and super().__instancecheck__(instance)
+
+    def __subclasscheck__(self, cls):
+        """Override for isinstance(instance, cls)."""
+        return not cls in self._abc_blacklist \
+            and super().__subclasscheck__(cls)
+
+
+
+class Injectable(metaclass=InjectableType):
 
     __slots__ = ()
 
-    __class_getitem__ = classmethod(GenericAlias)
+    @classmethod
+    def __subclasshook__(cls, sub):
+        if cls is Injectable:
+            return not sub in cls._abc_blacklist
+        return NotImplemented
 
-    def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass {cls.__name__}")
+
+# Injectable.blacklist(str)
+# Injectable.blacklist(bytes)
+# Injectable.blacklist(bytearray)
+# Injectable.blacklist(tuple)
+# Injectable.blacklist(int)
+# Injectable.blacklist(float)
+# # Injectable.blacklist(int)
+# Injectable.blacklist(int)
 
 
 Injectable.register(type)
@@ -93,13 +149,18 @@ class InjectionMarker(t.Generic[T_Injectable], metaclass=_PrivateABCMeta):
     __slots__ = ()
 
     @property
-    def __origin__(self):
-        return self.__class__
+    @abstractmethod
+    def __origin__(self): ...
 
-    @property
-    # @abstractmethod
-    def __dependency__(self) -> T_Injectable:
-        ...
+
+
+
+@attr.s()
+class InjectorLookupError(KeyError):
+
+    abstract: Injectable = attr.ib(default=None)
+    scope: 'Scope' = attr.ib(default=None)
+
 
 
 
@@ -135,6 +196,8 @@ class PureDep(t.Generic[T_Injectable]):
     injects_default: t.Final = False
 
     def __new__(cls: type[Self], abstract: T_Injectable) -> Self:
+        if abstract.__class__ is cls:
+            return abstract
         self = _object_new(cls)
         self.__setattr(abstract=abstract)
         return self
@@ -162,6 +225,10 @@ class PureDep(t.Generic[T_Injectable]):
 
     del forward_op
     
+    @property
+    def provided(self):
+        return Provided(self)
+
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}({self.abstract!s})'
 
@@ -223,13 +290,9 @@ class Dep(_AbcDepTuple):
         else:
             return _AbcDepTuple.__new__(cls, dependency, scope, default)
 
-    # @property
-    # def __dependency__(self):
-    #     return self.__class__
-
-    # @property
-    # def __origin__(self):
-    #     return self.__class__
+    @property
+    def __origin__(self):
+        return self.__class__
 
     @property
     def has_default(self):
@@ -239,129 +302,31 @@ class Dep(_AbcDepTuple):
     def injects_default(self):
         return isinstance(self.default, InjectionMarker)
 
-
+    @property
+    def provided(self):
+        return Provided(self)
 
 
 
 @InjectionMarker.register
-class LazyOp(BaseLazyOp[T_Injected]):
-    __slots__ = ()
+class Provided(BaseLazyOp):
+    
+    __slots__ = () 
+    __offset__ = 1
 
-    # """Marks an injectable as a `dependency` to be injected."""
+    @t.overload
+    def __new__(cls: type[Self], abstract: type[T_Injected]) -> Self: ...
+    __new__ = BaseLazyOp.__new__
+   
+    @property
+    def __abstract__(self) -> type[T_Injected]:
+        return self.__expr__[0]
+    
+    @property
+    def __origin__(self):
+        return self.__class__
 
-    # __slots__ = (
-    #     "__injects__",
-    #     "__injector__",
-    #     "__v_hashident__",
-    #     "__default__",
-    # )
 
-    # Flag = DepScope
-
-    # ONLY_SELF: t.Final = DepScope.only_self
-    # """Only inject from the current context without considering parents
-    # """
-
-    # SKIP_SELF: t.Final = DepScope.skip_self
-    # """Skip the current context and resolve from it's parent instead.
-    # """
-
-    # _default_metadata = None, Missing, ()
-
-    # def __init_subclass__(cls, *args, **kwargs):
-    #     raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__name__}")
-
-    # @t.overload
-    # def __new__(
-    #     cls: type[Self],
-    #     dependency: T_Injectable,
-    #     *,
-    #     injector: t.Union[DepScope, "Injector", None] = None,
-    #     default=Missing,
-    # ) -> Self:
-    #     ...
-
-    # def __new__(
-    #     cls,
-    #     dependency: T_Injectable,
-    #     injector: t.Union[DepScope, "Injector", None] = None,
-    #     default=Missing,
-    #     __expr=(),
-    # ):
-    #     self = super().__new__(cls, __expr)
-    #     object.__setattr__(self, "__injects__", dependency)
-    #     object.__setattr__(self, "__injector__", injector)
-    #     object.__setattr__(self, "__default__", default)
-    #     return self
-
-    # @property
-    # def __origin__(self):
-    #     return self.__class__
-
-    # @property
-    # def __metadata__(self):
-    #     return self.__injector__, self.__default__, self.__expr__
-
-    # @property
-    # def __dependency__(self):
-    #     return self.__injects__ if self.__hashident__ is None else self
-
-    # @property
-    # def __hasdefault__(self):
-    #     return not self.__default__ is Missing
-
-    # @property
-    # def __hashident__(self) -> int:
-    #     try:
-    #         return self.__v_hashident__
-    #     except AttributeError:
-    #         meta = self.__metadata__
-    #         ash = None
-    #         if meta == self._default_metadata:
-    #             object.__setattr__(self, "__v_hashident__", None)
-    #         else:
-    #             object.__setattr__(
-    #                 self, "__v_hashident__", ash := hash((self.__injects__, meta))
-    #             )
-    #         return ash
-
-    # def __push__(self, *expr):
-    #     return self.__class__(
-    #         self.__injects__, self.__injector__, self.__default__, self.__expr__ + expr
-    #     )
-
-    # def __reduce__(self):
-    #     return self.__class__, (
-    #         self.__injects__,
-    #         self.__injector__,
-    #         self.__default__,
-    #         self.__expr__,
-    #     )
-
-    # def __eq__(self, x) -> bool:
-    #     if not isinstance(x, self.__class__):
-    #         return self.__hashident__ is None and x == self.__injects__
-    #     return self.__injects__ == x.__injects__ and self.__metadata__ == x.__metadata__
-
-    # def __hash__(self):
-    #     ash = self.__hashident__
-    #     if ash is None:
-    #         return hash(self.__injects__)
-    #     else:
-    #         return ash
-
-    # def __str__(self):
-    #     return f"{self.__injects__!s}" + "".join(map(str, self.__expr__))
-
-    # def __repr__(self) -> bool:
-    #     dependency = self.__injects__
-    #     injector = self.__injector__
-    #     default = self.__default__
-    #     return f'{self.__class__.__name__}({dependency=}, {default=}, {injector=}){"".join(map(str, self.__expr__))}'
-
-    # def __setattr__(self, name: str, value) -> None:
-    #     getattr(self, name)
-    #     raise AttributeError(f"cannot set readonly attribute {name!r}")
 
 
 from .containers import Container

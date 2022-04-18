@@ -1,8 +1,9 @@
+import logging
 import typing as t
 from abc import abstractmethod
 from collections.abc import Callable, Hashable
 
-from . import frozendict
+from . import frozendict, private_setattr
 
 
 
@@ -13,6 +14,7 @@ _T_Args = t.TypeVar("_T_Args")
 _T_Kwargs = t.TypeVar("_T_Kwargs")
 _T_Item = t.TypeVar("_T_Item", int, str, Hashable)
 
+_object_new = object.__new__
 
 
 class ExpressionError(Exception):
@@ -60,6 +62,7 @@ _eval_exc_types = {
 }
 
 
+@private_setattr
 class Expression(t.Generic[_T_Expr, _T_Obj]):
     __slots__ = ("__expr__",)
 
@@ -68,8 +71,8 @@ class Expression(t.Generic[_T_Expr, _T_Obj]):
     __evaluation_errors__ = (EvaluationError,)
 
     def __new__(cls, expr: _T_Expr):
-        self = object.__new__(cls)
-        object.__setattr__(self, '__expr__', expr)
+        self = _object_new(cls)
+        self.__setattr(__expr__=expr)
         return self
 
     def __eq__(self, x):
@@ -80,7 +83,7 @@ class Expression(t.Generic[_T_Expr, _T_Obj]):
         return False
 
     def __ne__(self, x):
-        return not self.__eq__(x)
+        return not self == x
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self!s})"
@@ -89,7 +92,7 @@ class Expression(t.Generic[_T_Expr, _T_Obj]):
         return str(self.__expr__)
 
     def __hash__(self):
-        return hash((Expression, self.__expr__))
+        return hash(self.__expr__)
 
     def __reduce__(self):
         return self.__class__, (self.__expr__,)
@@ -98,12 +101,12 @@ class Expression(t.Generic[_T_Expr, _T_Obj]):
     def __eval__(self, o: _T_Obj):
         raise NotImplementedError(f"{self.__class__.__name__}.__eval__datapath__()")
 
-    def __setattr__(self, name: str, value) -> None:
-        if hasattr(self, "__expr__"):
-            getattr(self, name)
-            raise AttributeError(f"cannot set readonly attribute {name!r}")
+    # def __setattr__(self, name: str, value) -> None:
+    #     if hasattr(self, "__expr__"):
+    #         getattr(self, name)
+    #         raise AttributeError(f"cannot set readonly attribute {name!r}")
 
-        return super().__setattr__(name, value)
+    #     return super().__setattr__(name, value)
 
 
 class Attribute(Expression[str, _T_Obj]):
@@ -178,21 +181,26 @@ class Call(Expression[tuple[_T_Args, _T_Kwargs], _T_Obj]):
 
 
 class LazyOp(
-    Expression[tuple[t.Any, Expression[t.Any, t.Any], Expression[t.Any, t.Any]], _T_Obj]
+    Expression[tuple[Expression[t.Any, _T_Obj]], _T_Obj], t.Generic[_T_Obj]
 ):
 
     __slots__ = ("__expr__",)
 
-    __expr__: tuple[_T_Default, Expression[_T_Expr, _T_Obj]]
+    __offset__ = None
 
-    def __new__(cls, __path: tuple[Expression[_T_Expr, _T_Obj]] = ()):
-        self = super().__new__(
-            cls, __path if __path.__class__ is tuple else tuple(__path)
-        )
+    __expr__: tuple[Expression[_T_Expr, _T_Obj]]
+
+    def __new__(cls, *ops: Expression[_T_Expr, _T_Obj]):
+        self = _object_new(cls)
+        self.__setattr(__expr__=ops)
         return self
+    
+    @property
+    def __ops__(self) -> None:
+        return self.__expr__[self.__offset__:]
 
     def __push__(self, *expr: Expression[_T_Expr, _T_Obj]):
-        return self.__class__(self.__expr__ + expr)
+        return self.__class__(*self.__expr__, *expr)
 
     def __getattr__(self, name: str):
         if name[:2] == "__" == name[-2:]:
@@ -212,7 +220,7 @@ class LazyOp(
     def __eval__(self, /, root: _T_Obj, start: int = None, stop: int = None):
         __tracebackhide__ = True
         val = root
-        it = self.__expr__[start:stop]
+        it = self.__ops__[start:stop]
         try:
             for t in it:
                 val = t.__eval__(val)
@@ -227,7 +235,7 @@ class LazyOp(
         return "<object>" + "".join(map(str, self.__expr__))
 
     def __iter__(self):
-        return iter(self.__expr__)
+        return iter(self.__ops__)
 
     def __len__(self):
         return len(self.__expr__)
@@ -235,10 +243,13 @@ class LazyOp(
     def __contains__(self, o):
         return o in self.__expr__
 
+    def __reduce__(self):
+        return self.__class__, self.__expr__
+
+
 
 def eval(
-    expr: LazyOp[_T_Obj], /, root: _T_Obj, *, start: int = None, stop: int = None
+    expr: LazyOp, /, root: _T_Obj, *, start: int = None, stop: int = None
 ):
-    return expr.__eval__(expr, root, start=start, stop=stop)
-# if not t.TYPE_CHECKING: # pragma: no cover
-    # eval = expr.__e
+    return expr.__eval__(root, start=start, stop=stop)
+

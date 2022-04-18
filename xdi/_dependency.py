@@ -1,7 +1,7 @@
 
 
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from enum import Enum, auto
 import logging
 from threading import Lock
@@ -14,7 +14,7 @@ from collections.abc import Callable
 from xdi._common import Missing, private_setattr
 from ._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
 
-from . import T_Injectable, T_Injected
+from . import InjectorLookupError, T_Injectable, T_Injected
 
 
 if t.TYPE_CHECKING: # pragma: no cover
@@ -24,20 +24,19 @@ if t.TYPE_CHECKING: # pragma: no cover
     from .containers import Container
 
 
+_object_new = object.__new__
 
 _T_Use = t.TypeVar('_T_Use')
 
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Dependency(t.Generic[_T_Use]):
+class Dependency(ABC, t.Generic[_T_Use]):
 
     """Marks an injectable as a `dependency` to be injected."""
     
     @abstractmethod
     def bind(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]: 
         raise NotImplementedError(f'{self.__class__.__name__}.bind()')  # pragma: no cover
-
-    _v_resolver = attr.ib(init=False, default=Missing, repr=False)
 
     abstract: T_Injectable = attr.ib()
     scope: "Scope" = attr.ib()
@@ -47,10 +46,15 @@ class Dependency(t.Generic[_T_Use]):
 
     is_async: bool = False
 
-    _ash: int = attr.ib(init=False, repr=False)
+    _v_ident: tuple = attr.ib(init=False, repr=False)
+    @_v_ident.default
+    def _init_v_ident(self):
+        return self.abstract, self.scope, self.container
+
+    _ash: tuple = attr.ib(init=False, repr=False)
     @_ash.default
-    def _compute_ash_value(self):
-        return hash((self.abstract, self.scope, self.container))
+    def _init_ash(self):
+        return hash(self._v_ident)
 
     @property
     def container(self):
@@ -58,12 +62,54 @@ class Dependency(t.Generic[_T_Use]):
             return pro.container
 
     def __eq__(self, o: Self) -> bool:
-        return o.__class__ is self.__class__ and o._ash == self._ash
+        if o.__class__ is self.__class__:
+            return o._v_ident == self._v_ident
+        elif isinstance(o, Dependency):
+            return False
+        return NotImplemented
+
+    def __ne__(self, o: Self) -> bool:
+        if o.__class__ is self.__class__:
+            return o._v_ident != self._v_ident
+        elif isinstance(o, Dependency):
+            return True
+        return NotImplemented
 
     def __hash__(self) -> int:
         return self._ash
 
 
+
+@private_setattr
+class LookupErrorDependency:
+
+    __slots__ = 'abstract', 'scope',
+
+    scope: 'Scope'
+    container = None
+    is_async: bool = False
+
+    def __new__(cls: type[Self], abstract=None, scope: 'Scope'=None) -> Self:
+        if cls is abstract.__class__:
+            return abstract
+        self = _object_new(cls)
+        self.__setattr(abstract=abstract, scope=scope)
+        return self
+
+    def __bool__(self, *a, **kw): 
+        return False
+
+    def __eq__(self, o):
+        return o.abstract == self.abstract
+
+    def __ne__(self, o):
+        return not self == o
+
+    def __hash__(self) -> int:
+        return hash(self.abstract)
+
+    def bind(self, injector: 'Injector'):
+        raise InjectorLookupError(self.abstract, self.scope)
 
 
 # @attr.s(slots=True, frozen=True, cmp=False)

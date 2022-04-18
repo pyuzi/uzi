@@ -11,7 +11,7 @@ from xdi._common import frozendict
 from xdi.containers import Container
 from xdi.providers import Provider
 from xdi._dependency import Dependency
-from xdi.scopes import NullScope, Scope
+from xdi.scopes import EmptyScopeError, NullScope, Scope
 
 
 
@@ -103,19 +103,18 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         assert isinstance(it, Iterator)
         assert tuple(it) == (sub3, sub2, sub1)
     
-    @xfail(raises=RuntimeError, strict=True)
+    @xfail(raises=EmptyScopeError, strict=True)
     def test_parent_with_same_container(self, new: _T_FnNew, MockContainer: type[Container]):
         c = MockContainer()
         new(c, new(c)) 
 
-    @xfail(raises=RuntimeError, strict=True)
+    @xfail(raises=EmptyScopeError, strict=True)
     def test_parent_with_container(self, new: _T_FnNew, MockContainer: type[Container]):
         c1, c2 = (MockContainer() for i in range(2))
         c1._dro_entries_.return_value = c1, c2,
         c2._dro_entries_.return_value = c2,
 
         sub = new(c1)
-        assert sub.maps == {c1, c2}
         assert sub.container is c1
         new(c2, sub)
 
@@ -125,8 +124,7 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         c1._dro_entries_.return_value = dro
         sub = new(c1)
         assert sub.container is c1
-        assert sub.maps == {*dro}
-        assert tuple(sub.maps) ==  dro[:-2]
+        assert sub.maps & {*dro} == {*dro}
         assert all(c in sub for c in {*dro})
 
     def test_maps_with_parents(self, new: _T_FnNew, MockContainer: type[Container]):
@@ -139,8 +137,8 @@ class ScopeTest(BaseTestCase[_T_Scp]):
 
         sub_a = new(ca)
         sub_b = new(cb, sub_a)
-        assert sub_a.maps == {*dro_a}
-        assert sub_b.maps == {cb, c6}
+        assert sub_a.maps & {*dro_a} == {*dro_a}
+        assert sub_b.maps & {cb, c6} == {cb, c6}
         assert all(c in sub_a for c in {*dro_a})
         assert all(c in sub_b for c in {*dro_a, *dro_b})
         assert all(not c in sub_a for c in {*dro_b} - {*dro_a})
@@ -228,9 +226,9 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         assert not(_Tb in sub_a or _Tb in sub_b)
 
         assert sub_a[_Ta] is sub_b[_Ta] is sub_a[_Ta] is sub_b[_Ta]
-        assert sub_a[_Tb] is None
-        assert sub_a[_Tx] is sub_b[_Tx] is None
-        assert sub_b[_Tb] is sub_b[_Tb] is sub_b[_Tb]
+        assert not sub_a[_Tb]
+        assert not(sub_a[_Tx] or sub_b[_Tx])
+        assert sub_b[_Tb] == sub_b[_Tb] == sub_b[_Tb]
 
         assert _Ta in sub_a and _Ta in sub_b
         assert _Tb not in sub_a and _Tb in sub_b

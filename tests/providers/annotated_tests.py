@@ -27,7 +27,7 @@ class Marker(InjectionMarker):
     name = attr.ib(default='<MARKER>')
 
     @property
-    def __dependency__(self):
+    def __origin__(self):
         return self.__class__
 
 

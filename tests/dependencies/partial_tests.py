@@ -70,8 +70,8 @@ class PartialDependencyTests(DependencyTestCase[Dependency]):
     def value_setter(self, mock_scope, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
         def fn(a: _Ta, b: _Tb, /, *_a,  z=dep_z, **_kw):
-            # assert _a == self._call_args
-            # assert _kw == self._call_kwargs
+            assert _a == self._call_args
+            assert _kw == self._call_kwargs
             self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_scope, mock_injector)
             val = self.value = object()
             return val
@@ -94,12 +94,15 @@ from xdi._dependency import AsyncPartial as Dependency
 
 class AsyncPartialDependencyTests(DependencyTestCase[Dependency]):
 
+    _call_args: tuple = ()
+    _call_kwargs: dict = frozendict()
+
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
         async def fn(a: _Ta, b: _Tb, /,  *_a,  z=dep_z, **_kw):
-            # assert _a == self._call_args
-            # assert _kw == self._call_kwargs
+            assert _a == self._call_args
+            assert _kw == self._call_kwargs
             self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_scope, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
@@ -122,11 +125,16 @@ from xdi._dependency import AwaitParamsPartial as Dependency
 
 class AwaitParamsPartialDependencyTests(DependencyTestCase[Dependency]):
 
+    _call_args: tuple = ()
+    _call_kwargs: dict = frozendict()
+
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
         dep_z = Dep(_Tz, default=object())
         mock_scope[_Tb].is_async = mock_scope[_Ty].is_async = True
-        def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
+        def fn(a: _Ta, b: _Tb, x: _Tx, /, *_a, y: _Ty, z=dep_z, **_kw):
+            assert _a == self._call_args
+            assert _kw == self._call_kwargs
             self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_scope, mock_injector)
             val = self.value = object()
             return val
@@ -134,14 +142,15 @@ class AwaitParamsPartialDependencyTests(DependencyTestCase[Dependency]):
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
         subject= new()
+        a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
         fn = subject.bind(mock_injector)
-        aw = fn()
+        aw = fn(*a, **kw)
         assert isawaitable(aw)
         val = await aw
 
         assert val is self.value
-        assert not val is await fn() is self.value
-        assert not val is await fn() is self.value
+        assert not val is await fn(*a, **kw) is self.value
+        assert not val is await fn(*a, **kw) is self.value
 
 
 
@@ -149,11 +158,16 @@ from xdi._dependency import AwaitParamsAsyncPartial as Dependency
 
 class AwaitParamsAsyncPartialDependencyTests(DependencyTestCase[Dependency]):
 
+    _call_args: tuple = ()
+    _call_kwargs: dict = frozendict()
+
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
         dep_z = Dep(_Tz, default=object())
         mock_scope[_Tb].is_async = mock_scope[_Ty].is_async = True
-        async def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
+        async def fn(a: _Ta, b: _Tb, x: _Tx, /, *_a, y: _Ty, z=dep_z, **_kw):
+            assert _a == self._call_args
+            assert _kw == self._call_kwargs
             self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_scope, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
@@ -161,8 +175,9 @@ class AwaitParamsAsyncPartialDependencyTests(DependencyTestCase[Dependency]):
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
         subject= new()
+        a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
         fn = subject.bind(mock_injector)
-        val = await fn()
+        val = await fn(*a, **kw)
         assert val is self.value
-        assert not val is await fn() is self.value
-        assert not val is await fn() is self.value
+        assert not val is await fn(*a, **kw) is self.value
+        assert not val is await fn(*a, **kw) is self.value

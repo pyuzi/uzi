@@ -7,16 +7,18 @@ from types import MethodType
 import attr
 from typing_extensions import Self
 
-from . import Injectable, T_Default, T_Injectable, T_Injected
-from ._common import Missing
+
+from . import Injectable, T_Default, T_Injectable, T_Injected, InjectorLookupError
+from ._common import Missing, frozendict, private_setattr
 from ._dependency import Dependency
 
-if t.TYPE_CHECKING:
+if t.TYPE_CHECKING: # pragma: no cover
     from .scopes import Scope
 
 logger = logging.getLogger(__name__)
 
 _T = t.TypeVar('_T')
+_object_new = object.__new__
 
 
 TContextBinding = Callable[
@@ -24,155 +26,130 @@ TContextBinding = Callable[
 ]
 
 
-class InjectorLookupError(LookupError):
 
-    key: Injectable
-    injector: "Injector"
+@private_setattr
+class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
+    
+    __slots__ = 'scope', 'parent',
 
-    def __init__(self, key=None, injector: "Injector" = None) -> None:
-        self.key = key
-        self.injector = injector
+    scope: "Scope"
+    parent: Self
 
-    def __str__(self) -> str:
-        key, injector = self.key, self.injector
-        return (
-            ""
-            if key is None is injector
-            else f"{key!r}"
-            if injector is None
-            else f"at {injector!r}"
-            if key is None
-            else f"{key!r} at {injector!r}"
-        )
-
-
-@attr.s(slots=True, frozen=True, cmp=False)
-class Injector(dict[T_Injectable, Callable[[], T_Injected]]):
-
-    parent: Self = attr.ib()
-    scope: "Scope" = attr.ib()
-
-    is_async: bool = attr.ib(default=False, kw_only=True)
-    exitstack: '_InjectorExitStack' = attr.ib(factory=lambda: _InjectorExitStack())
+    # exitstack: '_InjectorExitStack' = attr.ib(factory=lambda: _InjectorExitStack())
+    
+    def __init__(self, scope: 'Scope', parent: Self=None):
+        self.__setattr(scope=scope, parent= parent or _null_injector)
 
     @property
     def name(self) -> str:
         return self.scope.name
 
-    @t.overload
-    def find(
-        self, dep: T_Injectable, *fallbacks: T_Injectable
-    ) -> Callable[[], T_Injected]:
-        ...
+    def bound(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
+        return self[self.scope[abstract]]
 
-    @t.overload
-    def find(
-        self, dep: T_Injectable, *fallbacks: T_Injectable, default: T_Default
-    ) -> t.Union[Callable[[], T_Injected], T_Default]:
-        ...
+    def call(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
+        return self[self.scope[abstract]]()(*args, **kwds)
 
-    def find(self, *keys, default=Missing):
-        for key in keys:
-            rv = self[key]
-            if rv is None:
-                continue
-            return rv
+    def make(self, abstract: T_Injectable) -> T_Injected:
+        return self[self.scope[abstract]]()
 
-        if default is Missing:
-            raise InjectorLookupError(key, self)
+    def run(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
+        return self[self.scope[abstract]](*args, **kwds)
 
-        return default
-
-    def make(
-        self, key: T_Injectable, *fallbacks: T_Injectable, default=Missing
-    ) -> T_Injected:
-        if fallbacks:
-            func = self.find(key, *fallbacks, default=None)
-        else:
-            func = self[key]
-
-        if not func is None:
-            return func()
-        elif default is Missing:
-            raise InjectorLookupError(key, self)
-        return default
-
-    def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
-        if isinstance(func, MethodType):
-            args = (func.__self__,) + args
-            func = func.__func__
-
-        return self.make(func)(*args, **kwds)
+    # def call(self, func: Callable[..., T_Injected], *args, **kwds) -> T_Injected:
+    #     if isinstance(func, MethodType):
+    #         args = (func.__self__,) + args
+    #         func = func.__func__
+    #     return self.make(func)(*args, **kwds)
 
     def __bool__(self):
         return True
         
     def __contains__(self, x) -> bool:
-        return dict.__contains__(self, x) or x in self.parent
+        return self.__contains(x) or x in self.scope
 
     def __missing__(self, dep: Dependency):
-        try:
-            if dep.scope is self.scope:
-                return self.__setdefault(dep, dep.bind(self))
-        except AttributeError:
-            dep = self.scope[dep]
-            return dep and self[dep]
-        else:
-            return self.__setdefault(dep, self.parent[dep])
+        if dep.scope is self.scope:
+            return self.__setdefault(dep, dep.bind(self))
+        return self.__setdefault(dep, self.parent[dep])
         
     __setdefault = dict.setdefault
+    __contains = dict.__contains__
+    __ior = dict.__ior__
+
+    def copy(self):
+        new = self.__class__(self.scope, self.parent)
+        self and new.__ior(self)
+        return new
+
+    __copy__ = copy
+
+    def __reduce__(self):
+        return self.__class__, (self.scope, self.parent)
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.name!r})"
 
     def __repr__(self) -> str:
         return f"<{self!s}, {self.parent!r}>"
+    
+    __hash__ = frozendict.__hash__
 
     def __eq__(self, x):
-        return x is self
+        if isinstance(x, Injector):
+            return x.scope == self.scope and x.parent == self.parent
+        return NotImplemented
 
     def __ne__(self, x):
-        return not self.__eq__(x)
+        if isinstance(x, Injector):
+            return not x == self
+        return NotImplemented
 
-    def __hash__(self):
-        return id(self)
-
-    def not_mutable(self, *a, **kw):
-        raise TypeError(f"immutable type: {self} ")
-
-    __delitem__ = __setitem__ = setdefault = not_mutable
-    pop = popitem = update = clear = not_mutable
-    copy = __copy__ = __reduce__ = __deepcopy__ = not_mutable
-    del not_mutable
+    def _hash_items_(self):
+        return self.scope
+        
 
 
+from xdi import scopes
 
 
-class NullInjectorContext(Injector):
+class NullInjector(Injector):
     """NullInjector Object"""
 
     __slots__ = ()
 
-    name: t.Final = None
-    injector = parent = None
+    parent: t.Final = None
+    scope = scopes.NullScope()
 
-    def noop(slef, *a, **kw):
-        ...
+    __hash__ = frozendict.__hash__
 
-    __init__ = __getitem__ = __missing__ = __contains__ = _reset = noop
-    del noop
-
-    def __repr__(self) -> str:
-        return f'{self.__class__.__name__}()'
-
-
+    def __init__(self, *a, **kw) -> None: ...
     
+    def __getitem__(self, dep: Dependency):
+        try:
+            dep.bind(self)
+        except (AttributeError, TypeError) as e:
+            raise InjectorLookupError(dep) from e
+        else:
+            raise InjectorLookupError(dep)
+    
+    def __bool__(self, *a, **kw): 
+        return False
+
+    __contains__ = __bool__
+   
+   
+    
+
+_null_injector = NullInjector()
+
 
 _T = t.TypeVar("_T")
 _T_Fn = t.TypeVar("_T_Fn", bound=Callable)
 
 
-class _InjectorExitStack(list[tuple[bool, _T_Fn]]):
+
+class _InjectorExitStack(list[tuple[bool, _T_Fn]]): # pragma: no cover
     """Async context manager for dynamic management of a stack of exit
     callbacks.
 

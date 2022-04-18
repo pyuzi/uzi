@@ -61,8 +61,9 @@ class Container(frozendict[Injectable, Provider], ProviderRegistry):
         if pro :=  provider.set_container(self):
             self.__setitem(abstract, pro)
 
-    def __missing__(self, key):
-        return None
+    def __missing__(self, abstract):
+        if isinstance(abstract, Provider) and (abstract.container or self) is self:
+            return abstract
 
     def __bool__(self):
         return True

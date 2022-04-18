@@ -81,22 +81,22 @@ class InjectableType(_PrivateABCMeta):
         cls._abc_blacklist = WeakSet()
         return cls
 
-    def blacklist(self, cls):
-        self._abc_blacklist.add(cls)
-        return cls
+    # def blacklist(self, cls):
+    #     self._abc_blacklist.add(cls)
+    #     return cls
     
-    def blacklisted(self, cls):
-        return cls in self._abc_blacklist
+    # def blacklisted(self, cls):
+    #     return cls in self._abc_blacklist
 
-    def __instancecheck__(self, instance):
-        """Override for isinstance(instance, cls)."""
-        return not instance.__class__ in self._abc_blacklist \
-            and super().__instancecheck__(instance)
+    # def __instancecheck__(self, instance):
+    #     """Override for isinstance(instance, cls)."""
+    #     return not instance.__class__ in self._abc_blacklist \
+    #         and super().__instancecheck__(instance)
 
-    def __subclasscheck__(self, cls):
-        """Override for isinstance(instance, cls)."""
-        return not cls in self._abc_blacklist \
-            and super().__subclasscheck__(cls)
+    # def __subclasscheck__(self, cls):
+    #     """Override for isinstance(instance, cls)."""
+    #     return not cls in self._abc_blacklist \
+    #         and super().__subclasscheck__(cls)
 
 
 
@@ -104,11 +104,11 @@ class Injectable(metaclass=InjectableType):
 
     __slots__ = ()
 
-    @classmethod
-    def __subclasshook__(cls, sub):
-        if cls is Injectable:
-            return not sub in cls._abc_blacklist
-        return NotImplemented
+    # @classmethod
+    # def __subclasshook__(cls, sub):
+    #     if cls is Injectable:
+    #         return not sub in cls._abc_blacklist
+    #     return NotImplemented
 
 
 # Injectable.blacklist(str)

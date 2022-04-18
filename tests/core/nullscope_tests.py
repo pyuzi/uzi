@@ -51,8 +51,12 @@ class NullScopeTests(BaseTestCase[NullScope]):
     def test_is_blank(self, new: _T_FnNew):
         sub = new()
         assert len(sub) == 0
-        assert sub[_T] is None
+        assert not sub[_T]
         assert not _T in sub
-     
+
+    @xfail(raises=TypeError, strict=True)
+    def test_fail_invalid_getitem(self, new: _T_FnNew):
+        new()[2345.6789]
+             
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)

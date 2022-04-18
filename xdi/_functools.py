@@ -13,7 +13,6 @@ from collections.abc import (
     Mapping,
     ValuesView,
 )
-from enum import Enum
 from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
 from typing_extensions import Self
@@ -73,18 +72,6 @@ _object_setattr = object.__setattr__
 
 
 
-class _ParamBindType(Enum):
-    awaitable: "_ParamBindType" = "awaitable"
-    callable: "_ParamBindType" = "callable"
-    default: "_ParamBindType" = "default"
-    value: "_ParamBindType" = "value"
-    none: "_ParamBindType" = None
-
-
-_PARAM_AWAITABLE = _ParamBindType.awaitable
-_PARAM_CALLABLE = _ParamBindType.callable
-_PARAM_VALUE = _ParamBindType.value
-
 
 class BoundParam:
 
@@ -95,9 +82,6 @@ class BoundParam:
         "injectable",
         "dependency",
         "has_default",
-        # "_value_factory",
-        "_default_factory",
-        "_bind_type",
     )
 
     param: Parameter
@@ -153,23 +137,6 @@ class BoundParam:
         return hasattr(self, 'value')
 
     @property
-    def bind_type(self):
-        try:
-            return self._bind_type
-        except AttributeError:
-            if self.has_value:
-                self._bind_type = _PARAM_VALUE
-            elif self.is_async:
-                self._bind_type = _PARAM_AWAITABLE
-            elif self.dependency:
-                self._bind_type = _PARAM_CALLABLE
-            elif self.has_default:
-                self._bind_type = _ParamBindType.default
-            else:
-                self._bind_type = _ParamBindType.none
-            return self._bind_type
-
-    @property
     def default(self):
         return self.param.default
 
@@ -180,31 +147,6 @@ class BoundParam:
     @property
     def kind(self):
         return self.param.kind
-
-    # @property
-    # def value_factory(self) -> None:
-    #     try:
-    #         return self._value_factory
-    #     except AttributeError as e:
-    #         if not self.has_value:
-    #             raise AttributeError(f"`value`") from e
-    #         value = self.value
-    #         self._value_factory = lambda: value
-    #         return self._value_factory
-
-    # @property
-    # def default_factory(self) -> None:
-    #     try:
-    #         return self._default_factory
-    #     except AttributeError as e:
-    #         if self.has_default is True:
-    #             default = self.default
-    #             self._default_factory = lambda: default
-    #         elif self.dependency:
-    #             self._default_factory = Missing
-    #         else:
-    #             raise AttributeError(f"`default_factory`")
-    #         return self._default_factory
 
 
 
@@ -298,41 +240,6 @@ class BoundParams:
     def __bool__(self): 
         return not not self.params
 
-    def resolve_args(self, injector: "Injector"):
-        if self.args:
-            if self._pos_vals > 0 < self._pos_deps:
-                return _PositionalArgs(
-                    (
-                        p.bind_type,
-                        p.value
-                        if p.bind_type is _PARAM_VALUE
-                        else injector.find(p.dependency, default=p.default_factory),
-                    )
-                    for p in self.args
-                )
-            elif self._pos_deps > 0:
-                return _PositionalDeps(
-                    injector.find(p.dependency, default=p.default_factory) for p in self.args
-                )
-            else:
-                return tuple(p.value for p in self.args)
-        return ()
-
-    def resolve_aw_args(self, injector: "Injector"):
-        return self.resolve_args(injector), self.aw_args
-
-    def resolve_kwargs(self, injector: "Injector"):
-        return _KeywordDeps(
-            (p.key, injector.find(p.dependency, default=p.default_factory))
-            for p in self.kwds
-        )
-
-    def resolve_aw_kwargs(self, ctx: "Injector"):
-        if self.aw_kwds:
-            deps = self.resolve_kwargs(ctx)
-            return deps, tuple((n, deps.pop(n)) for n in self.aw_kwds)
-        else:
-            return self.resolve_kwargs(ctx), ()
 
 
 
@@ -340,12 +247,7 @@ class BoundParams:
 
 
 
-
-
-
-
-
-class _PositionalArgs(tuple[tuple[_ParamBindType, Callable[[], _T]]], t.Generic[_T]):
+class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
 
     __slots__ = ()
 
@@ -368,24 +270,24 @@ class _PositionalArgs(tuple[tuple[_ParamBindType, Callable[[], _T]]], t.Generic[
         ...
 
     def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
-        bt, item = self.get_raw(index)
-        if bt is _PARAM_VALUE:
-            return item
-        return item()
+        v, fn = self.get_raw(index)
+        if not fn:
+            return v
+        return fn()
 
     def __iter__(self) -> "Iterator[tuple[_T, bool]]":
-        for bt, yv in self.iter_raw():
-            if bt is _PARAM_VALUE:
-                yield yv
+        for v, fn in self.iter_raw():
+            if not fn:
+                yield v
             else:
-                yield yv()
+                yield fn()
 
     if t.TYPE_CHECKING: # pragma: no cover
 
-        def get_raw(index: int) -> tuple[_ParamBindType, Callable[[], _T]]:
+        def get_raw(index: int) -> tuple[t.Any, Callable[[], _T]]:
             ...
 
-        def iter_raw() -> Iterator[tuple[_ParamBindType, Callable[[], _T]]]:
+        def iter_raw() -> Iterator[tuple[t.Any, Callable[[], _T]]]:
             ...
 
     else:

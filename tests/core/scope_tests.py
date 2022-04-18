@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi._common import frozendict
 
 
+from xdi import is_injectable
 from xdi.containers import Container
 from xdi.providers import Provider
 from xdi._dependency import Dependency
@@ -36,7 +37,7 @@ class ScopeTest(BaseTestCase[_T_Scp]):
     def new_args(self, MockContainer: type[Container]):
         return MockContainer(),
 
-    def test_basic(self, new: _T_FnNew):
+    def test_basic(self, new: _T_FnNew, MockDependency):
         sub = new()
         assert isinstance(sub, Scope)
         assert isinstance(sub, frozendict)
@@ -208,7 +209,7 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         ca2.__getitem__ = Mock(wraps=lambda k: pa1 if k is _Ta else None )
         cb1.__getitem__ = Mock(wraps=lambda k: pb0 if k is _Tb else None )
         cb2.__getitem__ = Mock(wraps=lambda k: pb1 if k is _Tb else None )
-
+        
         assert [pa1, pa0] == sub_a.resolve_providers(_Ta)
         assert [pb1, pb0] == sub_b.resolve_providers(_Tb)
 
@@ -233,6 +234,10 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         pb0.resolve.assert_not_called()
         pa1.resolve.assert_called_once_with(_Ta, sub_a)
         pb1.resolve.assert_called_once_with(_Tb, sub_b)
+
+    @xfail(raises=TypeError, strict=True)
+    def test_fail_invalid_getitem(self, new: _T_FnNew):
+        new()[2345.6789]
        
     def test_find_local(self, new: _T_FnNew, mock_scope: Scope):
         mock_scope.__contains__.return_value = False

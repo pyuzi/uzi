@@ -170,10 +170,7 @@ class Factory(Dependency[T_Injected]):
         if params.args:
             if params._pos_vals > 0 < params._pos_deps:
                 return _PositionalArgs(
-                    (
-                        p.bind_type,
-                        p.value if p.has_value else injector[p.dependency],
-                    )
+                    (p.value, None) if p.has_value else (None, injector[p.dependency])
                     for p in params.args
                 )
             elif params._pos_deps > 0:

@@ -101,15 +101,15 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
         return self.__contains(o) or o in self.maps or o in self.parent
 
     def __missing__(self, abstract: Injectable, *, recursive=True) -> t.Union[Dependency, None]:
-        for pro in self.resolve_providers(abstract):
-            if dep := pro.resolve(abstract, self):
+        if is_injectable(abstract):
+            for pro in self.resolve_providers(abstract):
+                if dep := pro.resolve(abstract, self):
+                    return self.__setdefault(abstract, dep)
+            if dep := recursive and self.parent[abstract]:
                 return self.__setdefault(abstract, dep)
-        if dep := recursive and self.parent[abstract]:
-            return self.__setdefault(abstract, dep)
-        elif is_injectable(abstract):
-            return LookupErrorDependency(abstract, self)
-        else:
-            raise TypeError(f'Scope keys must be `Injectable` not {abstract.__class__.__qualname__}')
+            else:
+                return LookupErrorDependency(abstract, self)
+        raise TypeError(f'Scope key must be an `Injectable` not `{abstract.__class__.__qualname__}`')
 
     def __eq__(self, o) -> bool:
         if isinstance(o, Scope):
@@ -147,6 +147,9 @@ class NullScope(Scope):
         return f'{self.__class__.__name__}()'
     def __contains__(self, key): 
         return False
-    def __getitem__(self, key): 
-        return None
+    def __getitem__(self, abstract): 
+        if is_injectable(abstract):
+            return LookupErrorDependency(abstract, self)
+        else:
+            raise TypeError(f'Scope keys must be `Injectable` not `{abstract.__class__.__qualname__}`')
         

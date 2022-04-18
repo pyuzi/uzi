@@ -8,10 +8,8 @@ import attr
 
 
 from . import Injectable, InjectionMarker
-from ._common import private_setattr
-from xdi._common import frozendict
-from .providers import Provider
-from .providers.util import ProviderRegistry
+from ._common import private_setattr, frozendict
+from .providers import Provider, AbstractProviderRegistry
 
 logger = getLogger(__name__)
 
@@ -21,7 +19,7 @@ logger = getLogger(__name__)
 @InjectionMarker.register
 @private_setattr
 @attr.s(slots=True, frozen=True, repr=True, cmp=False)
-class Container(frozendict[Injectable, Provider], ProviderRegistry):
+class Container(frozendict[Injectable, Provider], AbstractProviderRegistry):
 
     __id = 0
     __lock = Lock()
@@ -76,9 +74,4 @@ class Container(frozendict[Injectable, Provider], ProviderRegistry):
 
     def __hash__(self):
         return hash(self.name)
-
-    # def __str__(self) -> str:
-    #     return str(self.name) # f'{self.__class__.__qualname__}({self.id}, {self.name!r})'
-
-    # __repr__ = __str__
 

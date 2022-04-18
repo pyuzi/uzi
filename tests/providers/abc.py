@@ -72,34 +72,27 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         cp = copy(subject)
         assert cp.__class__ is subject.__class__
         assert cp.concrete == subject.concrete
-        assert cp != subject
+        assert cp == subject
         return subject, cp
 
     def test_deepcopy(self, new: _T_NewPro):
         subject = new()
         cp = deepcopy(subject)
         assert cp.__class__ is subject.__class__
-        assert cp != subject
+        # assert cp == subject
         return subject, cp
 
     def test_compare(self, new: _T_NewPro):
         subject, subject_2 = new(), new()
         assert subject.__class__ is subject_2.__class__
         assert subject.concrete == subject_2.concrete
-        assert subject != subject_2
+        assert subject == subject_2
+        assert not subject != subject_2
         assert hash(subject) == hash(subject)
         return subject, subject_2
 
-    def test_not_mutable(self, new: _T_NewPro):
-        subject = new()
-        for atr in attr.fields(subject.__class__):
-            try:
-                subject.__setattr__(atr.name, getattr(subject, atr.name, None))
-            except AttributeError:
-                continue
-            else:
-                raise AssertionError(f"mutable: {atr.name!r} -> {subject}")
-        return subject
+    def test_immutable(self, new: _T_NewPro, immutable_attrs):
+        self.assert_immutable(new(), immutable_attrs)
 
     def test_set_container(self, mock_container, new: _T_NewPro):
         subject = new()

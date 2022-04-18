@@ -1,19 +1,15 @@
-from os import name
-from types import GenericAlias, new_class
 import typing as t
 import attr
 import pytest
 
 
-from unittest.mock import  Mock
 
-from collections.abc import Callable, Iterator, Set, MutableSet, Iterable
+from collections.abc import Callable, Set, MutableSet, Iterable
 from xdi._common import frozendict
 
 
 from xdi.containers import Container
-from xdi.providers import Provider
-from xdi.providers.util import ProviderRegistry
+from xdi.providers import Provider, AbstractProviderRegistry
 
 
 from ..abc import BaseTestCase
@@ -23,7 +19,9 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
+
 _T = t.TypeVar('_T')
+_T_Miss = t.TypeVar('_T_Miss')
 _T_Ioc = t.TypeVar('_T_Ioc', bound=Container)
 
 _T_FnNew = Callable[..., _T_Ioc]
@@ -38,7 +36,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         str(sub)
         assert isinstance(sub, Container)
         assert isinstance(sub, frozendict)
-        assert isinstance(sub, ProviderRegistry)
+        assert isinstance(sub, AbstractProviderRegistry)
         assert isinstance(sub.included, Set)
         assert not isinstance(sub.included, MutableSet)
 
@@ -53,15 +51,8 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert c1 != c2 and not (c1 == c2) and c1.name == c2.name
         assert c1._included == c1._included and c1.keys() == c2.keys()
       
-    def test_immutable(self, new: _T_FnNew):
-        sub = new()
-        for atr in attr.fields(sub.__class__):
-            try:
-                sub.__setattr__(atr.name, getattr(sub, atr.name, None))
-            except AttributeError:
-                continue
-            else:
-                raise AssertionError(f"mutable: {atr.name!r} -> {sub}")
+    def test_immutable(self, new: _T_FnNew, immutable_attrs):
+        self.assert_immutable(new(), immutable_attrs)
 
     def test_include(self, new: _T_FnNew):
         c1, c2, c3, c4 = new('c1'), new('c2'), new('c3'), new('c4')
@@ -81,18 +72,31 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
 
         assert tuple(it) == dro
 
-    def test_setitem(self, new: _T_FnNew):
-        pro = Mock(spec=Provider)
-        pro.set_container = Mock(return_value=pro)
+    def test_setitem(self, new: _T_FnNew, mock_provider: Provider):
         sub = new()
-
-        assert isinstance(pro, Provider)
-        assert _T not in sub
-        sub[_T] = pro
+        assert not _T in sub
+        sub[_T] = mock_provider
         assert _T in sub
-        assert sub[_T] is pro
-
-        pro.set_container.assert_called_once_with(sub)
+        assert sub[_T] is mock_provider
+        mock_provider.container is sub
+        mock_provider.set_container.assert_called_once_with(sub)
     
+    def test_getitem(self, new: _T_FnNew, mock_provider: Provider):
+        sub = new()
+        sub[_T] = mock_provider
+        assert sub[_T] is mock_provider
+        assert sub[_T_Miss] is None
+
+    def test_missing(self, new: _T_FnNew, MockProvider: type[Provider]):
+        sub = new()
+        pro1, pro2, pro3 = (MockProvider() for _ in range(3))
+        pro3.container = new()
+        sub[_T] = pro1
+        assert sub[_T] is pro1
+        assert sub[_T_Miss] is None
+        assert sub[pro1] is pro1
+        assert sub[pro2] is pro2
+        assert sub[pro3] is None
+
     
         

@@ -53,14 +53,6 @@ class NullScopeTests(BaseTestCase[NullScope]):
         assert len(sub) == 0
         assert sub[_T] is None
         assert not _T in sub
-
-    def test_immutable(self, new: _T_FnNew):
-        sub = new()
-        for atr in attr.fields(sub.__class__):
-            try:
-                sub.__setattr__(atr.name, getattr(sub, atr.name, None))
-            except AttributeError:
-                continue
-            else:
-                raise AssertionError(f"mutable: {atr.name!r} -> {sub}")
-        
+     
+    def test_immutable(self, new: _T_FnNew, immutable_attrs):
+        self.assert_immutable(new(), immutable_attrs)

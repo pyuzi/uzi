@@ -25,8 +25,6 @@ from typing_extensions import Self
 from asyncio import Future
 from xdi._common import frozendict
 
-if t.TYPE_CHECKING:
-    from .injectors import Injector
 
 import attr
 
@@ -194,19 +192,19 @@ class BoundParam:
     #         self._value_factory = lambda: value
     #         return self._value_factory
 
-    @property
-    def default_factory(self) -> None:
-        try:
-            return self._default_factory
-        except AttributeError as e:
-            if self.has_default is True:
-                default = self.default
-                self._default_factory = lambda: default
-            elif self.dependency:
-                self._default_factory = Missing
-            else:
-                raise AttributeError(f"`default_factory`")
-            return self._default_factory
+    # @property
+    # def default_factory(self) -> None:
+    #     try:
+    #         return self._default_factory
+    #     except AttributeError as e:
+    #         if self.has_default is True:
+    #             default = self.default
+    #             self._default_factory = lambda: default
+    #         elif self.dependency:
+    #             self._default_factory = Missing
+    #         else:
+    #             raise AttributeError(f"`default_factory`")
+    #         return self._default_factory
 
 
 
@@ -382,7 +380,7 @@ class _PositionalArgs(tuple[tuple[_ParamBindType, Callable[[], _T]]], t.Generic[
             else:
                 yield yv()
 
-    if t.TYPE_CHECKING:
+    if t.TYPE_CHECKING: # pragma: no cover
 
         def get_raw(index: int) -> tuple[_ParamBindType, Callable[[], _T]]:
             ...
@@ -519,7 +517,7 @@ class FutureResourceWrapper(FutureFactoryWrapper): # pragma: no cover
     _aw_enter: bool
     _ctx: "Injector"
 
-    if not t.TYPE_CHECKING:
+    if not t.TYPE_CHECKING:  # pragma: no cover
 
         def __new__(cls, ctx, *args, aw_enter: bool = None, **kwargs):
             self = super().__new__(cls, *args, **kwargs)

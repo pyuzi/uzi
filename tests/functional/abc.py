@@ -1,17 +1,6 @@
-from copy import copy, deepcopy
-from collections.abc import Callable
-from inspect import isawaitable
 import typing as t
-from unittest.mock import AsyncMock, MagicMock
-import attr
 import pytest
 from xdi import Dep
-from xdi._common import Missing
-
-
-# from xdi.providers import 
-from xdi._dependency import Dependency
-from xdi.injectors import Injector
 
 from ..abc import BaseTestCase
 
@@ -22,6 +11,10 @@ parametrize = pytest.mark.parametrize
 _notset = object()
 
 _T = t.TypeVar("_T")
+_Ta = t.TypeVar("_Ta")
+_Tx = t.TypeVar("_Tx")
+_Ty = t.TypeVar("_Ty")
+_Tz = t.TypeVar("_Tz")
 
 
 class FunctionalTestCase(BaseTestCase):
@@ -33,10 +26,10 @@ class FunctionalTestCase(BaseTestCase):
 
 
 T_Foo = t.TypeVar('T_Foo', bound='Foo', covariant=True)
+T_Bar = t.TypeVar('T_Bar', bound='Bar', covariant=True)
 T_Baz = t.TypeVar('T_Baz', bound='Baz', covariant=True)
 
-
-
+T_FooBar = t.TypeVar('T_FooBar', bound='FooBar', covariant=True)
 
 
 class Foo:

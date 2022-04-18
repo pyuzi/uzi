@@ -97,6 +97,9 @@ def Mockinjector(MockScope):
                 mk = MagicMock(t.Callable)
             return mk
 
+        for k,v in kw.items():
+            setattr(mi, k, v)
+
         deps = {}
         mi.__getitem__ = mi.find_local = Mock(wraps=lambda k: deps.get(k) or deps.setdefault(k, mock_dep(k)))
         mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))
@@ -118,6 +121,11 @@ def MockProvider(MockDependency):
             return deps[a,s]
 
         mi.resolve = MagicMock(wraps=mock_dep)
+        mi.container = None
+        mi.set_container = MagicMock(wraps=lambda c: (mi.container and mi) or setattr(mi, 'container', c) or mi)
+        for k,v in kw.items():
+            setattr(mi, k, v)
+
         return mi
     return MagicMock(type[Provider], wraps=make)
 
@@ -134,9 +142,14 @@ def MockScope(MockContainer, MockDependency):
         deps = {}
         mi.__getitem__ = mi.find_local = Mock(wraps=lambda k: deps[k] if k in deps else deps.setdefault(k, MockDependency(abstract=k, scope=mi)))
         mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))
+
         if parent:
-            mi.parent = make(parent=parent-1, **kw)
+            mi.parent = make(parent=parent-1) if parent is True else parent
             mi.find_remote = mi.parent.__getitem__
+
+        for k,v in kw.items():
+            setattr(mi, k, v)
+
         return mi
     return MagicMock(type[Container], wraps=make)
 

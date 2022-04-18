@@ -59,15 +59,8 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         assert sub.container is container
         assert sub.name == container.name
     
-    def test_immutable(self, new: _T_FnNew):
-        sub = new()
-        for atr in attr.fields(sub.__class__):
-            try:
-                sub.__setattr__(atr.name, getattr(sub, atr.name, None))
-            except AttributeError:
-                continue
-            else:
-                raise AssertionError(f"mutable: {atr.name!r} -> {sub}")
+    def test_immutable(self, new: _T_FnNew, immutable_attrs):
+        self.assert_immutable(new(), immutable_attrs)
         
     def test_compare(self, new: _T_FnNew, MockContainer: type[Container]):
         c1 = MockContainer()

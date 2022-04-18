@@ -10,7 +10,6 @@ from xdi.scopes import Scope
 
 
 from .abc import *
-from .abc import *
 
 
 xfail = pytest.mark.xfail

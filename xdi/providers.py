@@ -1,8 +1,9 @@
+from abc import ABC, abstractmethod
 import sys
-from types import GenericAlias
+from types import FunctionType, GenericAlias
 import typing as t
 from collections import abc
-from functools import partial, wraps
+from functools import wraps
 from inspect import (Parameter, Signature, iscoroutinefunction)
 from logging import getLogger
 
@@ -12,10 +13,10 @@ import attr
 
 from xdi._common import lazy
 
-from .. import (Dep, Injectable, InjectionMarker, Provided, PureDep, T_Injectable, T_Injected,
+from . import (Dep, Injectable, InjectionMarker, Provided, PureDep, T_Injectable, T_Injected,
                 is_injectable, _dependency as dependency)
-from .._common import Missing, private_setattr, typed_signature, frozendict
-from .._functools import BoundParams
+from ._common import Missing, private_setattr, typed_signature, frozendict
+from ._functools import BoundParams
 
 
 
@@ -29,8 +30,8 @@ _AnnotatedType = type(t.Annotated[t.Any, 'ann'])
 
 
 if t.TYPE_CHECKING:  # pragma: no cover
-    from ..containers import Container
-    from ..scopes import Injector, Scope
+    from .containers import Container
+    from .scopes import Injector, Scope
 
 
 
@@ -71,10 +72,10 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 
 
 @private_setattr(frozen='_frozen')
-@attr.s(slots=True, frozen=True, eq=False)
+@attr.s(slots=True, frozen=True, cmp=True)
 class Provider(t.Generic[_T_Concrete, _T_Dep]):
 
-    _frozen: bool = attr.ib(init=False, default=False)
+    _frozen: bool = attr.ib(init=False, cmp=True, default=False)
 
     concrete: _T_Concrete = attr.ib(default=Missing)
     """The object used to resolve 
@@ -168,11 +169,11 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
             return cls(abstract, scope, self, **self._get_dependency_kwargs(**kwds))
         raise NotImplementedError(f'{self.__class__.__name__}._make_dependency()') # pragma: no cover
 
-    def __eq__(self, x):
-        return x is self
+    # def __eq__(self, x):
+    #     return x is self
 
-    def __hash__(self):
-        return id(self)
+    # def __hash__(self):
+    #     return id(self)
 
 
 
@@ -467,3 +468,84 @@ class ProvidedMarkerProvider(Factory):
             arguments = (lazy.LazyOp(*marker),), frozendict(root=Dep(abstract))
         return super()._bind_params(scope, marker, sig=sig, arguments=arguments)
 
+
+
+
+
+_T_Fn = t.TypeVar('_T_Fn', bound=abc.Callable)
+
+
+
+
+ 
+    
+
+def _provder_factory_method(cls: _T_Fn) -> _T_Fn:
+    @wraps(cls)
+    def wrapper(self: "AbstractProviderRegistry", abstract, *a, **kw):
+        if not a:
+            a = abstract,
+        self[abstract] = pro = cls(*a, **kw)
+        return pro
+
+    return t.cast(cls, wrapper)
+
+
+
+class AbstractProviderRegistry(ABC):
+
+    __slots__ = ()
+
+    @abstractmethod
+    def __setitem__(self, abstract: Injectable, provider: Provider): # pragma: no cover
+        ...
+
+    def provide(self, *providers: t.Union[Provider, type, t.TypeVar, abc.Callable], **kwds) -> Self:
+        for provider in providers:
+            if isinstance(provider, tuple):
+                abstract, provider = provider
+            else:
+                abstract, provider = provider, provider
+
+            if isinstance(provider, Provider):
+                if abstract == provider:
+                    abstract = getattr(provider, 'abstract', abstract)
+                self[abstract] = provider
+            elif isinstance(provider, (type, GenericAlias, FunctionType)):
+                self.factory(abstract, provider, **kwds)
+            elif abstract != provider:
+                self.value(abstract, provider, **kwds)
+            else:
+                raise ValueError(
+                    f'providers must be of type `Provider`, `type`, '
+                    f'`FunctionType` not {provider.__class__.__name__}'
+                )
+        return self
+    
+    if t.TYPE_CHECKING: # pragma: no cover
+
+        def alias(self, abstract: Injectable, alias: t.Any, *a, **kw) -> Alias:
+            ...
+
+        def value(self, abstract: Injectable, value: t.Any, *a, **kw) -> Value:
+            ...
+
+        def callable(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Callable:
+            ...
+
+        def factory(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Factory:
+            ...
+
+        def resource(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Resource:
+            ...
+            
+        def singleton(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Singleton:
+            ...
+            
+    else:
+        alias = _provder_factory_method(Alias)
+        value = _provder_factory_method(Value)
+        callable = _provder_factory_method(Callable)
+        factory = _provder_factory_method(Factory)
+        resource = _provder_factory_method(Resource)
+        singleton = _provder_factory_method(Singleton)

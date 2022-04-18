@@ -13,7 +13,7 @@ from collections.abc import (
     Mapping,
     ValuesView,
 )
-from inspect import Parameter, Signature, iscoroutinefunction
+from inspect import Parameter, Signature
 from logging import getLogger
 from typing_extensions import Self
 from logging import getLogger

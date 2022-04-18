@@ -861,10 +861,6 @@ class FactoryFuture(Future):
             else:
                 aw_kwargs = _frozendict
                 
-            logger.info(f'{aw_kwargs=!r}')
-            logger.info(f'{factory._vals=!r}')
-            logger.info(f'{factory._vals=!r}')
-
             res = factory._func(*args, **aw_kwargs, **factory._kwargs, **factory._vals)
             if factory._aw_call:
                 res = yield from ensure_future(res, loop=self._loop)

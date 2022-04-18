@@ -3,6 +3,7 @@
 
 from abc import abstractmethod
 from enum import Enum, auto
+import logging
 from threading import Lock
 from typing_extensions import Self
 import attr
@@ -104,7 +105,7 @@ class Factory(Dependency[T_Injected]):
     concrete: T_Injected = attr.ib(kw_only=True)
     params: 'BoundParams' = attr.ib(kw_only=True, default=BoundParams.make(()))
     thread_safe: bool = attr.ib(kw_only=True, default=False)
-    async_call: bool = attr.ib(default=False, kw_only=True)
+    # async_call: bool = attr.ib(default=False, kw_only=True)
 
     def bind(self: Self, injector: "Injector"):
         if self.params:
@@ -163,8 +164,9 @@ class AwaitParamsFactory(Factory[T_Injected]):
         kwargs, aw_kwargs = self.resolve_kwargs(injector)
         return FutureFactoryWrapper(
             self.concrete, self.params.vals, 
+            args=args, kwargs=kwargs, 
+            aw_args=aw_args, aw_kwargs=aw_kwargs,
             aw_call=self.async_call, 
-            args=args, kwargs=kwargs, aw_args=aw_args, aw_kwargs=aw_kwargs
         )
 
     def resolve_kwargs(self, injector: "Injector"):
@@ -278,8 +280,8 @@ class Partial(Factory[T_Injected]):
     def factory(self: Self, injector: "Injector"):
         args = self.resolve_args(injector)
         kwargs = self.resolve_kwargs(injector)
-        vals = self.vals
-        func = self.factory
+        vals = self.params.vals
+        func = self.concrete
 
         def make(*a, **kw):
             nonlocal func, args, kwargs, vals

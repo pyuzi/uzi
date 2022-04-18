@@ -21,8 +21,9 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
+_T_Dep = t.TypeVar('_T_Dep', bound=Dependency, covariant=True)
 
-T_NewDep = _T_NewDep[Dependency]
+T_NewDep = _T_NewDep[_T_Dep]
 
 
 
@@ -34,15 +35,15 @@ _Ty = t.TypeVar('_Ty')
 _Tz = t.TypeVar('_Tz')
 
 
-@pytest.fixture
-def value_factory_spec(mock_scope, mock_injector: Injector):
-    dep_z = Dep(_Tz, default=object())
-    def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
-        assert a is mock_injector[mock_scope[_Ta]]() is not b is not z
-        assert b is mock_injector[mock_scope[_Tb]]() is not a is not z
-        assert z is mock_injector[mock_scope[dep_z]]() is not a is not b
-        return object()
-    return fn
+# @pytest.fixture
+# def value_factory_spec(mock_scope, mock_injector: Injector):
+#     dep_z = Dep(_Tz, default=object())
+#     def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
+#         assert a is mock_injector[mock_scope[_Ta]]() is not b is not z
+#         assert b is mock_injector[mock_scope[_Tb]]() is not a is not z
+#         assert z is mock_injector[mock_scope[dep_z]]() is not a is not b
+#         return object()
+#     return fn
 
 
 @pytest.fixture
@@ -53,6 +54,8 @@ def bound_params(value_setter, mock_scope):
 @pytest.fixture
 def new_kwargs(new_kwargs, bound_params):
     return new_kwargs | dict(params=bound_params)
+
+
 
 
 
@@ -123,6 +126,7 @@ class AwaitParamsFactoryDependencyTests(DependencyTestCase[Dependency]):
         aw = fn()
         assert isawaitable(aw)
         val = await aw
+
         assert val is self.value
         assert not val is await fn() is self.value
         assert not val is await fn() is self.value
@@ -146,10 +150,7 @@ class AwaitParamsAsyncFactoryDependencyTests(DependencyTestCase[Dependency]):
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
         subject= new()
         fn = subject.bind(mock_injector)
-        aw = fn()
-        assert isawaitable(aw)
-        val = await aw
+        val = await fn()
         assert val is self.value
         assert not val is await fn() is self.value
         assert not val is await fn() is self.value
-

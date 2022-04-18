@@ -41,7 +41,7 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
 
     @pytest.fixture
     def concrete(self, value_setter):
-        return MagicMock(value_setter, wraps=value_setter)
+        return value_setter #MagicMock(value_setter, wraps=value_setter)
 
     @pytest.fixture
     def value_setter(self, value_factory):

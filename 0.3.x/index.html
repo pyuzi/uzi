@@ -419,13 +419,13 @@
 <a href="https://pypi.python.org/pypi/xdi"><img alt="Supported Python versions" src="https://img.shields.io/pypi/pyversions/xdi.svg" /></a>
 <a href="https://github.com/davidkyalo/xdi/actions?query=workflow%3ACI%2FCD+event%3Apush+branch%3Amaster"><img alt="Build status" src="https://github.com/davidkyalo/xdi/actions/workflows/workflow.yaml/badge.svg?event=push&amp;branch=master" /></a>
 <a href="https://codecov.io/gh/davidkyalo/xdi"><img alt="Coverage status" src="https://codecov.io/gh/davidkyalo/xdi/branch/master/graph/badge.svg" /></a></p>
-<p><strong><code>XDI</code></strong> is a <a href="https://en.wikipedia.org/wiki/Dependency_injection">dependency injection</a> library for Python.</p>
+<p><code>XDI</code> is a <a href="https://en.wikipedia.org/wiki/Dependency_injection">dependency injection</a> library for Python.</p>
 <h2 id="why-use-xdi">Why Use XDI?</h2>
 <ul>
 <li>Fast: minus the cost of an additional stack frame, <code>xdi</code> resolves dependencies 
 nearly as efficiently as resolving them by hand.</li>
 <li>Async support: <code>xdi</code> will <code>await</code> for you.</li>
-<li>Many Providers to choose from.</li>
+<li>Lots Providers to choose from.</li>
 </ul>
 <h2 id="why-use-dependency-injection">Why use dependency injection?</h2>
 <p>Take a look at the following code.</p>
@@ -453,7 +453,7 @@ nearly as efficiently as resolving them by hand.</li>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Service doing something&quot;</span><span class="p">)</span>
 
 
-<span class="k">def</span> <span class="nf">some_func</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">def</span> <span class="nf">some_func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="n">service</span> <span class="o">=</span> <span class="n">Service</span><span class="p">()</span>  <span class="c1"># a dependency</span>
     <span class="n">service</span><span class="o">.</span><span class="n">do_something</span><span class="p">()</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;serivce has done something&quot;</span><span class="p">)</span>
@@ -481,11 +481,10 @@ different <code>API_URL</code> and/or <code>API_KEY</code>.</p>
 <p>That is, objects should not create each other anymore. They should provide a way 
 to inject the dependencies instead.</p>
 <p>Here's how.</p>
-<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">ApiClient</span><span class="p">:</span>
+<p><div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">ApiClient</span><span class="p">:</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">api_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">api_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span> <span class="c1"># we let the caller provide the dependencies</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">api_url</span> <span class="o">=</span> <span class="n">api_url</span>  
-        <span class="bp">self</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="n">api_key</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">api_url</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="n">api_url</span><span class="p">,</span> <span class="n">api_key</span>
 
 
 <span class="k">class</span> <span class="nc">Service</span><span class="p">:</span>
@@ -494,52 +493,53 @@ to inject the dependencies instead.</p>
         <span class="bp">self</span><span class="o">.</span><span class="n">_api_client</span> <span class="o">=</span> <span class="n">api_client</span> 
 
 
-<span class="k">def</span> <span class="nf">some_func</span><span class="p">(</span><span class="n">service</span><span class="p">:</span> <span class="n">Service</span><span class="p">):</span> <span class="c1"># we let the caller provide the dependency</span>
-    <span class="n">service</span><span class="o">.</span><span class="n">do_something</span><span class="p">()</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;serivce has done something&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">some_func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">service</span><span class="p">:</span> <span class="n">Service</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">):</span> <span class="c1"># we let the caller provide the dependency</span>
+    <span class="o">...</span>
 </code></pre></div>
-<p>Congratulations, your code is now loosely coupled. </p>
+Congratulations, your code is now loosely coupled. </p>
 <p>But remember, with freedom comes more responsibility.</p>
 <p>The responsibility is left to the "caller" who has to know, assemble and provide the dependencies.</p>
 <p><div class="highlight"><pre><span></span><code><span class="n">some_func</span><span class="p">(</span>
+    <span class="o">*</span><span class="n">args</span><span class="p">,</span> 
     <span class="n">service</span><span class="o">=</span><span class="n">Service</span><span class="p">(</span>
         <span class="n">api_client</span><span class="o">=</span><span class="n">ApiClient</span><span class="p">(</span>
             <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;API_KEY&quot;</span><span class="p">),</span>
             <span class="n">api_url</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;TIMEOUT&quot;</span><span class="p">),</span>
         <span class="p">),</span>
     <span class="p">),</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> 
 <span class="p">)</span>
 </code></pre></div>
 This quickly becomes a problem when you what to use <code>some_func()</code> from multiple places.
 Duplicating the assembly code with make it harder to change in the future.</p>
 <h3 id="with-xdi">With XDI.</h3>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">xdi</span> <span class="kn">import</span> <span class="n">Injector</span><span class="p">,</span> <span class="n">inject</span><span class="p">,</span> <span class="n">context</span>
+<p>Simple DI using <code>xdi</code>'s low level API.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">xdi</span> <span class="kn">import</span> <span class="n">Injector</span><span class="p">,</span> <span class="n">Scope</span><span class="p">,</span> <span class="n">Container</span>
 
-<span class="nd">@inject</span>  <span class="c1"># tell the di to inject dependencies</span>
-<span class="k">def</span> <span class="nf">some_func</span><span class="p">(</span><span class="n">service</span><span class="p">:</span> <span class="n">Service</span><span class="p">):</span>
-    <span class="n">service</span><span class="o">.</span><span class="n">do_something</span><span class="p">()</span>
-
-
-<span class="n">injector</span> <span class="o">=</span> <span class="n">Injector</span><span class="p">()</span>
+<span class="n">container</span> <span class="o">=</span> <span class="n">Container</span><span class="p">()</span>
 
 <span class="c1"># register the ApiClient</span>
-<span class="n">injector</span><span class="o">.</span><span class="n">factory</span><span class="p">(</span>
+<span class="n">container</span><span class="o">.</span><span class="n">singleton</span><span class="p">(</span>
     <span class="n">ApiClient</span><span class="p">,</span> 
     <span class="n">api_url</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;API_URL&quot;</span><span class="p">),</span> <span class="c1"># &lt;-- provide value from env</span>
     <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s1">&#39;API_KEY&#39;</span><span class="p">)</span>  <span class="c1"># &lt;-- provide value from env</span>
-<span class="p">)</span><span class="o">.</span><span class="n">singleton</span><span class="p">()</span>  <span class="c1"># &lt;-- make it provide only one instance.</span>
+<span class="p">)</span>  <span class="c1"># &lt;-- make it provide only one instance.</span>
 
 
 <span class="c1"># Register the Service. </span>
-<span class="n">injector</span><span class="o">.</span><span class="n">factory</span><span class="p">(</span><span class="n">Service</span><span class="p">)</span> 
+<span class="n">container</span><span class="o">.</span><span class="n">factory</span><span class="p">(</span><span class="n">Service</span><span class="p">)</span> 
 <span class="c1"># Since we did not specify a value for api_client. `ApiClient` will get injected </span>
 <span class="c1"># as it matches the type annotation `api_client: ApiClient`</span>
 
+<span class="c1"># Create the scope</span>
+<span class="n">scope</span> <span class="o">=</span> <span class="n">Scope</span><span class="p">(</span><span class="n">container</span><span class="p">)</span>
 
-<span class="c1"># Run the injector</span>
-<span class="n">injector</span><span class="o">.</span><span class="n">run_forever</span><span class="p">()</span>
+<span class="c1"># Create an injector</span>
+<span class="n">injector</span> <span class="o">=</span> <span class="n">Injector</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span>
 
-<span class="n">some_func</span><span class="p">()</span> <span class="c1"># &lt;-- dependency `Service` is injected automatically</span>
+
+<span class="c1"># Use the injector to run `some_func`</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">injector</span><span class="o">.</span><span class="n">make</span><span class="p">(</span><span class="n">some_func</span><span class="p">,</span> <span class="s1">&#39;xyz&#39;</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span> <span class="c1"># &lt;-- dependency `Service` is injected automatically</span>
 </code></pre></div>
 <h2 id="installation">Installation</h2>
 <p>Install from <a href="https://pypi.org/project/xdi/">PyPi</a></p>

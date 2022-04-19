@@ -252,6 +252,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
     async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_NewPro, mock_scope: Scope, mock_injector):
         subject = new()
         dep = subject.resolve(abstract, mock_scope)
+
         assert isinstance(dep, Dependency)
         func = dep.bind(mock_injector)
         assert callable(func)

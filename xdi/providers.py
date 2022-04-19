@@ -213,14 +213,12 @@ class UnionProvider(Provider[_T_Concrete]):
         return filter(is_injectable, self.get_all_args(abstract))
 
     def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
-        logger.error(f'{abstract=}')
-        logger.error(f'{self.concrete=}')
         for arg in self.get_injectable_args(abstract):
             if rv := scope[arg]:
                 return rv
 
-    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        return isinstance(abstract, self.concrete)
+    # def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+    #     assert isinstance(abstract, self.concrete)
 
 
 

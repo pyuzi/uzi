@@ -5,14 +5,12 @@ import typing as t
 import attr
 from typing_extensions import Self
 from collections.abc import Set
-from numpy import source
 
 from xdi._common import Missing, private_setattr
 from xdi._common import frozendict
 from xdi.providers import Provider
 
-from . import Injectable, T_Default, is_injectable
-# from .injectors import Injector
+from . import Injectable, is_injectable
 from ._dependency import Dependency, LookupErrorDependency
 
 from .containers import Container
@@ -87,10 +85,10 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
     def find_remote(self, abstract: Injectable):
         return self.parent[abstract]
 
-    def resolve_providers(self, abstract: Injectable, source: Container=None, *, check_generic: bool=True):
+    def resolve_providers(self, abstract: Injectable, source: Container=None):
         rv = [p for c in self.maps if (p := c[abstract])]
         rv and rv.sort(key=lambda p: int(not not p.is_default))
-        if origin := check_generic and t.get_origin(abstract):
+        if origin := t.get_origin(abstract):
             rv.extend(self.resolve_providers(origin, source))
         return rv
     
@@ -101,7 +99,9 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
         return self.__contains(o) or o in self.maps or o in self.parent
 
     def __missing__(self, abstract: Injectable, *, recursive=True) -> t.Union[Dependency, None]:
-        if is_injectable(abstract):
+        if implicit := getattr(abstract, '__xdi_provider__', None):
+            return self[implicit]
+        elif is_injectable(abstract):
             for pro in self.resolve_providers(abstract):
                 if dep := pro.resolve(abstract, self):
                     return self.__setdefault(abstract, dep)

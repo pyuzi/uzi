@@ -70,7 +70,7 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 
 
 
-
+@InjectionMarker.register
 @private_setattr(frozen='_frozen')
 @attr.s(slots=True, frozen=True, cache_hash=True, cmp=True)
 class Provider(t.Generic[_T_Concrete, _T_Dep]):

@@ -31,11 +31,13 @@ class Tests(FunctionalTestCase):
 
         injector = Injector(scope)
 
-        assert isinstance(injector(Foo), Foo)
-        assert isinstance(injector(Bar), Bar)
-        assert isinstance(injector(Baz), Baz)
-        assert isinstance(injector(FooBar), FooBar)
-        assert isinstance(injector(FooBarBaz), FooBarBaz)
-        assert isinstance(injector(Service), Service)
+        assert isinstance(injector.make(Foo), Foo)
+        assert isinstance(injector.make(Bar), Bar)
+        assert isinstance(injector.make(Baz), Baz)
+        assert isinstance(injector.make(FooBar), FooBar)
+        assert isinstance(injector.make(FooBarBaz), FooBarBaz)
+        assert isinstance(injector.make(Service), Service)
+
+        assert injector.make(entry)
 
 

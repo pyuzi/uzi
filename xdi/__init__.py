@@ -332,4 +332,5 @@ class Provided(BaseLazyOp):
 from . import providers, injectors
 from .containers import Container
 from .providers import Provider
+from .injectors import Injector
 from .scopes import Scope

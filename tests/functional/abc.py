@@ -77,7 +77,6 @@ class Service:
     
     def __init__(self, foo: Foo, bar: Bar, baz: Baz, /, *, foobar: FooBar, foobarbaz: FooBarBaz, bar_or_baz: t.Union[Bar, Baz], baz_bar: t.Annotated[Bar, Dep(FooBarBaz).provided.deps[1::-1][0].bar]) -> None:
         self.deps = foo, bar, baz, foobar, foobarbaz, bar_or_baz, baz_bar
-        print(self, *self.deps, sep='\n  - ')
         assert isinstance(foo, Foo)
         assert isinstance(bar, Bar)
         assert isinstance(baz, Baz)
@@ -89,5 +88,14 @@ class Service:
         self.foo, self.bar, self.baz, self.foobar, self.foobarbaz = foo, bar, baz, foobar, foobarbaz
         self.deps = foo, bar, baz, foobar, foobarbaz 
 
+
+def entry(foo: Foo, bar: Bar, /, *args, service: Service, **kwds):
+        assert isinstance(foo, Foo)
+        assert isinstance(bar, Bar)
+        assert isinstance(service, Service)
+        deps = foo, bar, args, service, kwds
+        return deps
+
+        
 
 

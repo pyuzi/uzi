@@ -2,14 +2,13 @@
 
 import sys
 
-from xdi import inject, context, Dep
+from xdi import Injector, Scope
 
 from .services import UserService, AuthService, PhotoService
-from .di import injector
+from .di import ioc
 from .settings import Settings
 
 
-@inject
 def main(
         email: str,
         password: str,
@@ -23,8 +22,9 @@ def main(
     photo_service.upload_photo(user, photo)
 
 
+scope = Scope(ioc)
+
 if __name__ == "__main__":
-    with context(injector) as ctx:
-        main(*sys.argv[1:])
-   
-   
+    Injector(scope).make(main, *sys.argv[1:])
+    
+    

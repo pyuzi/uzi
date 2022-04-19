@@ -62,7 +62,7 @@ class InjectorTests(BaseTestCase[Injector]):
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)
 
-    @xfail(raises=InjectorLookupError, strict=True)
+    @xfail(raises=(InjectorLookupError, TypeError), strict=True)
     @parametrize('key', [
         _T_Miss, 
         SimpleDependency(_T_Miss, NullScope(), concrete=MagicMock(_T_Miss))
@@ -73,7 +73,7 @@ class InjectorTests(BaseTestCase[Injector]):
         if isinstance(key, Dependency):
             sub[key]
         else:
-            sub(key)
+            sub.make(key)
 
    
        

@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "example"
+version = "0.1.0"
+description = "xdi single container"
+authors = ["David Kyalo <kyalo@qwertie.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+xdi = {path = "../../..", develop = true}
+pydantic = "*"
+PyYAML = "^6.0"
+boto3 = "^1.21.42"
+boto3-stubs = {extras = ["s3"], version = "^1.21.42"}
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -2,15 +2,16 @@ import logging
 import sys
 import typing as t
 from collections.abc import Callable
-from types import MethodType
+from types import FunctionType, MethodType
 
 import attr
 from typing_extensions import Self
 
 
-from . import Injectable, T_Default, T_Injectable, T_Injected, InjectorLookupError
+from . import providers, Injectable, T_Default, T_Injectable, T_Injected, InjectorLookupError
 from ._common import Missing, frozendict, private_setattr
 from ._dependency import Dependency
+
 
 if t.TYPE_CHECKING: # pragma: no cover
     from .scopes import Scope
@@ -35,8 +36,6 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
     scope: "Scope"
     parent: Self
 
-    # exitstack: '_InjectorExitStack' = attr.ib(factory=lambda: _InjectorExitStack())
-    
     def __init__(self, scope: 'Scope', parent: Self=None):
         self.__setattr(scope=scope, parent= parent or _null_injector)
 
@@ -47,11 +46,16 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
     def bound(self, abstract: T_Injectable) -> T_Injected:
         return self[self.scope[abstract]]
 
-    def __call__(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
-        return self.bound(abstract)(*args, **kwds)
-
-    # def make(self, abstract: T_Injectable) -> T_Injected:
-    #     return self.bound(abstract)()
+    def make(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
+        scope = self.scope
+        if dep := scope[abstract]:
+            return self[dep](*args, **kwds)
+        elif callable(abstract):
+            pro = providers.Partial(abstract)
+            setattr(abstract, '__xdi_provider__', pro)
+            return self[scope[abstract]](*args, **kwds)
+        else:
+            return self[abstract](*args, **kwds)
 
     def __bool__(self):
         return True

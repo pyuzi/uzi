@@ -1,5 +1,0 @@
-xdi
-pydantic
-pyyaml
-boto3
-boto3-stubs[s3]

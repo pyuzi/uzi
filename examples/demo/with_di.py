@@ -3,24 +3,22 @@ import os
 
 from after import ApiClient, Service
 
-from xdi.scopes import Scope, inject, context
+from xdi import Scope, Container, Injector
 
 
 
-@inject
+
 def main(service: Service):
     service.do_something()
 
 
 
-injector = Scope()
+ioc = Container()
 
-injector.factory(Service)
-injector.factory(ApiClient, os.getenv("API_URL"), os.getenv('API_KEY')).singleton()
+ioc.factory(Service)
+ioc.singleton(ApiClient, ApiClient, os.getenv("API_URL"), os.getenv('API_KEY'))
 
-
+scope = Scope(ioc)
 
 if __name__ == "__main__":
-
-    with context(injector):
-        main()
+    Injector(scope).make(main)

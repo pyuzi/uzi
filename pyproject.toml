@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xdi"
-version = "0.3.0"
+version = "0.3.1"
 description = "Dependency injection library"
 authors = ["David Kyalo <kyalo@qwertie.com>"]
 license = "MIT"
@@ -74,10 +74,8 @@ plugins = [
 
 [tool.coverage.coverage_conditional_plugin.rules]
 # Here we specify our pragma rules:
-py-gt-38 = "sys_version_info > (3, 8)"
 py-gt-39 = "sys_version_info > (3, 9)"
-py-lt-38 = "sys_version_info < (3, 8)"
 py-lt-39 = "sys_version_info < (3, 9)"
 py-lt-310 = "sys_version_info < (3, 10)"
 has-mypy = "is_installed('mypy')"
-no-cover = "1"
+no-cover = "True"

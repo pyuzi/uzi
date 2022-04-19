@@ -1,15 +1,10 @@
 from copy import copy, deepcopy
 from inspect import isawaitable
 from collections.abc import Callable, Sequence, MutableSequence, Set, MutableSet
-import logging
-from textwrap import wrap
 import typing as t
-from unittest.mock import MagicMock, Mock, patch
-import attr
-from numpy import cumprod
+from unittest.mock import Mock, patch
 import pytest
 from tests.conftest import Container
-from xdi._common import Missing
 
 
 from xdi.providers import Provider

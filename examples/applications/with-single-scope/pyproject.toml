@@ -6,7 +6,7 @@ authors = ["David Kyalo <kyalo@qwertie.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-xdi = {path = "../../..", develop = true}
+xdi = "*"
 pydantic = "*"
 PyYAML = "^6.0"
 boto3 = "^1.21.42"

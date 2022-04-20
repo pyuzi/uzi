@@ -28,7 +28,7 @@ class EmptyScopeError(RuntimeError):
 class Scope(frozendict[tuple, t.Union[Dependency, None]]):
 
     container: 'Container' = attr.ib(repr=True)
-    parent: Self = attr.ib(factory=lambda: NullScope())
+    parent: Self = attr.ib(converter=lambda s=None: s or NullScope(), default=None)
 
     path: tuple = attr.ib(init=False, repr=True)
     @path.default

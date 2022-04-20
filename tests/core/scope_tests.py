@@ -78,8 +78,9 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         assert sub22 != sub3 
            
     def test_parent(self, new: _T_FnNew, MockContainer: type[Container]):
-        sub = new(MockContainer())
+        sub = new(MockContainer(), None)
         assert not sub.parent
+        assert isinstance(sub.parent, NullScope)
         assert sub.level == 0
         sub2 = new(MockContainer(), sub)
         assert sub2.parent is sub

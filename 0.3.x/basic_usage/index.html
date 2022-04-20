@@ -333,72 +333,10 @@
 
 
 <h1 id="basic-usage">Basic Usage</h1>
-<p><strong><code>XDI</code></strong> is a <a href="https://en.wikipedia.org/wiki/Dependency_injection">dependency injection</a> library for Python.</p>
 <h2 id="installation">Installation</h2>
 <p>Install from <a href="https://pypi.org/project/xdi/">PyPi</a></p>
 <div class="highlight"><pre><span></span><code>pip install xdi
 </code></pre></div>
-<pre class="mermaid"><code>flowchart TB
-
-    subgraph G1
-        A --&gt; |A0| A1
-        A --&gt; |A1| B
-        A --&gt; |A2| C
-        A --&gt; |A3| H
-        A --&gt; |A4| D
-    end
-
-    subgraph G2
-        B --&gt; |B0| B
-        B --&gt; |B1| C
-        B --&gt; |B2| D
-        B --&gt; |B3| E
-    end
-
-    G2 --&gt; G1
-
-    C --&gt; |C0| C;
-    C --&gt; |C1| D;
-    C --&gt; |C2| F;
-    C --&gt; |C3| E;
-    C --&gt; |C4| G;
-
-    D --&gt; |D0| D;
-    D --&gt; |D1| G;
-
-    E --&gt; |E0| E;
-    F --&gt; |E0| F;
-    G --&gt; |G0| G;
-    H --&gt; |H0| H;
-</code></pre>
-<p>``</p>
-<pre class="mermaid"><code>graph TB
-
-    A --&gt; |A0| A1
-    A --&gt; |A1| B
-    A --&gt; |A2| C
-    A --&gt; |A3| H
-    A --&gt; |A4| D
-
-    B --&gt; |B0| B
-    B --&gt; |B1| C
-    B --&gt; |B2| D
-    B --&gt; |B3| E
-
-    C --&gt; |C0| C;
-    C --&gt; |C1| D;
-    C --&gt; |C2| F;
-    C --&gt; |C3| E;
-    C --&gt; |C4| G;
-
-    D --&gt; |D0| D;
-    D --&gt; |D1| G;
-
-    E --&gt; |E0| E;
-    F --&gt; |E0| F;
-    G --&gt; |G0| G;
-    H --&gt; |H0| H;
-</code></pre>
 
               
             </article>

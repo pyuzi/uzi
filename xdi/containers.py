@@ -55,8 +55,12 @@ class Container(frozendict[Injectable, Provider], AbstractProviderRegistry):
         for inc in reversed(self._included):
             yield from inc._dro_entries_()
 
+    def _on_register(self, abstract: Injectable, provider: Provider):
+        pass
+
     def __setitem__(self, abstract: Injectable, provider: Provider) -> Self:
         if pro :=  provider.set_container(self):
+            self._on_register(abstract, pro)
             self.__setitem(abstract, pro)
 
     def __missing__(self, abstract):

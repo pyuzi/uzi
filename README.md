@@ -7,7 +7,7 @@
 [![Coverage status][codecov-image]][codecov-link]
 
 
-**`XDI`** is a [dependency injection](https://en.wikipedia.org/wiki/Dependency_injection) library for Python.
+`XDI` is a [dependency injection](https://en.wikipedia.org/wiki/Dependency_injection) library for Python.
 
 
 ## Why Use XDI?
@@ -15,7 +15,7 @@
 - Fast: minus the cost of an additional stack frame, `xdi` resolves dependencies 
 nearly as efficiently as resolving them by hand.
 - Async support: `xdi` will `await` for you.
-- Many Providers to choose from.
+- Lots Providers to choose from.
 
 
 ## Why use dependency injection?
@@ -47,7 +47,7 @@ class Service:
         print("Service doing something")
 
 
-def some_func() -> None:
+def some_func(*args, **kwargs) -> None:
     service = Service()  # a dependency
     service.do_something()
     print("serivce has done something")
@@ -87,9 +87,8 @@ Here's how.
 class ApiClient:
 
     def __init__(self, api_url: str, api_key: str): # we let the caller provide the dependencies
-        self.api_url = api_url  
-        self.api_key = api_key
-
+        self.api_url, self.api_key = api_url, api_key
+        
 
 class Service:
 
@@ -97,12 +96,11 @@ class Service:
         self._api_client = api_client 
 
 
-def some_func(service: Service): # we let the caller provide the dependency
-    service.do_something()
-    print("serivce has done something")
+def some_func(*args, service: Service, **params): # we let the caller provide the dependency
+    ...
+
 
 ```
-
 Congratulations, your code is now loosely coupled. 
 
 But remember, with freedom comes more responsibility.
@@ -111,12 +109,14 @@ The responsibility is left to the "caller" who has to know, assemble and provide
 
 ```python
 some_func(
+    *args, 
     service=Service(
         api_client=ApiClient(
             api_key=os.getenv("API_KEY"),
             api_url=os.getenv("TIMEOUT"),
         ),
     ),
+    **kwargs, 
 )
 
 ```
@@ -128,35 +128,35 @@ Duplicating the assembly code with make it harder to change in the future.
 
 ### With XDI.
 
+Simple DI using `xdi`'s low level API.
 
 ```python
-from xdi import Injector, inject, context
+from xdi import Injector, Scope, Container
 
-@inject  # tell the di to inject dependencies
-def some_func(service: Service):
-    service.do_something()
-
-
-injector = Injector()
+container = Container()
 
 # register the ApiClient
-injector.factory(
+container.singleton(
     ApiClient, 
     api_url=os.getenv("API_URL"), # <-- provide value from env
     api_key=os.getenv('API_KEY')  # <-- provide value from env
-).singleton()  # <-- make it provide only one instance.
+)  # <-- make it provide only one instance.
 
 
 # Register the Service. 
-injector.factory(Service) 
+container.factory(Service) 
 # Since we did not specify a value for api_client. `ApiClient` will get injected 
 # as it matches the type annotation `api_client: ApiClient`
 
+# Create the scope
+scope = Scope(container)
 
-# Run the injector
-injector.run_forever()
+# Create an injector
+injector = Injector(scope)
 
-some_func() # <-- dependency `Service` is injected automatically
+
+# Use the injector to run `some_func`
+result = injector.make(some_func, 'xyz', 23, **params) # <-- dependency `Service` is injected automatically
 
 ```
 
@@ -192,5 +192,4 @@ __This package is still in active development and should not be used in producti
 [ci-link]: https://github.com/davidkyalo/xdi/actions?query=workflow%3ACI%2FCD+event%3Apush+branch%3Amaster
 [codecov-image]: https://codecov.io/gh/davidkyalo/xdi/branch/master/graph/badge.svg
 [codecov-link]: https://codecov.io/gh/davidkyalo/xdi
-
 

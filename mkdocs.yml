@@ -6,7 +6,7 @@ theme:
 
 repo_name: pyxdi/xdi
 repo_url: https://github.com/pyxdi/xdi
-edit_uri: "blob/main/docs/"
+edit_uri: "blob/master/docs/"
 
 
 markdown_extensions:

@@ -4,8 +4,8 @@ theme:
   custom_dir: docs/override
 
 
-repo_name: davidkyalo/xdi
-repo_url: https://github.com/davidkyalo/xdi
+repo_name: pyxdi/xdi
+repo_url: https://github.com/pyxdi/xdi
 edit_uri: "blob/main/docs/"
 
 

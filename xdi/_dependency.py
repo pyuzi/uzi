@@ -161,7 +161,10 @@ class Factory(Dependency[T_Injected]):
             kwargs = self.resolve_kwargs(injector)
             vals = self.params.vals
             func = self.concrete
-            return lambda: func(*args, **kwargs, **vals)
+            def factory():
+                nonlocal func, args, kwargs, vals
+                return func(*args, **kwargs, **vals)
+            return factory
         else:
             return self.concrete
 

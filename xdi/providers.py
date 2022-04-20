@@ -169,17 +169,11 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
             return cls(abstract, scope, self, **self._get_dependency_kwargs(**kwds))
         raise NotImplementedError(f'{self.__class__.__name__}._make_dependency()') # pragma: no cover
 
-    def __eq__(self, x):
-        return x is self
-
-    def __hash__(self):
-        return id(self)
 
 
 
 
-
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True)
 class Value(Provider[_T_Concrete, dependency.Value]):
     """Provides given value as it is."""
 
@@ -192,7 +186,7 @@ class Value(Provider[_T_Concrete, dependency.Value]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True)
 class Alias(Provider[_T_Concrete]):
 
     def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
@@ -200,7 +194,7 @@ class Alias(Provider[_T_Concrete]):
   
   
 
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True)
 class UnionProvider(Provider[_T_Concrete]):
 
     abstract = t.get_origin(t.Union[t.Any, None])
@@ -222,7 +216,7 @@ class UnionProvider(Provider[_T_Concrete]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True)
 class AnnotatedProvider(UnionProvider[_T_Concrete]):
 
     abstract = t.get_origin(t.Annotated[t.Any, None])
@@ -238,7 +232,7 @@ class AnnotatedProvider(UnionProvider[_T_Concrete]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True)
 class DepMarkerProvider(Provider[_T_Concrete]):
     
     abstract = Dep
@@ -419,7 +413,7 @@ class Resource(Singleton[T_Injected]):
 
 
 
-@attr.s(slots=True, init=False, cmp=True)
+@attr.s(slots=True, init=False)
 class Partial(Factory[T_Injected]):
 
     _sync_dependency_class: t.ClassVar = dependency.Partial
@@ -435,7 +429,7 @@ class Partial(Factory[T_Injected]):
 
 
 
-@attr.s(slots=True, init=False, cmp=True)
+@attr.s(slots=True, init=False)
 class Callable(Partial[T_Injected]):
 
     _sync_dependency_class: t.ClassVar = dependency.Callable
@@ -448,7 +442,7 @@ class Callable(Partial[T_Injected]):
 
 
 
-@attr.s(slots=True, frozen=True, cmp=True)
+@attr.s(slots=True, frozen=True)
 class ProvidedMarkerProvider(Factory):
     
     abstract = Provided

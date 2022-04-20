@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "xdi"
-version = "0.3.3"
+version = "0.3.4"
 description = "Dependency injection library"
-authors = ["David Kyalo <kyalo@qwertie.com>"]
+authors = ["David Kyalo <davidmkyalo@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/davidkyalo/xdi"
@@ -12,8 +12,11 @@ keywords = [
     "inversion-of-control",
     "inversion-of-control-container",
     "IoC-Container",
+    "service-injector",
+    "injector",
     "IoC",
     "DI",
+    "XDI",
 ]
 classifiers = [
     "Programming Language :: Python :: 3.9",
@@ -30,7 +33,6 @@ build-backend = "poetry.core.masonry.api"
 python = "^3.9"
 typing-extensions = "^4.1.1"
 attrs = "^21.4.0"
-sanic = {version = "*", optional = true}
 
 
 [tool.poetry.dev-dependencies]
@@ -44,9 +46,6 @@ mike = "^1.1.2"
 coverage-conditional-plugin = "^0.5.0"
 black = {version = "^22.3.0", allow-prereleases = true}
 
-
-[tool.poetry.extras]
-sanic = ["sanic"]
 
 
 [tool.pytest.ini_options]

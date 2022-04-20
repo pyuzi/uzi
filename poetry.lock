@@ -415,7 +415,7 @@ six = ">=1.5"
 name = "pyyaml"
 version = "6.0"
 description = "YAML parser and emitter for Python"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.6"
 
@@ -442,6 +442,7 @@ python-versions = ">=3.7"
 aiofiles = ">=0.6.0"
 httptools = ">=0.0.10"
 multidict = ">=5.0,<7.0"
+sanic-ext = {version = "*", optional = true, markers = "extra == \"ext\""}
 sanic-routing = ">=22.3.0,<22.6.0"
 ujson = {version = ">=1.35", markers = "sys_platform != \"win32\" and implementation_name == \"cpython\""}
 uvloop = {version = ">=0.5.3", markers = "sys_platform != \"win32\" and implementation_name == \"cpython\""}
@@ -453,6 +454,21 @@ dev = ["sanic-testing (>=22.3.0)", "pytest (==6.2.5)", "coverage (==5.3)", "guni
 docs = ["sphinx (>=2.1.2)", "sphinx-rtd-theme (>=0.4.3)", "docutils", "pygments", "m2r2", "mistune (<2.0.0)"]
 ext = ["sanic-ext"]
 test = ["sanic-testing (>=22.3.0)", "pytest (==6.2.5)", "coverage (==5.3)", "gunicorn (==20.0.4)", "pytest-cov", "beautifulsoup4", "pytest-sanic", "pytest-sugar", "pytest-benchmark", "chardet (>=3.0.0,<4.0.0)", "flake8", "black", "isort (>=5.0.0)", "bandit", "mypy (>=0.901,<0.910)", "docutils", "pygments", "uvicorn (<0.15.0)", "slotscheck (>=0.8.0,<1)", "types-ujson"]
+
+[[package]]
+name = "sanic-ext"
+version = "22.3.1"
+description = "Extend your Sanic installation with some core functionality."
+category = "main"
+optional = true
+python-versions = "*"
+
+[package.dependencies]
+pyyaml = ">=3.0.0"
+
+[package.extras]
+dev = ["sanic-testing (>=0.8)", "coverage", "pytest", "pytest-cov", "pytest-asyncio", "tox", "jinja2", "black (>=21.4b2)", "flake8 (>=3.7.7)", "isort (>=5.0.0)"]
+test = ["sanic-testing (>=0.8)", "coverage", "pytest", "pytest-cov", "pytest-asyncio", "tox", "jinja2"]
 
 [[package]]
 name = "sanic-routing"
@@ -550,12 +566,12 @@ docs = ["sphinx", "jaraco.packaging (>=9)", "rst.linker (>=1.9)"]
 testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-cov", "pytest-enabler (>=1.0.1)", "jaraco.itertools", "func-timeout", "pytest-black (>=0.3.7)", "pytest-mypy (>=0.9.1)"]
 
 [extras]
-sanic = ["sanic"]
+sanic = ["sanic", "sanic-ext"]
 
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "5a0f00c00d27272c1b5d2f61f5d242abc2fac5db35fa82bc908a8786c714d8b4"
+content-hash = "566dc684d9ec27f6186c62964e49d98f4871b34f988df09351de582f0dd55f85"
 
 [metadata.files]
 aiofiles = [
@@ -924,6 +940,10 @@ pyyaml-env-tag = [
 sanic = [
     {file = "sanic-22.3.1-py3-none-any.whl", hash = "sha256:a7cdbbac6b68ae449236b6cbdfd9c354907bafa35b777a54a899e5b7a58a3432"},
     {file = "sanic-22.3.1.tar.gz", hash = "sha256:1e13006b49830253d1fbd9ffd3597e5b2b0cc7e51f2da38c1d4f19f053563bce"},
+]
+sanic-ext = [
+    {file = "sanic-ext-22.3.1.tar.gz", hash = "sha256:3b57fcb7e27f509aa12801cfbb0690d9fe91ffc4bc0f917e7eebd6c317f54242"},
+    {file = "sanic_ext-22.3.1-py3-none-any.whl", hash = "sha256:ee47a840e732a09c5dd748d1630a3959d066c3b89d7a26780ec29dc43e1f4282"},
 ]
 sanic-routing = [
     {file = "sanic-routing-22.3.0.tar.gz", hash = "sha256:fde5a7d4079794b585b9a2904accd0de5a70abf27c82d2658b40c551ef44f703"},

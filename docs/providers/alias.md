@@ -3,22 +3,8 @@
 Used to "alias" another existing dependency. 
 
 
-```python linenums="1" hl_lines="9 11"
-import typing as t
-from xdi import Container, providers
-
-_Ta = t.TypeVar('_Ta') 
-_Tb = t.TypeVar('_Tb') 
-
-container = Container()
-
-container[_Ta] = providers.Alias(_Ta)
-# or use the helper method
-container.alias(_Tb, _Ta)
-
-obj = object()
-# bind `_Ta` to object `obj`
-container.value(_Ta, obj) 
+```python linenums="1" title="Simple Usage" hl_lines="10 13"
+--8<-- "examples/providers/alias/example_01.py"
 ```
 
 In the above snippet, dependents of both `_Tb` and `_Ta` will be provided with `obj`.

@@ -49,7 +49,7 @@ def value_factory(value_factory_spec):
 def MockContainer():
     def make(spec=Container, **kw):
         mi: Container = NonCallableMagicMock(spec, **kw)
-        mi._dro_entries_.return_value = (mi,)
+        mi.pro = (mi,)
         mi.__bool__.return_value = True
         mi.__hash__.return_value = id(mi)
         mi.__getitem__.return_value = None

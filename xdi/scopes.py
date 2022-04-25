@@ -26,6 +26,19 @@ class EmptyScopeError(RuntimeError):
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
 class Scope(frozendict[tuple, t.Union[Dependency, None]]):
+    """An isolated dependency resolution `scope` for a given container. 
+
+    Scopes assemble the dependency graphs of dependencies registered in their container.
+
+    Attributes:
+        container (Container): The container who's scope we are creating
+        parent (Scope): The parent scope. Defaults to None
+
+    Args:
+        container (Container): The container who's scope we are creating
+        parent (Scope, optional): The parent scope. Defaults to NullScope
+
+    """
 
     container: 'Container' = attr.ib(repr=True)
     parent: Self = attr.ib(converter=lambda s=None: s or NullScope(), default=None)
@@ -51,8 +64,8 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
     @maps.default
     def _init_maps(self):
         container, parent, builtin = self.container, self.parent, self._builtins
-        if dro := [c for c in container._dro_entries_() if c not in parent]:
-            dro_builtin = (c._dro_entries_() for c in builtin)
+        if dro := [c for c in container.pro if c not in parent]:
+            dro_builtin = (c.pro for c in builtin)
             dct = {c: i for i, c in enumerate(chain(dro, *dro_builtin))}
             return t.cast(Set[Container], dct.keys())
         raise EmptyScopeError(f'{self}')
@@ -62,6 +75,8 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
 
     @property
     def name(self) -> str:
+        """The name of the scope. Usually returns the scope's `container.name` 
+        """
         return self.container.name
 
     @property
@@ -69,6 +84,12 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
         return self.parent.level + 1
 
     def parents(self):
+        """Returns a generetor that iterates over the scope's ancestor starting 
+        from the current `parent` to the root scope.
+
+        Yields:
+            ancestor (Scope): an ancestor.
+        """
         parent = self.parent
         while parent:
             yield parent
@@ -129,6 +150,17 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
 
 
 class NullScope(Scope):
+    """A 'noop' `Scope` used as the parent of root scopes.  
+
+    Attributes:
+        container (frozendict): 
+        parent (None): The parent scope
+
+    Params:
+        None
+
+    """
+
     __slots__ = ()
     parent = None
     container = frozendict()

@@ -21,15 +21,15 @@ _setattr = setattr
 _T = TypeVar('_T')
 
 
-def ensure_isinstance(*types: type[_T], skip=(), name="", msg="{name} allowed types(s): {allowed}. got: '{type}'."):
-    allowed = ', '.join(f"{t.__qualname__!r}" for t in types)
-    def ensure(obj):
-        if isinstance(obj, types) or obj in skip:
-            return obj
+# def _ensure_isinstance(*types: type[_T], skip=(), name="", msg="{name} allowed types(s): {allowed}. got: '{type}'."):
+#     allowed = ', '.join(f"{t.__qualname__!r}" for t in types)
+#     def ensure(obj):
+#         if isinstance(obj, types) or obj in skip:
+#             return obj
 
-        raise TypeError(msg.format(name=name,allowed=allowed, type=f"{obj.__class__.__qualname__!r}"))
+#         raise TypeError(msg.format(name=name,allowed=allowed, type=f"{obj.__class__.__qualname__!r}"))
 
-    return ensure
+#     return ensure
 
 
 def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn=_object_setattr, frozen: str =None):
@@ -73,24 +73,24 @@ def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn
 
 
 
-def calling_frame(depth=1, *, globals: bool=None, locals: bool=None, chain: bool=None):
-    """Get the globals() or locals() scope of the calling scope"""
+# def _calling_frame(depth=1, *, globals: bool=None, locals: bool=None, chain: bool=None):
+#     """Get the globals() or locals() scope of the calling scope"""
 
-    if None is globals is locals is chain:
-        globals = True
-    elif (not chain and True is globals is locals) or (False is globals is locals):
-        raise ValueError(f'args `globals` and `locals` are mutually exclusive') # pragma: no cover
+#     if None is globals is locals is chain:
+#         globals = True
+#     elif (not chain and True is globals is locals) or (False is globals is locals):
+#         raise ValueError(f'args `globals` and `locals` are mutually exclusive') # pragma: no cover
 
-    try:
-        frame = sys._getframe(depth + 1)
-        if chain:
-            scope = ChainMap(frame.f_locals, frame.f_globals)
-        if globals:
-            scope = frame.f_globals
-        else:
-            scope = frame.f_locals
-    finally:
-        return types.MappingProxyType(scope)
+#     try:
+#         frame = sys._getframe(depth + 1)
+#         if chain:
+#             scope = ChainMap(frame.f_locals, frame.f_globals)
+#         if globals:
+#             scope = frame.f_globals
+#         else:
+#             scope = frame.f_locals
+#     finally:
+#         return types.MappingProxyType(scope)
 
 
 
@@ -127,8 +127,7 @@ def eval_type(value, globalns, localns=None):
         value = ForwardRef(value)
     try:
         return t._eval_type(value, globalns, localns)
-    except NameError:
-        # this is ok, it can be fixed with update_forward_refs
+    except NameError: # pragma: no cover
         return value
 
 

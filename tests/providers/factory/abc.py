@@ -50,7 +50,7 @@ class ProviderTestCase(ProviderTestCase[_T_Pro]):
     
     @pytest.fixture
     def concrete(self):
-        def fn(a: Foo, /, b: Bar, *, z=Dep(Baz, default=None)): ...
+        def fn(a: Foo, /, b: 'Bar', *, z=Dep(Baz, default=None)): ...
         return fn
 
     def test_args_kwargs(self, new: _T_NewPro):

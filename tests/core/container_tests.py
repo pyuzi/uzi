@@ -1,10 +1,9 @@
 import typing as t
-import attr
 import pytest
 
 
 
-from collections.abc import Callable, Set, MutableSet, Iterable
+from collections.abc import Callable
 from xdi._common import frozendict
 
 
@@ -24,7 +23,7 @@ _T = t.TypeVar('_T')
 _T_Miss = t.TypeVar('_T_Miss')
 _T_Ioc = t.TypeVar('_T_Ioc', bound=Container)
 
-_T_FnNew = Callable[..., _T_Ioc]
+_T_FnNew = Callable[..., Container]
 
 
 class ContainerTest(BaseTestCase[_T_Ioc]):
@@ -37,8 +36,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert isinstance(sub, Container)
         assert isinstance(sub, frozendict)
         assert isinstance(sub, AbstractProviderRegistry)
-        assert isinstance(sub.included, Set)
-        assert not isinstance(sub.included, MutableSet)
+        assert isinstance(sub.bases, tuple)
 
         assert sub
         assert sub.name == 'test_ioc'
@@ -49,28 +47,33 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         c1, c2 = new('c'), new('c')
         assert isinstance(hash(c1), int)
         assert c1 != c2 and not (c1 == c2) and c1.name == c2.name
-        assert c1._included == c1._included and c1.keys() == c2.keys()
       
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)
 
     def test_include(self, new: _T_FnNew):
         c1, c2, c3, c4 = new('c1'), new('c2'), new('c3'), new('c4')
-        assert c1.include(c3).include(c2.include(c4), c2) is c1
-        assert c1.included == {c3, c2}
-        assert c2.included == {c4,}
-        assert c1.includes(c1) and c1.includes(c2) and c1.includes(c3) and c1.includes(c4)
-        assert not (c2.includes(c1) or c2.includes(c3))
+        assert c1.extend(c3).extend(c2.extend(c4), c2) is c1
+        assert c1.bases == (c3, c2)
+        assert c2.bases == (c4,)
+        assert c1.extends(c1) and c1.extends(c2) and c1.extends(c3) and c1.extends(c4)
+        assert not (c2.extends(c1) or c2.extends(c3))
 
-    def test_dro_entries(self, new: _T_FnNew):
+    def test_pro(self, new: _T_FnNew):
         c1, c2, c3, c4, c5, c6 = new('c1'), new('c2'), new('c3'), new('c4'), new('c5'), new('c6')
-        c1.include(c2.include(c4.include(c5, c6)))
-        c1.include(c3.include(c5))
-        it = c1._dro_entries_()
-        assert isinstance(it, Iterable)
-        dro = c1, c3, c5, c2, c4, c6, c5,
+        c1.extend(c2.extend(c4.extend(c5, c6)))
+        c1.extend(c3.extend(c5))
+        pro = c1._pro_entries()
+        assert isinstance(pro, tuple)
+        print(*(f'{c}' for c in c1.pro), sep='\n  - ')
+        assert pro == c1.pro
+        assert pro == (c1, c2, c4, c3, c5, c6)
 
-        assert tuple(it) == dro
+    @xfail(raises=TypeError, strict=True)
+    def test_inconsistent_pro(self, new: _T_FnNew):
+        c1, c2, c3= new('c1'), new('c2'), new('c3')
+        c1.extend(c3, c2.extend(c3))
+        c1.pro
 
     def test_setitem(self, new: _T_FnNew, mock_provider: Provider):
         sub = new()
@@ -98,5 +101,6 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert sub[pro2] is pro2
         assert sub[pro3] is None
 
-    
-        
+
+
+

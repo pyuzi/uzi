@@ -106,8 +106,8 @@ class ScopeTest(BaseTestCase[_T_Scp]):
     @xfail(raises=EmptyScopeError, strict=True)
     def test_parent_with_container(self, new: _T_FnNew, MockContainer: type[Container]):
         c1, c2 = (MockContainer() for i in range(2))
-        c1._dro_entries_.return_value = c1, c2,
-        c2._dro_entries_.return_value = c2,
+        c1.pro = c1, c2,
+        c2.pro = c2,
 
         sub = new(c1)
         assert sub.container is c1
@@ -115,33 +115,33 @@ class ScopeTest(BaseTestCase[_T_Scp]):
 
     def test_maps(self, new: _T_FnNew, MockContainer: type[Container]):
         c1, c2, c3, c4, c5 = (MockContainer() for i in range(5))
-        dro = c1, c2, c3, c5, c4, c3, c5
-        c1._dro_entries_.return_value = dro
+        pro = c1, c2, c3, c5, c4, c3, c5
+        c1.pro = pro
         sub = new(c1)
         assert sub.container is c1
-        assert sub.maps & {*dro} == {*dro}
-        assert all(c in sub for c in {*dro})
+        assert sub.maps & {*pro} == {*pro}
+        assert all(c in sub for c in {*pro})
 
     def test_maps_with_parents(self, new: _T_FnNew, MockContainer: type[Container]):
         ca, c2, c3, cb, c5, c6 = (MockContainer() for i in range(6))
-        dro_a = ca, c2, c3, c5,
-        dro_b = cb, c3, c5, c6,
+        pro_a = ca, c2, c3, c5,
+        pro_b = cb, c3, c5, c6,
 
-        ca._dro_entries_.return_value = dro_a
-        cb._dro_entries_.return_value = dro_b
+        ca.pro = pro_a
+        cb.pro = pro_b
 
         sub_a = new(ca)
         sub_b = new(cb, sub_a)
-        assert sub_a.maps & {*dro_a} == {*dro_a}
+        assert sub_a.maps & {*pro_a} == {*pro_a}
         assert sub_b.maps & {cb, c6} == {cb, c6}
-        assert all(c in sub_a for c in {*dro_a})
-        assert all(c in sub_b for c in {*dro_a, *dro_b})
-        assert all(not c in sub_a for c in {*dro_b} - {*dro_a})
+        assert all(c in sub_a for c in {*pro_a})
+        assert all(c in sub_b for c in {*pro_a, *pro_b})
+        assert all(not c in sub_a for c in {*pro_b} - {*pro_a})
      
     def test_resolve_providers(self, new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
         c0, c1, c2, c3 = (MockContainer() for i in range(4))
         
-        c1._dro_entries_.return_value = (c1, c2, c3)
+        c1.pro = (c1, c2, c3)
 
         base = new(c0)
         sub = new(c1, base)
@@ -181,11 +181,11 @@ class ScopeTest(BaseTestCase[_T_Scp]):
 
     def test_getitem(self, new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
         ca, ca1, ca2, cb, cb1, cb2 = (MockContainer() for i in range(6))
-        dro_a = ca, ca1, ca2
-        dro_b = cb, cb1, cb2
+        pro_a = ca, ca1, ca2
+        pro_b = cb, cb1, cb2
         
-        ca._dro_entries_.return_value = dro_a
-        cb._dro_entries_.return_value = dro_b
+        ca.pro = pro_a
+        cb.pro = pro_b
 
         fn_compose = lambda *a, **kw: object()
 

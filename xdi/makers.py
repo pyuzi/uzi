@@ -4,15 +4,12 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 from enum import IntEnum
 
-import attr
 from typing_extensions import Self
 
 from . import Injectable, T_Default, T_Injectable, T_Injected
 from ._common import Missing, private_setattr
 from ._common.lazy import LazyOp as BaseLazyOp
 
-if t.TYPE_CHECKING:
-    from .scopes import Scope
 
 
 class InjectionMarker(Injectable, t.Generic[T_Injectable]):
@@ -21,8 +18,7 @@ class InjectionMarker(Injectable, t.Generic[T_Injectable]):
 
     @property
     @abstractmethod
-    def __origin__(self):
-        ...
+    def __origin__(self): ...
 
 
 class InjectionDescriptor(Injectable, t.Generic[T_Injectable]):
@@ -31,8 +27,7 @@ class InjectionDescriptor(Injectable, t.Generic[T_Injectable]):
 
     @property
     @abstractmethod
-    def __abstract__(self) -> T_Injectable:
-        ...
+    def __abstract__(self) -> T_Injectable: ...
 
 
 class DepScope(IntEnum):

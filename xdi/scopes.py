@@ -51,8 +51,8 @@ class Scope(frozendict[tuple, t.Union[Dependency, None]]):
     @maps.default
     def _init_maps(self):
         container, parent, builtin = self.container, self.parent, self._builtins
-        if dro := [c for c in container._dro_entries_() if c not in parent]:
-            dro_builtin = (c._dro_entries_() for c in builtin)
+        if dro := [c for c in container.pro if c not in parent]:
+            dro_builtin = (c.pro for c in builtin)
             dct = {c: i for i, c in enumerate(chain(dro, *dro_builtin))}
             return t.cast(Set[Container], dct.keys())
         raise EmptyScopeError(f'{self}')

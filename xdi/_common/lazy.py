@@ -78,8 +78,8 @@ class Expression(t.Generic[_T_Expr, _T_Obj]):
     def __eq__(self, x):
         if isinstance(x, self.__class__):
             return x.__expr__ == self.__expr__
-        elif isinstance(x, self.__expr__.__class__):
-            return x == self.__expr__
+        # elif isinstance(x, self.__expr__.__class__):
+        #     return x == self.__expr__
         return False
 
     def __ne__(self, x):
@@ -98,7 +98,7 @@ class Expression(t.Generic[_T_Expr, _T_Obj]):
         return self.__class__, (self.__expr__,)
 
     @abstractmethod
-    def __eval__(self, o: _T_Obj):
+    def __eval__(self, o: _T_Obj): # pragma: no cover
         raise NotImplementedError(f"{self.__class__.__name__}.__eval__datapath__()")
 
     # def __setattr__(self, name: str, value) -> None:
@@ -240,8 +240,8 @@ class LazyOp(
     def __len__(self):
         return len(self.__expr__)
 
-    def __contains__(self, o):
-        return o in self.__expr__
+    # def __contains__(self, o):
+    #     return o in self.__expr__
 
     def __reduce__(self):
         return self.__class__, self.__expr__

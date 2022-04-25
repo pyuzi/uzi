@@ -1,7 +1,7 @@
 from threading import Lock
 import typing as t
 from logging import getLogger
-
+from collections.abc import Set
 from typing_extensions import Self
 
 import attr
@@ -17,13 +17,15 @@ logger = getLogger(__name__)
 
 
 @InjectionMarker.register
-@private_setattr
 @attr.s(slots=True, frozen=True, repr=True, cmp=False)
+@private_setattr(frozen='_frozen')
 class Container(frozendict[Injectable, Provider], AbstractProviderRegistry):
 
-    __id = 0
+    __id = -2
     __lock = Lock()
-
+    
+    _frozen: bool = attr.ib(init=False, repr=False, default=False)
+    
     id: int = attr.ib(init=False)
     @id.default
     def _init_id(self):
@@ -32,29 +34,62 @@ class Container(frozendict[Injectable, Provider], AbstractProviderRegistry):
             return self.__class__.__id
 
     name: str = attr.ib(default='<anonymous>')
-    _included: frozendict[Self, Self] = attr.ib(factory=frozendict, init=False, repr=False) 
-    __setdefault: t.Callable[..., Provider] = dict[Injectable, Provider].setdefault
+    bases: tuple[Self] = attr.ib(default=(), init=True, repr=True and (lambda s: f"[{', '.join(f'{c.name!r}' for c in s)}]")) 
+    _pro: tuple[Self] = attr.ib(default=None, init=False, repr=False and (lambda s: f"[{', '.join(f'{c.name!r}' for c in s)}]")) 
     __setitem = dict[Injectable,  Provider].__setitem__
 
     @property
-    
-    def included(self):
-        return self._included.keys()
+    def pro(self):
+        if pro := self._pro:
+            return pro
+        self.__setattr(_pro=self._pro_entries())
+        return self._pro
 
-    def includes(self, other: Self):
-        return other is self \
-            or other in self._included \
-            or any(c.includes(other) for c in self._included)
+    def _pro_entries(self):
+        """Get provider resolution order.
+        
+        Uses C3 linearization https://en.wikipedia.org/wiki/C3_linearization
+        """
+        bases = [*self.bases]
 
-    def include(self, *containers: "Container") -> Self:
-        self.__setattr(_included=self._included | dict.fromkeys(containers))
+        if not bases:
+            return self,
+
+        res = {self: 0}
+        ml = [*([*b.pro] for b in bases), [*bases]]
+        
+        i, miss = 0, 0
+        while ml:
+            if i == len(ml):
+                if miss >= i:
+                    raise TypeError(f'Cannot create a consistent provider resolution {miss=}, {ml=}')
+                i = 0
+            ls = ml[i]
+            h = ls[0]
+            if h in res:
+                pass
+            elif any(l.index(h) > 0 for l in  ml if not l is ls and h in l):
+                i += 1
+                miss += 1
+                continue
+            else:
+                res[h] = i
+            ls.pop(0)
+            miss = 0
+            if ls:
+                i += 1
+            else:
+                ml.pop(i)
+
+        return *res,
+
+    def extends(self, other: Self):
+        return other in self.pro
+        
+    def extend(self, *bases: "Container") -> Self:
+        self.__setattr(bases=tuple(dict.fromkeys(self.bases + bases)))
         return self
     
-    def _dro_entries_(self):
-        yield self
-        for inc in reversed(self._included):
-            yield from inc._dro_entries_()
-
     def _on_register(self, abstract: Injectable, provider: Provider):
         pass
 

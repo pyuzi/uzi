@@ -10,13 +10,13 @@ from types import FunctionType, GenericAlias
 import attr
 from typing_extensions import Self
 
-from xdi._common import lazy
+from ._common import lookups
 
 from . import _dependency as dependency
-from ._common import Missing, frozendict, private_setattr, typed_signature
+from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .core import Injectable, T_Injectable, T_Injected, is_injectable
-from .makers import Dep, DependencyMarker, Provided, PureDep
+from .makers import Dep, DependencyMarker, Lookup, PureDep
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
     _UnionType = type(t.Union[t.Any, None])
@@ -343,24 +343,26 @@ class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryDep], t.Generic[
 
         ### Values and Dependencies
 
-        Dependencies (marked with: `xdi.Dep`, `xdi.Lookup` or other `DependencyMarker` 
-        types) will automatically be resolved and passed to the factory while calling it.
-
+        Arguments of type [`DependencyMarker`](../makers/#xdi.makers.DependencyMarker) 
+        will automatically be resolved and passed to the factory while calling it. 
+        
+        e.g. using [`Dep`](../makers/#xdi.makers.Dep) and 
+        [`Lookup`](../makers/#xdi.makers.Lookup):
         ```python linenums="1" hl_lines="4 7"
         Factory(
             func, 
             'a', 
-            xdi.Dep(Foo), 
+            xdi.makers.Dep(Foo), 
             obj, 
             key='xyz', 
-            bar=xdi.Lookup(FooBar).bar
+            bar=xdi.makers.Lookup(FooBar).bar
         )
         # will call: func('a', <inject: Foo>, obj, key='xyz', bar=<inject: FooBar>.bar)
         ```
 
 
     """
-    arguments: tuple[tuple, frozendict] = attr.ib(default=((), frozendict()))
+    arguments: tuple[tuple, FrozenDict] = attr.ib(default=((), FrozenDict()))
     # is_shared: t.ClassVar[bool] = False
     
     _signature: Signature = attr.ib(init=False, default=None)
@@ -379,7 +381,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryDep], t.Generic[
     def __init__(self, concrete: abc.Callable[[], T_Injectable] = None, /, *args, **kwargs):
         self.__attrs_init__(
             concrete=concrete, 
-            arguments=(args, frozendict(kwargs))
+            arguments=(args, FrozenDict(kwargs))
         )
 
     def asynchronous(self, is_async: bool=True) -> Self:
@@ -431,7 +433,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryDep], t.Generic[
             self (Provider): this provider
         """
         arguments = self.arguments
-        self.__setattr(arguments=(*arguments[:1], frozendict(kwargs)))
+        self.__setattr(arguments=(*arguments[:1], FrozenDict(kwargs)))
         return self
  
     @t.overload
@@ -638,20 +640,20 @@ class Callable(Partial[T_Injected, _T_CallableDep]):
 
 
 @attr.s(slots=True, frozen=True)
-class ProvidedMarkerProvider(Factory[lazy.eval, _T_FactoryDep]):
+class LookupMarkerProvider(Factory[lookups.look, _T_FactoryDep]):
     """Provider for resolving `xdi.Lookup` dependencies. 
     """
     
-    abstract = Provided
-    concrete = attr.ib(init=False, default=lazy.eval)
+    abstract = Lookup
+    concrete = attr.ib(init=False, default=lookups.look)
 
     def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        return isinstance(abstract, Provided)
+        return isinstance(abstract, Lookup)
 
-    def _bind_params(self, scope: "Scope", marker: Provided, *, sig=None, arguments=()):
+    def _bind_params(self, scope: "Scope", marker: Lookup, *, sig=None, arguments=()):
         if not arguments:
             abstract = marker.__abstract__
-            arguments = (lazy.LazyOp(*marker),), frozendict(root=Dep(abstract))
+            arguments = (lookups.Lookup(*marker),), FrozenDict(root=Dep(abstract))
         return super()._bind_params(scope, marker, sig=sig, arguments=arguments)
 
 

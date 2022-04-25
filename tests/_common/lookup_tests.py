@@ -7,22 +7,22 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-from xdi._common.lazy import LazyOp, AttributeEvaluationError, KeyEvaluationError, IndexEvaluationError, CallEvaluationError
+from xdi._common.lookups import Lookup, AttributeEvaluationError, KeyEvaluationError, IndexEvaluationError, CallEvaluationError
 
 
 
-_T_New = type[LazyOp]
+_T_New = type[Lookup]
 
 
-class DataPathTests:
+class LookupTests:
 
     @pytest.fixture
     def new(self):
-        return LazyOp
+        return Lookup
 
     def test_basic(self, new: _T_New):
         str(new().a['xyz'].b(1,2).c[0:])
-        assert isinstance(new(), LazyOp)
+        assert isinstance(new(), Lookup)
         assert new().a and new()[0] and new()['abc'] and new()[:0] and new()()
 
     def test_compare(self, new: _T_New):

@@ -1,9 +1,8 @@
-from types import SimpleNamespace
 import typing as t
 from unittest.mock import Mock
 
 import pytest
-from xdi import Dep
+from xdi.makers import Dep
 from xdi.providers import DepMarkerProvider as Provider
 from xdi.scopes import Scope
 

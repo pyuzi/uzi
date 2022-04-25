@@ -30,7 +30,6 @@ _T_Use = t.TypeVar('_T_Use')
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
 class Dependency(ABC, t.Generic[_T_Use]):
-
     """Marks an injectable as a `dependency` to be injected."""
     
     @abstractmethod

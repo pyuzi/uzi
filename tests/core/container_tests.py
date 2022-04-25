@@ -4,7 +4,7 @@ import pytest
 
 
 from collections.abc import Callable
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 
 
 from xdi.containers import Container
@@ -34,7 +34,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         sub = new('test_ioc')
         str(sub)
         assert isinstance(sub, Container)
-        assert isinstance(sub, frozendict)
+        assert isinstance(sub, FrozenDict)
         assert isinstance(sub, AbstractProviderRegistry)
         assert isinstance(sub.bases, tuple)
 

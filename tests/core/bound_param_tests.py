@@ -9,7 +9,7 @@ from unittest.mock import  MagicMock, Mock
 
 from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi import Dep
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 
 
 from xdi._functools import BoundParam

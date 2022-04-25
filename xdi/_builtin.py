@@ -1,6 +1,6 @@
 
 from .containers import Container  
-from .providers import AnnotatedProvider, UnionProvider, DepMarkerProvider, ProvidedMarkerProvider  
+from .providers import AnnotatedProvider, UnionProvider, DepMarkerProvider, LookupMarkerProvider  
 
 
 
@@ -10,7 +10,7 @@ __builtin_container__ = Container(f'{__package__}.__builtin__')
 _pro_union = UnionProvider()
 _pro_dep = DepMarkerProvider()
 _pro_annotated = AnnotatedProvider()
-_pro_provided = ProvidedMarkerProvider()
+_pro_provided = LookupMarkerProvider()
 
 
 __builtin_container__[_pro_dep.abstract] = _pro_dep

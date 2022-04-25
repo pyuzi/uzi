@@ -8,7 +8,7 @@ import attr
 
 
 from . import Injectable, DependencyMarker
-from ._common import private_setattr, frozendict
+from ._common import private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
 
 logger = getLogger(__name__)
@@ -19,7 +19,7 @@ logger = getLogger(__name__)
 @DependencyMarker.register
 @attr.s(slots=True, frozen=True, repr=True, cmp=False)
 @private_setattr(frozen='_frozen')
-class Container(AbstractProviderRegistry, frozendict[Injectable, Provider]):
+class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     """A mapping of dependencies to their providers. We use them to bind 
     dependencies to their providers. 
    

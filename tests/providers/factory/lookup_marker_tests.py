@@ -3,11 +3,11 @@ from unittest.mock import MagicMock
 import pytest
 
 import typing as t
-from xdi import Provided
+from xdi.makers import Lookup
 
 
 
-from xdi.providers import ProvidedMarkerProvider as Provider
+from xdi.providers import LookupMarkerProvider as Provider
 
 
 from ..abc import _T_NewPro, ProviderTestCase
@@ -34,7 +34,7 @@ class Foo:
 
 
 
-class ProvidedMarkerProviderTests(ProviderTestCase[Provider]):
+class LookupMarkerProviderTests(ProviderTestCase[Provider]):
     
     @pytest.fixture
     def new_args(self):
@@ -42,7 +42,7 @@ class ProvidedMarkerProviderTests(ProviderTestCase[Provider]):
 
     @pytest.fixture
     def abstract(self):
-        return Provided(Foo).bar.run(1, 2, 3, k1=1, k2=2).a["list"][2:-2]
+        return Lookup(Foo).bar.run(1, 2, 3, k1=1, k2=2).a["list"][2:-2]
 
     @pytest.fixture
     def mock_injector(self, mock_scope, mock_injector):

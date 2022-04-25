@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 from .core import Injectable, T_Default, T_Injectable, T_Injected
 from ._common import Missing, private_setattr
-from ._common.lazy import LazyOp as BaseLazyOp
+from ._common.lookups import Lookup as BaseLookup
 
 
 
@@ -100,7 +100,7 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
 
     @property
     def provided(self):
-        return Provided(self)
+        return Lookup(self)
 
     @property
     def __origin__(self): return self.abstract
@@ -174,13 +174,13 @@ class Dep(DependencyMarker, _AbcDepTuple):
 
     @property
     def provided(self):
-        return Provided(self)
+        return Lookup(self)
 
 
 
 
 @InjectionDescriptor.register
-class Provided(DependencyMarker, BaseLazyOp):
+class Lookup(DependencyMarker, BaseLookup):
     """Represents a lazy lookup of a given dependency.
 
     Attributes:
@@ -197,7 +197,7 @@ class Provided(DependencyMarker, BaseLazyOp):
     def __new__(cls: type[Self], abstract: type[T_Injected]) -> Self:
         ...
 
-    __new__ = BaseLazyOp.__new__
+    __new__ = BaseLookup.__new__
 
     @property
     def __abstract__(self) -> type[T_Injected]:

@@ -7,7 +7,7 @@ import pytest
 
 from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi import InjectorLookupError
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 from xdi._dependency import SimpleDependency
 from xdi.injectors import Injector, NullInjector
 
@@ -35,7 +35,7 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         sub = new()
         assert isinstance(sub, Injector)
         assert isinstance(sub, NullInjector)
-        assert isinstance(sub, frozendict)
+        assert isinstance(sub, FrozenDict)
         assert isinstance(sub.scope, Scope)
         assert sub.parent is None
         assert not sub

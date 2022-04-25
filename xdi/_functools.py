@@ -13,9 +13,9 @@ from logging import getLogger
 import attr
 from typing_extensions import Self
 
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 
-from ._common import Missing, frozendict
+from ._common import Missing
 from .core import Injectable, is_injectable_annotation
 from .makers import DependencyMarker
 
@@ -43,7 +43,7 @@ _EMPTY = Parameter.empty
 _T = t.TypeVar("_T")
 
 
-_frozendict = frozendict()
+_frozendict = FrozenDict()
 
 
 _object_new = object.__new__
@@ -136,7 +136,7 @@ class BoundParams:
     kwds: tuple[BoundParam] = attr.ib(converter=tuple)
     aw_kwds: tuple[str] = attr.ib(converter=tuple)
     is_async: bool = attr.ib()
-    vals: frozendict[str, t.Any] = attr.ib(converter=frozendict)
+    vals: FrozenDict[str, t.Any] = attr.ib(converter=FrozenDict)
     _pos_vals: int = attr.ib(converter=int)
     _pos_deps: int = attr.ib(converter=int)
 
@@ -191,7 +191,7 @@ class BoundParams:
         scope: "Scope" = None,
         container: "Container" = None,
         args: tuple = (),
-        kwargs: dict = frozendict(),
+        kwargs: dict = FrozenDict(),
     ) -> Self:
         return cls.make(cls._iter_bind(sig, scope, container, args, kwargs))
 
@@ -202,7 +202,7 @@ class BoundParams:
         scope: "Scope" = None,
         container: "Container" = None,
         args=(),
-        kwargs=frozendict(),
+        kwargs=FrozenDict(),
     ):
         bound = sig.bind_partial(*args, **kwargs).arguments
 
@@ -346,12 +346,12 @@ class FutureFactoryWrapper:
     def __new__(
         cls,
         func,
-        vals: Mapping = frozendict(),
-        args: "_PositionalArgs" = frozendict(),
-        kwargs: "_KeywordDeps" = frozendict(),
+        vals: Mapping = FrozenDict(),
+        args: "_PositionalArgs" = FrozenDict(),
+        kwargs: "_KeywordDeps" = FrozenDict(),
         *,
-        aw_args: tuple[int] = frozendict(),
-        aw_kwargs: tuple[str] = frozendict(),
+        aw_args: tuple[int] = FrozenDict(),
+        aw_kwargs: tuple[str] = FrozenDict(),
         aw_call: bool = True,
     ) -> Self:
         self = _object_new(cls)
@@ -433,7 +433,7 @@ class FactoryFuture(Future):
     # _aws: tuple[Future[_T], dict[str, Future[_T]]]
 
     def __init__(
-        self, factory, aw_args=frozendict(), aw_kwargs=frozendict(), *, loop=None
+        self, factory, aw_args=FrozenDict(), aw_kwargs=FrozenDict(), *, loop=None
     ) -> Self:
         Future.__init__(self, loop=loop)
         self._factory = factory
@@ -484,11 +484,11 @@ class CallableFuture(Future):
     def __init__(
         self,
         factory,
-        aw_args=frozendict(),
-        aw_kwargs=frozendict(),
+        aw_args=FrozenDict(),
+        aw_kwargs=FrozenDict(),
         *,
         args: tuple = (),
-        kwargs: dict[str, t.Any] = frozendict(),
+        kwargs: dict[str, t.Any] = FrozenDict(),
         loop=None,
     ) -> Self:
         Future.__init__(self, loop=loop)
@@ -547,11 +547,11 @@ class ResourceFuture(Future):  # pragma: no cover
     def __init__(
         self,
         factory,
-        aw_args=frozendict(),
-        aw_kwargs=frozendict(),
+        aw_args=FrozenDict(),
+        aw_kwargs=FrozenDict(),
         *,
         args: tuple = (),
-        kwargs: dict[str, t.Any] = frozendict(),
+        kwargs: dict[str, t.Any] = FrozenDict(),
         loop=None,
     ) -> Self:
         Future.__init__(self, loop=loop)

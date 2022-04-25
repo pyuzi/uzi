@@ -7,7 +7,7 @@ from typing_extensions import Self
 from collections.abc import Set
 
 from xdi._common import Missing, private_setattr
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 from xdi.providers import Provider
 
 from .core import Injectable, is_injectable
@@ -25,7 +25,7 @@ class EmptyScopeError(RuntimeError):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Scope(frozendict[tuple, t.Union[Dependency, None]]):
+class Scope(FrozenDict[tuple, t.Union[Dependency, None]]):
     """An isolated dependency resolution `scope` for a given container. 
 
     Scopes assemble the dependency graphs of dependencies registered in their container.
@@ -163,7 +163,7 @@ class NullScope(Scope):
 
     __slots__ = ()
     parent = None
-    container = frozendict()
+    container = FrozenDict()
     maps = frozenset()
     level = -1
     path = ()

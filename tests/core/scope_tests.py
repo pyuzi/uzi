@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import  MagicMock, Mock
 
 from collections.abc import Callable, Iterator, Set, MutableSet
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 
 
 from xdi import is_injectable
@@ -40,7 +40,7 @@ class ScopeTest(BaseTestCase[_T_Scp]):
     def test_basic(self, new: _T_FnNew, MockDependency):
         sub = new()
         assert isinstance(sub, Scope)
-        assert isinstance(sub, frozendict)
+        assert isinstance(sub, FrozenDict)
         assert isinstance(sub.container, Container)
         assert isinstance(sub.parent, NullScope)
         assert isinstance(sub.maps, Set)

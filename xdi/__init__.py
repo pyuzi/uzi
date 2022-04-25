@@ -1,4 +1,3 @@
-import typing as t
 
 from ._common import Missing
 
@@ -8,7 +7,7 @@ from .core import (
 )
 
 
-from .makers import Dep, DependencyMarker, Provided, PureDep
+from .makers import Dep, DependencyMarker, Lookup, PureDep
 
 from . import injectors, providers
 from .containers import Container

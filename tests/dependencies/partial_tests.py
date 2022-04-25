@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import typing as t
 from xdi import Dep
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 
 
 
@@ -63,7 +63,7 @@ def new_kwargs(new_kwargs, bound_params):
 class PartialDependencyTests(DependencyTestCase[Dependency]):
 
     _call_args: tuple = ()
-    _call_kwargs: dict = frozendict()
+    _call_kwargs: dict = FrozenDict()
 
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: Injector):
@@ -94,7 +94,7 @@ from xdi._dependency import AsyncPartial as Dependency
 class AsyncPartialDependencyTests(DependencyTestCase[Dependency]):
 
     _call_args: tuple = ()
-    _call_kwargs: dict = frozendict()
+    _call_kwargs: dict = FrozenDict()
 
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: Injector):
@@ -125,7 +125,7 @@ from xdi._dependency import AwaitParamsPartial as Dependency
 class AwaitParamsPartialDependencyTests(DependencyTestCase[Dependency]):
 
     _call_args: tuple = ()
-    _call_kwargs: dict = frozendict()
+    _call_kwargs: dict = FrozenDict()
 
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
@@ -158,7 +158,7 @@ from xdi._dependency import AwaitParamsAsyncPartial as Dependency
 class AwaitParamsAsyncPartialDependencyTests(DependencyTestCase[Dependency]):
 
     _call_args: tuple = ()
-    _call_kwargs: dict = frozendict()
+    _call_kwargs: dict = FrozenDict()
 
     @pytest.fixture
     def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):

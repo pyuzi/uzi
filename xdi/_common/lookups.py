@@ -3,7 +3,7 @@ import typing as t
 from abc import abstractmethod
 from collections.abc import Callable, Hashable
 
-from . import frozendict, private_setattr
+from . import FrozenDict, private_setattr
 
 
 
@@ -180,10 +180,11 @@ class Call(Expression[tuple[_T_Args, _T_Kwargs], _T_Obj]):
 
 
 
-class LazyOp(
+class Lookup(
     Expression[tuple[Expression[t.Any, _T_Obj]], _T_Obj], t.Generic[_T_Obj]
 ):
-
+    """A chain of lookup experesions.
+    """
     __slots__ = ("__expr__",)
 
     __offset__ = None
@@ -215,7 +216,7 @@ class LazyOp(
             return self.__push__(Item(k))
 
     def __call__(self, *a: _T_Args, **kw: _T_Kwargs):
-        return self.__push__(Call((a, frozendict(kw))))
+        return self.__push__(Call((a, FrozenDict(kw))))
 
     def __eval__(self, /, root: _T_Obj, start: int = None, stop: int = None):
         __tracebackhide__ = True
@@ -248,8 +249,8 @@ class LazyOp(
 
 
 
-def eval(
-    expr: LazyOp, /, root: _T_Obj, *, start: int = None, stop: int = None
+def look(
+    expr: Lookup, /, root: _T_Obj, *, start: int = None, stop: int = None
 ):
     return expr.__eval__(root, start=start, stop=stop)
 

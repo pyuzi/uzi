@@ -4,7 +4,7 @@ import pytest
 
 
 from collections.abc import Callable, Iterator, Set, MutableSet
-from xdi._common import frozendict
+from xdi._common import FrozenDict
 
 
 from xdi.scopes import NullScope, Scope
@@ -31,7 +31,7 @@ class NullScopeTests(BaseTestCase[NullScope]):
     def test_basic(self, new: _T_FnNew):
         sub = new()
         assert isinstance(sub, NullScope)
-        assert isinstance(sub, frozendict)
+        assert isinstance(sub, FrozenDict)
         assert isinstance(sub.maps, Set)
         assert not isinstance(sub.maps, MutableSet)
         assert sub.parent is None

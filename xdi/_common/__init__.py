@@ -182,7 +182,7 @@ _T_Default = t.TypeVar("_T_Default", covariant=True)
 
 
 class FrozenDict(dict[_T_Key, _T_Val]):
-    """An immutable and hasnable subclass of `dict`.
+    """An immutable and hashable `dict`.
     """
 
     __slots__ = ("_hash",)

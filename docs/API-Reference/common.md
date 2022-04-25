@@ -2,4 +2,4 @@
 
 ::: xdi._common
 
-::: xdi._common.lazy
+::: xdi._common.lookups

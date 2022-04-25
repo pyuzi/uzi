@@ -144,10 +144,10 @@ class Dep(InjectionMarker, _AbcDepTuple):
     """Skip the current scope and resolve from it's parent instead.
     """
 
-    def __subclasscheck__(self, sub: type) -> bool:
-        return sub is PureDep or self._base_subclasscheck(sub)
+    # def __subclasscheck__(self, sub: type) -> bool:
+    #     return sub is PureDep or self._base_subclasscheck(sub)
 
-    _base_subclasscheck = _AbcDepTuple.__subclasscheck__
+    # _base_subclasscheck = _AbcDepTuple.__subclasscheck__
 
     def __new__(
         cls: type[Self],

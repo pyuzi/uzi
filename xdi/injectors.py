@@ -30,7 +30,17 @@ TContextBinding = Callable[
 
 @private_setattr
 class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
+    """An isolated dependency injection context for a given `Scope`. 
     
+    Attributes:
+        scope (Scope): the scope for this injector
+        parent (Injector): a parent injector to provide missing dependencies.
+
+    Params:
+        scope (Scope): the scope for this injector
+        parent (Injector): a parent injector to provide missing dependencies.
+
+    """
     __slots__ = 'scope', 'parent',
 
     scope: "Scope"
@@ -41,6 +51,8 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
 
     @property
     def name(self) -> str:
+        """The name of the scope. Usually returns the injector's `scope.name` 
+        """
         return self.scope.name
 
     def bound(self, abstract: T_Injectable) -> T_Injected:
@@ -103,16 +115,25 @@ class Injector(frozendict[T_Injectable, Callable[[], T_Injected]]):
         
 
 
-from xdi import scopes
+from xdi.scopes import NullScope
+
 
 
 class NullInjector(Injector):
-    """NullInjector Object"""
+    """A 'noop' `Injector` used as the parent of root injectors.  
+
+    Attributes:
+        scope (NullScope): the scope 
+        parent (None): The parent injector
+
+    Params:
+        None
+    """
 
     __slots__ = ()
 
     parent: t.Final = None
-    scope = scopes.NullScope()
+    scope: NullScope = NullScope()
 
     __hash__ = frozendict.__hash__
 

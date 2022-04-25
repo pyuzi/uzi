@@ -13,7 +13,10 @@ from ._common.lazy import LazyOp as BaseLazyOp
 
 
 class InjectionMarker(Injectable, t.Generic[T_Injectable]):
+    """Abstract base class for dependency markers. 
 
+    Dependency markers are used reperesent and/or annotate dependencies. 
+    """
     __slots__ = ()
 
     @property
@@ -48,9 +51,17 @@ class DepScope(IntEnum):
 _object_new = object.__new__
 
 
-@InjectionMarker.register
 @private_setattr
-class PureDep(t.Generic[T_Injectable]):
+class PureDep(InjectionMarker, t.Generic[T_Injectable]):
+    """Explicitly marks given injectable as a dependency. 
+
+    Attributes:
+        abstract (T_Injectable): the marked dependency.
+
+    Params:
+        abstract (T_Injectable): the dependency to mark.
+    """
+    
     __slots__ = ("abstract",)
 
     abstract: T_Injected
@@ -73,10 +84,6 @@ class PureDep(t.Generic[T_Injectable]):
 
         return method
 
-    # @property
-    # def __dependency__(self):
-    #     return self.abstract
-
     __eq__ = forward_op(operator.eq)
     __ne__ = forward_op(operator.ne)
 
@@ -95,6 +102,9 @@ class PureDep(t.Generic[T_Injectable]):
     def provided(self):
         return Provided(self)
 
+    @property
+    def __origin__(self): return self.abstract
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.abstract!s})"
 
@@ -110,9 +120,8 @@ _AbcDepTuple = namedtuple(
 _pure_dep_defaults = PureDep.scope, PureDep.default
 
 
-@InjectionMarker.register
 @private_setattr
-class Dep(_AbcDepTuple):
+class Dep(InjectionMarker, _AbcDepTuple):
 
     """Marks an injectable as a `dependency` to be injected."""
 
@@ -134,9 +143,6 @@ class Dep(_AbcDepTuple):
     SKIP_SELF: t.Final = DepScope.skip_self
     """Skip the current scope and resolve from it's parent instead.
     """
-
-    def __init_subclass__(cls, *args, **kwargs):
-        raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__name__}")
 
     def __subclasscheck__(self, sub: type) -> bool:
         return sub is PureDep or self._base_subclasscheck(sub)
@@ -173,9 +179,16 @@ class Dep(_AbcDepTuple):
 
 
 
-@InjectionMarker.register
 @InjectionDescriptor.register
-class Provided(BaseLazyOp):
+class Provided(InjectionMarker, BaseLazyOp):
+    """Represents a lazy lookup of a given dependency.
+
+    Attributes:
+        __abstract__ (Injectable): the dependency to lookup.
+
+    Params:
+        abstract (Injectable): the dependency to lookup.
+    """
 
     __slots__ = ()
     __offset__ = 1

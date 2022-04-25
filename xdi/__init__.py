@@ -15,9 +15,16 @@ if t.TYPE_CHECKING:
 
 
 T_Injected = t.TypeVar("T_Injected", covariant=True)
-T_Default = t.TypeVar("T_Default")
-T_Injectable = t.TypeVar("T_Injectable", bound="Injectable", covariant=True)
+"""The injected type.
+"""
 
+T_Default = t.TypeVar("T_Default")
+"""Default value type.
+"""
+
+T_Injectable = t.TypeVar("T_Injectable", bound="Injectable", covariant=True)
+"""An `Injectable` type.
+"""
 
 logger = getLogger(__name__)
 
@@ -47,14 +54,27 @@ _BLACKLIST = frozenset(
 
 
 def is_injectable(obj):
+    """Returns `True` if the given type annotation is injectable.
+    
+    Params: 
+        typ (type): The type annotation to check.
+    Returns:
+        (bool): `True` if `typ` can be injected or `False` if otherwise.
+    """
     return isinstance(obj, Injectable) and not (
         obj in _BLACKLIST or isinstance(obj, NonInjectable)
     )
 
 
-def is_injectable_annotation(obj):
-    """Returns `True` if the given type is injectable."""
-    return is_injectable(obj)
+def is_injectable_annotation(typ):
+    """Returns `True` if the given type annotation is injectable.
+    
+    Params: 
+        typ (type): The type annotation to check.
+    Returns:
+        (bool): `True` if `typ` can be injected or `False` if otherwise.
+    """
+    return is_injectable(typ)
 
 
 @attr.s()
@@ -65,7 +85,13 @@ class InjectorLookupError(KeyError):
 
 
 class Injectable(metaclass=ABCMeta):
+    """Abstract base class for injectable types.
 
+    An injectable is an object that can be used to represent a dependency.
+    
+    Builtin injectable types:- `type`, `TypeVar`, `FunctionType`, `MethodType`, 
+    `GenericAlias`
+    """
     __slots__ = ()
 
 

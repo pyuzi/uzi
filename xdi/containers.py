@@ -19,8 +19,19 @@ logger = getLogger(__name__)
 @InjectionMarker.register
 @attr.s(slots=True, frozen=True, repr=True, cmp=False)
 @private_setattr(frozen='_frozen')
-class Container(frozendict[Injectable, Provider], AbstractProviderRegistry):
+class Container(AbstractProviderRegistry, frozendict[Injectable, Provider]):
+    """A mapping of dependencies to their providers. We use them to bind 
+    dependencies to their providers. 
+   
+    Attributes:
+        name (str): The container's name
+        bases (tuple[Container]): The container's bases
 
+    Params:
+        name (str, optional): Name of the container
+        bases (tuple[Container], optional): Base container.
+    
+    """
     __id = -2
     __lock = Lock()
     
@@ -39,17 +50,21 @@ class Container(frozendict[Injectable, Provider], AbstractProviderRegistry):
     __setitem = dict[Injectable,  Provider].__setitem__
 
     @property
-    def pro(self):
+    def pro(self) -> tuple[Self]:
+        """The container's provider resolution order.
+        
+        Like python's class `__mro__` the `pro` is computed using 
+        [C3 linearization](https://en.wikipedia.org/wiki/C3_linearization)
+
+        Returns:
+            pro (tuple[Container]): 
+        """
         if pro := self._pro:
             return pro
         self.__setattr(_pro=self._pro_entries())
         return self._pro
 
     def _pro_entries(self):
-        """Get provider resolution order.
-        
-        Uses C3 linearization https://en.wikipedia.org/wiki/C3_linearization
-        """
         bases = [*self.bases]
 
         if not bases:
@@ -83,17 +98,41 @@ class Container(frozendict[Injectable, Provider], AbstractProviderRegistry):
 
         return *res,
 
-    def extends(self, other: Self):
-        return other in self.pro
-        
-    def extend(self, *bases: "Container") -> Self:
+    def extend(self, *bases: Self) -> Self:
+        """Adds containers to extended by this container.
+        Args:
+            *bases (Container): The base containers to be extended
+            
+        Returns:
+            Self: this container
+        """
         self.__setattr(bases=tuple(dict.fromkeys(self.bases + bases)))
         return self
+
+    def extends(self, other: Self) -> bool:
+        """Check whether this container extends the given base. 
+        
+        Args:
+            base (Container): The base container to check
+
+        Returns:
+            bool:
+        """
+        return other in self.pro
+        
     
     def _on_register(self, abstract: Injectable, provider: Provider):
         pass
 
     def __setitem__(self, abstract: Injectable, provider: Provider) -> Self:
+        """Register a dependency provider 
+        
+            container[_T] = providers.Value('abc')
+
+        Params:
+            abstract (Injectable): The dependency to be provided
+            provider (Provider): The provider to provide the dependency
+        """
         if pro :=  provider.set_container(self):
             self._on_register(abstract, pro)
             self.__setitem(abstract, pro)

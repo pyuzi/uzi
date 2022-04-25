@@ -15,8 +15,9 @@ edit_uri: "blob/master/docs/"
 
 
 markdown_extensions:
+  - admonition
+  - pymdownx.details
   - pymdownx.highlight
-  - pymdownx.superfences
   - attr_list
   - md_in_html
   - def_list
@@ -44,4 +45,24 @@ plugins:
       javascript_dir: js       # the directory to put the version selector's JS
       canonical_version: null  # the version for <link rel="canonical">; `null`
                                # uses the version specified via `mike deploy`
-  - search:
+  - search
+  - autorefs
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          selection:
+            docstring_style: google
+            # docstring_options:
+              # replace_admonitions: no 
+          rendering:
+            show_source: false
+            show_root_heading: true
+            members_order: source
+            merge_init_into_class: false
+            separate_signature: false
+            show_signature_annotations: true
+            docstring_section_style: table
+      custom_templates: templates
+      watch:
+        - xdi

@@ -41,9 +41,12 @@ logger = getLogger(__name__)
 
 _T = t.TypeVar("_T")
 _T_Fn = t.TypeVar("_T_Fn", bound=abc.Callable, covariant=True)
+
 _T_Concrete = t.TypeVar("_T_Concrete")
+"""Provider's `concrete` `TypeVar`"""
 
 _T_Dep = t.TypeVar('_T_Dep', bound=dependency.Dependency, covariant=True)
+"""Dependency `TypeVar`"""
 
 
 
@@ -74,66 +77,74 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 @private_setattr(frozen='_frozen')
 @attr.s(slots=True, frozen=True, cache_hash=True, cmp=True)
 class Provider(t.Generic[_T_Concrete, _T_Dep]):
+    """The base class for all providers.
+
+    Subclasses can implement the `_resolve()` method to return the appropriate
+    `Dependency` object for any given dependency. Also, conditional providers can
+    implement the `_can_resolve()' method which should return `True` when the 
+    provider can resolve or `False` if otherwise.
+    
+    Attributes:
+        concrete (Any): The object used to resolve 
+        container (Container): The Container where this provider is defined.
+        is_default (bool): Whether this provider is the default. 
+            A default provider only gets used if none other was provided to override it.
+        is_async (bool): Whether this provider is asyncnous
+        filters (tuple[Callable]): Called to determine whether this provider can be resolved.
+
+    """
+
 
     _frozen: bool = attr.ib(init=False, cmp=False, default=False)
 
     concrete: _T_Concrete = attr.ib(default=Missing)
-    """The object used to resolve 
-    """
-
     container: "Container" = attr.ib(kw_only=True, default=None) 
-    """The Container where this provider is setup.
-    """
 
     is_default: bool = attr.ib(kw_only=True, default=False)
-    """Whether this provider is the default. 
-    A default provider only gets used if none other was provided to override it.
-    """
-
+    
     is_async: bool = attr.ib(init=False, default=None)
-    """Whether this provider is final. Final providers cannot be overridden 
-    """
-
+    
     filters: tuple[abc.Callable[['Scope', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
-    """Called to determine whether this provider can be bound.
-    """
-
+    
     _dependency_class: t.ClassVar[type[_T_Dep]] = None
     _dependency_kwargs: t.ClassVar = {}
 
     __class_getitem__ = classmethod(GenericAlias)
 
-    def set_container(self, container: "Container") -> Self:
-        if not self.container is None:
-            if not container is self.container:
-                raise AttributeError(
-                    f"container for `{self}` already set to `{self.container}`."
-                )
-        else:
-            self.__setattr(container=container)
-        return self
-   
-    def when(self, *filters, replace: bool=False) -> Self:
-        if replace:
-            self.__setattr(filters=tuple(dict.fromkeys(filters)))
-        else:
-            self.__setattr(filters=tuple(dict.fromkeys(self.filters + filters)))
-        return self
-
     def default(self, is_default: bool = True) -> Self:
+        """_Mark/Unmark_ this provider as the default. Updates the provider's 
+        `is_default` attribute.
+        
+        A default provider will be skipped if the dependency they provide has 
+        another provider. This means that a default provider will only get used 
+        if no other providers for the given dependency were defined in the current scope.
+
+        Args:
+            is_default (bool, optional): `True` to _mark_ or `False` to _unmark_. 
+                Defaults to `True`.
+        Returns:
+            self (Provider): this provider
+        """
         self.__setattr(is_default=is_default)
         return self
 
-    @t.overload
-    def use(self) -> abc.Callable[[_T], _T]: ...
-    @t.overload
-    def use(self, using: t.Any) -> Self: ...
-    @_fluent_decorator()
-    def use(self, using):
-        self.__setattr(concrete=using)
-        return self
 
     def can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        """Check if this provider can resolve the given dependency in the given 
+        scope.
+
+        Used internally by the `resolve` method.
+
+        Runs the provider's `filters` and if any of them fails (returns `False`), 
+        this method will return `False`.
+        
+        Args:
+            abstract (T_Injectable): dependency to be resolved
+            scope (Scope): Scope within which the dependency is getting resolved.
+
+        Returns:
+            bool: `True` if dependency can be resolved or `False` if otherwise.
+        """
         return (not (container := self.container) or container in scope) \
             and self._can_resolve(abstract, scope) \
             and self._apply_filters(abstract, scope)
@@ -147,13 +158,96 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
                 return False
         return True
 
-    def resolve(self, abstract: T_Injectable, scope: 'Scope'):
+    def resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Dep:
+        """Resolve the given dependency.
+
+        Used internally by `Scope`
+
+        Args:
+            abstract (T_Injectable): dependency to be resolved 
+            scope (Scope): Scope within which the dependency is getting resolved.
+
+        Returns:
+            dependency (Optional[Dependency]):
+        """
         self._freeze()
         if self.can_resolve(abstract, scope):
             return self._resolve(abstract, scope)
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> dependency.Dependency:
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Dep:
         return self._make_dependency(abstract, scope)
+
+    def set_container(self, container: "Container") -> Self:
+        """Sets the provide's container
+
+        Args:
+            container (Container): _description_
+
+        Raises:
+            AttributeError: When another container was already set
+
+        Returns:
+            self (Provider): this provider
+        """
+        if not self.container is None:
+            if not container is self.container:
+                raise AttributeError(
+                    f"container for `{self}` already set to `{self.container}`."
+                )
+        else:
+            self.__setattr(container=container)
+        return self
+   
+    @t.overload
+    def use(self) -> abc.Callable[[_T], _T]: ...
+    @t.overload
+    def use(self, using: t.Any) -> Self: ...
+    @_fluent_decorator()
+    def use(self, using: _T_Concrete) -> Self:
+        """Set the provider's `concrete` attribute. 
+
+        The given value will depend on the type of provider
+        
+        Can be used as decorator
+                        
+            @provider.use()
+            def func(): 
+                ...
+
+        Args:
+            using (_T_Concrete): the object to provide. this depends on the type 
+                of provider
+
+        Returns:
+            self (Provider): this provider
+
+        """
+        self.__setattr(concrete=using)
+        return self
+
+    def when(self, *filters: abc.Callable, replace: bool=False) -> Self:
+        """Add/replace the provider's `filters`. 
+
+        Filters are callables that determine whether this provider can provide a
+        given dependency.
+        
+        Filters are called with 3 arguments. Namely: `provider`- this provide, 
+        `abstract` - the dependency to be provided
+        and `scope`- scope within which the dependency is getting resolved.
+
+        Args:
+            *filters (Callable): The filter callables.
+            replace (bool, optional): Whether to replace the existing filters 
+                instead of adding. Defaults to False.
+
+        Returns:
+            self (Provider): this provider
+        """
+        if replace:
+            self.__setattr(filters=tuple(dict.fromkeys(filters)))
+        else:
+            self.__setattr(filters=tuple(dict.fromkeys(self.filters + filters)))
+        return self
 
     def _freeze(self):
         self._frozen or (self._onfreeze(), self.__setattr(_frozen=True))
@@ -173,9 +267,38 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
 
 
 
+
 @attr.s(slots=True, frozen=True)
-class Value(Provider[_T_Concrete, dependency.Value]):
-    """Provides given value as it is."""
+class Alias(Provider[T_Injectable, _T_Dep]):
+    """Used to proxy another existing dependency. It resolves to the given `concrete`.
+    
+    For example. To use `_Ta` for dependency `_Tb`.
+
+        container[_Tb] = Alias(_Ta)
+
+    Args:
+        concrete (Injectable): The dependency to be proxied
+    """
+
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
+        return scope[self.concrete]
+  
+  
+
+
+@attr.s(slots=True, frozen=True)
+class Value(Provider[T_Injected, dependency.Value]):
+    """Provides the given object as it is. 
+
+    Example:
+        `T` will always resolve to `obj`.
+            
+            obj = object()
+            container[T] = Value(obj)
+
+    Args:
+        concrete (T_Injected): The object to be provided
+    """
 
     _dependency_class = dependency.Value
 
@@ -186,89 +309,59 @@ class Value(Provider[_T_Concrete, dependency.Value]):
 
 
 
-@attr.s(slots=True, frozen=True)
-class Alias(Provider[_T_Concrete]):
-
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
-        return scope[self.concrete]
-  
-  
-
-@attr.s(slots=True, frozen=True)
-class UnionProvider(Provider[_T_Concrete]):
-
-    abstract = t.get_origin(t.Union[t.Any, None])
-    concrete = attr.ib(init=False, default=_UnionType)
-
-    def get_all_args(self, abstract: Injectable):
-        return t.get_args(abstract)
-
-    def get_injectable_args(self, abstract: Injectable):
-        return filter(is_injectable, self.get_all_args(abstract))
-
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
-        for arg in self.get_injectable_args(abstract):
-            if rv := scope[arg]:
-                return rv
-
-    # def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-    #     assert isinstance(abstract, self.concrete)
-
-
-
-@attr.s(slots=True, frozen=True)
-class AnnotatedProvider(UnionProvider[_T_Concrete]):
-
-    abstract = t.get_origin(t.Annotated[t.Any, None])
-    concrete = attr.ib(init=False, default=_AnnotatedType)
-
-    def get_all_args(self, abstract: t.Annotated):
-        for a in abstract.__metadata__[::-1]:
-            if isinstance(a, InjectionMarker):
-                yield a
-        yield abstract.__origin__
-
-  
-
-
-
-@attr.s(slots=True, frozen=True)
-class DepMarkerProvider(Provider[_T_Concrete]):
-    
-    abstract = Dep
-    concrete = attr.ib(init=False, default=Dep)
-    _dependency_class = dependency.Value
-
-    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        return isinstance(abstract, (self.concrete, Dep, PureDep))
-
-    def _resolve(self, marker: Dep, scope: 'Scope') -> dependency.Dependency:
-        abstract, where = marker.abstract, marker.scope
-
-        if where == Dep.SKIP_SELF:
-            if dep := scope.find_remote(abstract):
-                return dep
-        elif where == Dep.ONLY_SELF:
-            dep = scope.find_local(abstract)
-            if dep and scope is dep.scope:
-                return dep
-        elif dep := scope[abstract]:
-            return dep
-        
-        if marker.injects_default:
-            return scope[marker.default]
-        elif marker.has_default:
-            return self._make_dependency(marker, scope, concrete=marker.default)
-
-
-
-
-
-
+_T_FactoryDep = t.TypeVar('_T_FactoryDep', bound=dependency.Factory, covariant=True)
+"""Factory dependency `TypeVar`"""
 
 @attr.s(slots=True, cmp=True, init=False, frozen=True)
-class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_Injected]):
+class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryDep], t.Generic[T_Injected, _T_FactoryDep]):
+    """Resolves to the return value of the given factory. A factory can be a 
+    `type`, `function` or a `Callable` object. 
+
+    The factory is called every time a dependency for this provider is requested.
     
+    Attributes:
+        concrete (Union[type[T_Injected], abc.Callable[..., T_Injected]]): the factory to used
+            to create the provided value. 
+        arguments (tuple[tuple. frozendict]): A tuple of positional and keyword 
+            arguments passed to the factory.
+
+    Params:
+        concrete (Union[type[T_Injected], abc.Callable[..., T_Injected]], optional): 
+            the factory. Can be a `type`, `function` or a `Callable` object.
+        *args (Union[Dep, Any], optional): Positional arguments to pass to the factory.
+        **kwargs (Union[Dep, Any], optional): Keyword arguments to pass to the factory.
+
+    !!! note ""
+        ## With Arguments
+        
+        Positional and/or keyword arguments to pass to the factory may be provided.
+
+        ### Values Only
+           
+        ```python linenums="1" hl_lines="0"
+        Factory(func, 'a', 32, obj, key='xyz')
+        # will call: func('a', 32, obj, key='xyz')
+        ```
+
+        ### Values and Dependencies
+
+        Dependencies (marked with: `xdi.Dep`, `xdi.Lookup` or other `DependencyMarker` 
+        types) will automatically be resolved and passed to the factory while calling it.
+
+        ```python linenums="1" hl_lines="4 7"
+        Factory(
+            func, 
+            'a', 
+            xdi.Dep(Foo), 
+            obj, 
+            key='xyz', 
+            bar=xdi.Lookup(FooBar).bar
+        )
+        # will call: func('a', <inject: Foo>, obj, key='xyz', bar=<inject: FooBar>.bar)
+        ```
+
+
+    """
     arguments: tuple[tuple, frozendict] = attr.ib(default=((), frozendict()))
     # is_shared: t.ClassVar[bool] = False
     
@@ -285,18 +378,60 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
     _await_params_sync_dependency_class: t.ClassVar = dependency.AwaitParamsFactory
     _await_params_async_dependency_class: t.ClassVar = dependency.AwaitParamsAsyncFactory
 
-    def __init__(self, concrete: abc.Callable[..., T_Injectable] = None, /, *args, **kwargs) -> None:
+    def __init__(self, concrete: abc.Callable[[], T_Injectable] = None, /, *args, **kwargs):
         self.__attrs_init__(
             concrete=concrete, 
             arguments=(args, frozendict(kwargs))
         )
 
+    def asynchronous(self, is_async: bool=True) -> Self:
+        """_Mark/Unmark_ this provider as asynchronous. Updates `is_async`
+        attribute.
+
+        Normally, `coroutines` and factories with `async` dependencies automatically
+        detected as asynchronous. This method provides the ability to change this
+        default behaviour.
+
+        Args:
+            is_async (Union[bool, None], optional): `True` to _mark_, `False` 
+                to _unmark_ or `None` to revert to the default behaviour. 
+                Defaults to `True`.
+        Returns:
+            self (Provider): this provider
+        """
+
+        self.__setattr(is_async=is_async)
+        return self
+
     def args(self, *args) -> Self:
+        """Set the positional arguments to pass to the factory. 
+
+        Updates the `arguments` attribute.
+
+        Args:
+            *args (Union[Dep, Any], optional): Positional arguments to pass to 
+                the factory.
+
+        Returns:
+            self (Provider): this provider
+
+        """
         arguments = self.arguments
         self.__setattr(arguments=(args, *arguments[1:]))
         return self
 
     def kwargs(self, **kwargs) -> Self:
+        """Set the keyword arguments to pass to the factory. 
+
+        Updates the `arguments` attribute.
+
+        Args:
+            **kwargs (Union[Dep, Any], optional): Keyword arguments to pass to 
+                the factory.
+
+        Returns:
+            self (Provider): this provider
+        """
         arguments = self.arguments
         self.__setattr(arguments=(*arguments[:1], frozendict(kwargs)))
         return self
@@ -308,20 +443,35 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
     def use(self, using: abc.Callable, *args, **kwargs) -> Self: ...
 
     @_fluent_decorator()
-    def use(self, using, *args, **kwargs):
-        self.__setattr(concrete=using)
+    def use(self, concrete, *args, **kwargs):
+        """Sets the provider's factory and arguments.
+        
+        Params:
+            concrete (Union[type[T_Injected], abc.Callable[..., T_Injected]], optional): 
+                the factory. Can be a `type`, `function` or a `Callable` object.
+            *args (Union[Dep, Any], optional): Positional arguments to pass to the factory.
+            **kwargs (Union[Dep, Any], optional): Keyword arguments to pass to the factory.
+
+        Returns:
+            self (Factory): this provider
+        """
+        self.__setattr(concrete=concrete)
         args and self.args(*args)
         kwargs and self.kwargs(**kwargs)
         return self
         
     def signature(self, signature: Signature) -> Self:
+        """Set a custom `Signature` for the factory.
+
+        Args:
+            signature (Signature): the signature
+
+        Returns:
+            self (Factory): this provider
+        """
         self.__setattr(_signature=signature)
         return self
     
-    def asynchronous(self, is_async=True):
-        self.__setattr(is_async=is_async)
-        return self
-
     def get_signature(self, dep: Injectable=None):
         sig = self._signature
         if sig is None:
@@ -369,20 +519,45 @@ class Factory(Provider[abc.Callable[..., T_Injected], T_Injected], t.Generic[T_I
         )
         
 
-
+_T_SingletonDep = t.TypeVar('_T_SingletonDep', bound=dependency.Singleton, covariant=True)
+"""Singleton dependency `TypeVar`"""
 
 @attr.s(slots=True, cmp=True, init=False)
-class Singleton(Factory[T_Injected]):
+class Singleton(Factory[T_Injected, _T_SingletonDep]):
+    """A `Singleton` provider is a `Factory` that returns same instance on every
+    call.
+
+    On the first request, the given factory will be called to create the instance 
+    which will be stored and returned on subsequent requests.
+
+    Attributes:
+        is_thread_safe (bool): Indicates whether to wrap the factory call with a
+            `Lock` to prevent simultaneous instance create when injecting from 
+            multiple threads. Defaults to None
+    """
 
     is_shared: t.ClassVar[bool] = True
-    is_thread_safe: bool = attr.ib(init=False, default=True)
+    is_thread_safe: bool = attr.ib(init=False, default=None)
 
     _sync_dependency_class: t.ClassVar = dependency.Singleton
     _async_dependency_class: t.ClassVar = dependency.AsyncSingleton
     _await_params_sync_dependency_class: t.ClassVar = dependency.AwaitParamsSingleton
     _await_params_async_dependency_class: t.ClassVar = dependency.AwaitParamsAsyncSingleton
 
-    def thread_safe(self, is_thread_safe=True):
+    def thread_safe(self, is_thread_safe: bool=True) -> Self:
+        """_Mark/Unmark_ this provider as thread safe. Updates the `is_thread_safe`
+        attribute.
+        
+        `is_thread_safe` indicates whether to wrap the factory call with a `Lock` 
+        to prevent simultaneous instance create when injecting from multiple threads.
+
+        Args:
+            is_thread_safe (bool, optional): `True` to _mark_ or `False` to 
+                _unmark_. Defaults to True.
+
+        Returns:
+            self (Provider): this provider
+        """
         self.__setattr(is_thread_safe=is_thread_safe)
         return self
 
@@ -394,9 +569,16 @@ class Singleton(Factory[T_Injected]):
 
 
 
+_T_ResourceDep = t.TypeVar('_T_ResourceDep', bound=dependency.Singleton, covariant=True)
+"""Resource dependency `TypeVar`"""
+
 
 @attr.s(slots=True, cmp=True, init=False)
-class Resource(Singleton[T_Injected]):
+class Resource(Singleton[T_Injected, _T_ResourceDep]):
+    """A `Resource` provider is a `Singleton` that has initialization and/or 
+    teardown.
+    
+    """
 
     is_async: bool = attr.ib(init=False, default=None)
     is_awaitable: bool = attr.ib(init=False, default=None)
@@ -412,9 +594,17 @@ class Resource(Singleton[T_Injected]):
 
 
 
+_T_PartialDep = t.TypeVar('_T_PartialDep', bound=dependency.Partial, covariant=True)
+"""Partial dependency `TypeVar`"""
+
+
 
 @attr.s(slots=True, init=False)
-class Partial(Factory[T_Injected]):
+class Partial(Factory[T_Injected, _T_PartialDep]):
+    """A `Factory` provider that accepts extra arguments during resolution.
+
+    Used internally to inject entry-point functions.
+    """
 
     _sync_dependency_class: t.ClassVar = dependency.Partial
     _async_dependency_class: t.ClassVar = dependency.AsyncPartial
@@ -428,9 +618,16 @@ class Partial(Factory[T_Injected]):
 
 
 
+_T_CallableDep = t.TypeVar('_T_CallableDep', bound=dependency.Callable, covariant=True)
+"""Callable dependency `TypeVar`"""
+
 
 @attr.s(slots=True, init=False)
-class Callable(Partial[T_Injected]):
+class Callable(Partial[T_Injected, _T_CallableDep]):
+    """Similar to a `Factory` provider, a `Callable` provider resolves to a 
+    callable that wraps the factory.
+    
+    """
 
     _sync_dependency_class: t.ClassVar = dependency.Callable
     _async_dependency_class: t.ClassVar = dependency.AsyncCallable
@@ -443,7 +640,9 @@ class Callable(Partial[T_Injected]):
 
 
 @attr.s(slots=True, frozen=True)
-class ProvidedMarkerProvider(Factory):
+class ProvidedMarkerProvider(Factory[lazy.eval, _T_FactoryDep]):
+    """Provider for resolving `xdi.Lookup` dependencies. 
+    """
     
     abstract = Provided
     concrete = attr.ib(init=False, default=lazy.eval)
@@ -456,6 +655,81 @@ class ProvidedMarkerProvider(Factory):
             abstract = marker.__abstract__
             arguments = (lazy.LazyOp(*marker),), frozendict(root=Dep(abstract))
         return super()._bind_params(scope, marker, sig=sig, arguments=arguments)
+
+
+
+@attr.s(slots=True, frozen=True)
+class UnionProvider(Provider[_T_Concrete]):
+    """Provider for resolving `Union` dependencies. 
+    """
+
+    abstract = t.get_origin(t.Union[t.Any, None])
+    concrete = attr.ib(init=False, default=_UnionType)
+
+    def get_all_args(self, abstract: Injectable):
+        return t.get_args(abstract)
+
+    def get_injectable_args(self, abstract: Injectable):
+        return filter(is_injectable, self.get_all_args(abstract))
+
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
+        for arg in self.get_injectable_args(abstract):
+            if rv := scope[arg]:
+                return rv
+
+    # def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+    #     assert isinstance(abstract, self.concrete)
+
+
+
+@attr.s(slots=True, frozen=True)
+class AnnotatedProvider(UnionProvider[_T_Concrete]):
+    """Annotated types provider
+    """
+    abstract = t.get_origin(t.Annotated[t.Any, None])
+    concrete = attr.ib(init=False, default=_AnnotatedType)
+
+    def get_all_args(self, abstract: t.Annotated):
+        for a in abstract.__metadata__[::-1]:
+            if isinstance(a, InjectionMarker):
+                yield a
+        yield abstract.__origin__
+
+  
+
+
+
+@attr.s(slots=True, frozen=True)
+class DepMarkerProvider(Provider[_T_Concrete]):
+    """Provider for resolving `zdi.Dep` dependencies. 
+    """
+    abstract = Dep
+    concrete = attr.ib(init=False, default=Dep)
+    _dependency_class = dependency.Value
+
+    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        return isinstance(abstract, (self.concrete, Dep, PureDep))
+
+    def _resolve(self, marker: Dep, scope: 'Scope') -> dependency.Dependency:
+        abstract, where = marker.abstract, marker.scope
+
+        if where == Dep.SKIP_SELF:
+            if dep := scope.find_remote(abstract):
+                return dep
+        elif where == Dep.ONLY_SELF:
+            dep = scope.find_local(abstract)
+            if dep and scope is dep.scope:
+                return dep
+        elif dep := scope[abstract]:
+            return dep
+        
+        if marker.injects_default:
+            return scope[marker.default]
+        elif marker.has_default:
+            return self._make_dependency(marker, scope, concrete=marker.default)
+
+
+
 
 
 
@@ -476,13 +750,15 @@ def _provder_factory_method(cls: _T_Fn) -> _T_Fn:
             a = abstract,
         self[abstract] = pro = cls(*a, **kw)
         return pro
-
     return t.cast(cls, wrapper)
 
 
 
 class AbstractProviderRegistry(ABC):
+    """Implements a collection of helper methods for creating providers.
 
+    Subclassed by `Container` to provide these methods
+    """
     __slots__ = ()
 
     @abstractmethod
@@ -531,10 +807,9 @@ class AbstractProviderRegistry(ABC):
         def singleton(self, abstract: Injectable, factory: _T_Fn=...,  *a, **kw) -> Singleton:
             ...
             
-    else:
-        alias = _provder_factory_method(Alias)
-        value = _provder_factory_method(Value)
-        callable = _provder_factory_method(Callable)
-        factory = _provder_factory_method(Factory)
-        resource = _provder_factory_method(Resource)
-        singleton = _provder_factory_method(Singleton)
+    alias = _provder_factory_method(Alias)
+    value = _provder_factory_method(Value)
+    callable = _provder_factory_method(Callable)
+    factory = _provder_factory_method(Factory)
+    resource = _provder_factory_method(Resource)
+    singleton = _provder_factory_method(Singleton)

@@ -331,6 +331,20 @@
   
   
     <li class="md-nav__item">
+      <a href="../core/" class="md-nav__link">
+        core
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../injectors/" class="md-nav__link">
         Injectors
       </a>
@@ -387,8 +401,8 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#xdi.makers.InjectionMarker" class="md-nav__link">
-    InjectionMarker
+  <a href="#xdi.makers.DependencyMarker" class="md-nav__link">
+    DependencyMarker
   </a>
   
 </li>
@@ -469,8 +483,8 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#xdi.makers.Provided" class="md-nav__link">
-    Provided
+  <a href="#xdi.makers.Lookup" class="md-nav__link">
+    Lookup
   </a>
   
 </li>
@@ -511,20 +525,6 @@
     <li class="md-nav__item">
       <a href="../scopes/" class="md-nav__link">
         Scopes
-      </a>
-    </li>
-  
-
-            
-          
-            
-              
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../xdi/" class="md-nav__link">
-        xdi
       </a>
     </li>
   
@@ -794,8 +794,8 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#xdi.makers.InjectionMarker" class="md-nav__link">
-    InjectionMarker
+  <a href="#xdi.makers.DependencyMarker" class="md-nav__link">
+    DependencyMarker
   </a>
   
 </li>
@@ -876,8 +876,8 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#xdi.makers.Provided" class="md-nav__link">
-    Provided
+  <a href="#xdi.makers.Lookup" class="md-nav__link">
+    Lookup
   </a>
   
 </li>
@@ -939,8 +939,8 @@
 
 
 
-<h3 id="xdi.makers.InjectionMarker" class="doc doc-heading">
-          <code>InjectionMarker</code>
+<h3 id="xdi.makers.DependencyMarker" class="doc doc-heading">
+          <code>DependencyMarker</code>
 
 
 
@@ -949,7 +949,7 @@
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.Injectable" href="../xdi/#xdi.Injectable">Injectable</a></code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="xdi.T_Injectable" href="../xdi/#xdi.T_Injectable">T_Injectable</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.core.Injectable" href="../core/#xdi.core.Injectable">Injectable</a></code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injectable" href="../core/#xdi.core.T_Injectable">T_Injectable</a>]</code></p>
 
 
       <p>Abstract base class for dependency markers. </p>
@@ -1105,7 +1105,7 @@
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.makers.InjectionMarker" href="#xdi.makers.InjectionMarker">InjectionMarker</a></code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="xdi.T_Injectable" href="../xdi/#xdi.T_Injectable">T_Injectable</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.makers.DependencyMarker" href="#xdi.makers.DependencyMarker">DependencyMarker</a></code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injectable" href="../core/#xdi.core.T_Injectable">T_Injectable</a>]</code></p>
 
 
       <p>Explicitly marks given injectable as a dependency. </p>
@@ -1123,7 +1123,7 @@
         <tr>
           <td><code>abstract</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.T_Injectable" href="../xdi/#xdi.T_Injectable">T_Injectable</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.T_Injectable" href="../core/#xdi.core.T_Injectable">T_Injectable</a></code>
           </td>
           <td><p>the marked dependency.</p></td>
         </tr>
@@ -1144,7 +1144,7 @@
         <tr>
           <td><code>abstract</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.T_Injectable" href="../xdi/#xdi.T_Injectable">T_Injectable</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.T_Injectable" href="../core/#xdi.core.T_Injectable">T_Injectable</a></code>
           </td>
           <td><p>the dependency to mark.</p></td>
           <td>
@@ -1211,7 +1211,7 @@
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.makers.InjectionMarker" href="#xdi.makers.InjectionMarker">InjectionMarker</a></code>, <code><span title="xdi.makers._AbcDepTuple">_AbcDepTuple</span></code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.makers.DependencyMarker" href="#xdi.makers.DependencyMarker">DependencyMarker</a></code>, <code><span title="xdi.makers._AbcDepTuple">_AbcDepTuple</span></code></p>
 
 
       <p>Marks an injectable as a <code>dependency</code> to be injected.</p>
@@ -1322,8 +1322,8 @@
 
 
 
-<h3 id="xdi.makers.Provided" class="doc doc-heading">
-          <code>Provided</code>
+<h3 id="xdi.makers.Lookup" class="doc doc-heading">
+          <code>Lookup</code>
 
 
 
@@ -1332,7 +1332,7 @@
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.makers.InjectionMarker" href="#xdi.makers.InjectionMarker">InjectionMarker</a></code>, <code><span title="xdi._common.lazy.LazyOp">BaseLazyOp</span></code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.makers.DependencyMarker" href="#xdi.makers.DependencyMarker">DependencyMarker</a></code>, <code><a class="autorefs autorefs-internal" title="xdi._common.lookups.Lookup" href="../common/#xdi._common.lookups.Lookup">BaseLookup</a></code></p>
 
 
       <p>Represents a lazy lookup of a given dependency.</p>
@@ -1350,7 +1350,7 @@
         <tr>
           <td><code>__abstract__</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.Injectable" href="../xdi/#xdi.Injectable">Injectable</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.Injectable" href="../core/#xdi.core.Injectable">Injectable</a></code>
           </td>
           <td><p>the dependency to lookup.</p></td>
         </tr>
@@ -1371,7 +1371,7 @@
         <tr>
           <td><code>abstract</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.Injectable" href="../xdi/#xdi.Injectable">Injectable</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.Injectable" href="../core/#xdi.core.Injectable">Injectable</a></code>
           </td>
           <td><p>the dependency to lookup.</p></td>
           <td>

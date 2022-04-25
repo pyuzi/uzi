@@ -331,6 +331,20 @@
   
   
     <li class="md-nav__item">
+      <a href="../core/" class="md-nav__link">
+        core
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../injectors/" class="md-nav__link">
         Injectors
       </a>
@@ -635,8 +649,8 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#xdi.providers.ProvidedMarkerProvider" class="md-nav__link">
-    ProvidedMarkerProvider
+  <a href="#xdi.providers.LookupMarkerProvider" class="md-nav__link">
+    LookupMarkerProvider
   </a>
   
 </li>
@@ -691,20 +705,6 @@
     <li class="md-nav__item">
       <a href="../scopes/" class="md-nav__link">
         Scopes
-      </a>
-    </li>
-  
-
-            
-          
-            
-              
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../xdi/" class="md-nav__link">
-        xdi
       </a>
     </li>
   
@@ -1208,8 +1208,8 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#xdi.providers.ProvidedMarkerProvider" class="md-nav__link">
-    ProvidedMarkerProvider
+  <a href="#xdi.providers.LookupMarkerProvider" class="md-nav__link">
+    LookupMarkerProvider
   </a>
   
 </li>
@@ -1652,7 +1652,7 @@ this method will return <code>False</code>.</p>
         <tr>
           <td><code>abstract</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.T_Injectable" href="../xdi/#xdi.T_Injectable">T_Injectable</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.T_Injectable" href="../core/#xdi.core.T_Injectable">T_Injectable</a></code>
           </td>
           <td><p>dependency to be resolved</p></td>
           <td>
@@ -1728,7 +1728,7 @@ this method will return <code>False</code>.</p>
         <tr>
           <td><code>abstract</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.T_Injectable" href="../xdi/#xdi.T_Injectable">T_Injectable</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.T_Injectable" href="../core/#xdi.core.T_Injectable">T_Injectable</a></code>
           </td>
           <td><p>dependency to be resolved </p></td>
           <td>
@@ -2031,7 +2031,7 @@ instead of adding. Defaults to False.</p></td>
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="#xdi.providers.Provider">Provider</a>[<a class="autorefs autorefs-internal" title="xdi.T_Injectable" href="../xdi/#xdi.T_Injectable">T_Injectable</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_Dep" href="#xdi.providers._T_Dep">_T_Dep</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="#xdi.providers.Provider">Provider</a>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injectable" href="../core/#xdi.core.T_Injectable">T_Injectable</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_Dep" href="#xdi.providers._T_Dep">_T_Dep</a>]</code></p>
 
 
       <p>Used to proxy another existing dependency. It resolves to the given <code>concrete</code>.</p>
@@ -2053,7 +2053,7 @@ instead of adding. Defaults to False.</p></td>
         <tr>
           <td><code>concrete</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.Injectable" href="../xdi/#xdi.Injectable">Injectable</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.Injectable" href="../core/#xdi.core.Injectable">Injectable</a></code>
           </td>
           <td><p>The dependency to be proxied</p></td>
           <td>
@@ -2101,7 +2101,7 @@ instead of adding. Defaults to False.</p></td>
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="#xdi.providers.Provider">Provider</a>[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>, <span title="xdi._dependency">dependency</span>.<span title="xdi._dependency.Value">Value</span>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="#xdi.providers.Provider">Provider</a>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>, <span title="xdi._dependency">dependency</span>.<span title="xdi._dependency.Value">Value</span>]</code></p>
 
 
       <p>Provides the given object as it is. </p>
@@ -2127,7 +2127,7 @@ container[T] = Value(obj)
         <tr>
           <td><code>concrete</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a></code>
+                <code><a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a></code>
           </td>
           <td><p>The object to be provided</p></td>
           <td>
@@ -2176,7 +2176,7 @@ container[T] = Value(obj)
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="#xdi.providers.Provider">Provider</a>[<span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>], <a class="autorefs autorefs-internal" title="xdi.providers._T_FactoryDep" href="#xdi.providers._T_FactoryDep">_T_FactoryDep</a>]</code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_FactoryDep" href="#xdi.providers._T_FactoryDep">_T_FactoryDep</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="#xdi.providers.Provider">Provider</a>[<span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>], <a class="autorefs autorefs-internal" title="xdi.providers._T_FactoryDep" href="#xdi.providers._T_FactoryDep">_T_FactoryDep</a>]</code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_FactoryDep" href="#xdi.providers._T_FactoryDep">_T_FactoryDep</a>]</code></p>
 
 
       <p>Resolves to the return value of the given factory. A factory can be a 
@@ -2196,7 +2196,7 @@ container[T] = Value(obj)
         <tr>
           <td><code>concrete</code></td>
           <td>
-                <code>Union[type[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>], <span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>]]</code>
+                <code>Union[type[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>], <span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>]]</code>
           </td>
           <td><p>the factory to used
 to create the provided value. </p></td>
@@ -2226,7 +2226,7 @@ arguments passed to the factory.</p></td>
         <tr>
           <td><code>concrete</code></td>
           <td>
-                <code>Union[type[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>], <span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>]]</code>
+                <code>Union[type[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>], <span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>]]</code>
           </td>
           <td><p>the factory. Can be a <code>type</code>, <code>function</code> or a <code>Callable</code> object.</p></td>
           <td>
@@ -2265,8 +2265,10 @@ arguments passed to the factory.</p></td>
 </code></pre></div>
 </td></tr></table>
 <h6 id="xdi.providers.Factory--values-and-dependencies">Values and Dependencies</h6>
-<p>Dependencies (marked with: <code>xdi.Dep</code>, <code>xdi.Lookup</code> or other <code>DependencyMarker</code> 
-types) will automatically be resolved and passed to the factory while calling it.</p>
+<p>Arguments of type <a href="../makers/#xdi.makers.DependencyMarker"><code>DependencyMarker</code></a> 
+will automatically be resolved and passed to the factory while calling it. </p>
+<p>e.g. using <a href="../makers/#xdi.makers.Dep"><code>Dep</code></a> and 
+<a href="../makers/#xdi.makers.Lookup"><code>Lookup</code></a>:
 <table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1</span>
 <span class="normal">2</span>
 <span class="normal">3</span>
@@ -2278,14 +2280,14 @@ types) will automatically be resolved and passed to the factory while calling it
 <span class="normal">9</span></pre></div></td><td class="code"><div class="highlight"><pre><span></span><code><span class="n">Factory</span><span class="p">(</span>
     <span class="n">func</span><span class="p">,</span> 
     <span class="s1">&#39;a&#39;</span><span class="p">,</span> 
-<span class="hll">    <span class="n">xdi</span><span class="o">.</span><span class="n">Dep</span><span class="p">(</span><span class="n">Foo</span><span class="p">),</span> 
+<span class="hll">    <span class="n">xdi</span><span class="o">.</span><span class="n">makers</span><span class="o">.</span><span class="n">Dep</span><span class="p">(</span><span class="n">Foo</span><span class="p">),</span> 
 </span>    <span class="n">obj</span><span class="p">,</span> 
     <span class="n">key</span><span class="o">=</span><span class="s1">&#39;xyz&#39;</span><span class="p">,</span> 
-<span class="hll">    <span class="n">bar</span><span class="o">=</span><span class="n">xdi</span><span class="o">.</span><span class="n">Lookup</span><span class="p">(</span><span class="n">FooBar</span><span class="p">)</span><span class="o">.</span><span class="n">bar</span>
+<span class="hll">    <span class="n">bar</span><span class="o">=</span><span class="n">xdi</span><span class="o">.</span><span class="n">makers</span><span class="o">.</span><span class="n">Lookup</span><span class="p">(</span><span class="n">FooBar</span><span class="p">)</span><span class="o">.</span><span class="n">bar</span>
 </span><span class="p">)</span>
 <span class="c1"># will call: func(&#39;a&#39;, &lt;inject: Foo&gt;, obj, key=&#39;xyz&#39;, bar=&lt;inject: FooBar&gt;.bar)</span>
 </code></pre></div>
-</td></tr></table>
+</td></tr></table></p>
 </div>
 
 
@@ -2538,7 +2540,7 @@ the factory.</p></td>
         <tr>
           <td><code>concrete</code></td>
           <td>
-                <code>Union[type[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>], <span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>]]</code>
+                <code>Union[type[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>], <span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>]]</code>
           </td>
           <td><p>the factory. Can be a <code>type</code>, <code>function</code> or a <code>Callable</code> object.</p></td>
           <td>
@@ -2686,7 +2688,7 @@ the factory.</p></td>
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Factory" href="#xdi.providers.Factory">Factory</a>[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_SingletonDep" href="#xdi.providers._T_SingletonDep">_T_SingletonDep</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Factory" href="#xdi.providers.Factory">Factory</a>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_SingletonDep" href="#xdi.providers._T_SingletonDep">_T_SingletonDep</a>]</code></p>
 
 
       <p>A <code>Singleton</code> provider is a <code>Factory</code> that returns same instance on every
@@ -2827,7 +2829,7 @@ to prevent simultaneous instance create when injecting from multiple threads.</p
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Singleton" href="#xdi.providers.Singleton">Singleton</a>[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_ResourceDep" href="#xdi.providers._T_ResourceDep">_T_ResourceDep</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Singleton" href="#xdi.providers.Singleton">Singleton</a>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_ResourceDep" href="#xdi.providers._T_ResourceDep">_T_ResourceDep</a>]</code></p>
 
 
       <p>A <code>Resource</code> provider is a <code>Singleton</code> that has initialization and/or 
@@ -2875,7 +2877,7 @@ teardown.</p>
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Factory" href="#xdi.providers.Factory">Factory</a>[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_PartialDep" href="#xdi.providers._T_PartialDep">_T_PartialDep</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Factory" href="#xdi.providers.Factory">Factory</a>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_PartialDep" href="#xdi.providers._T_PartialDep">_T_PartialDep</a>]</code></p>
 
 
       <p>A <code>Factory</code> provider that accepts extra arguments during resolution.</p>
@@ -2923,7 +2925,7 @@ teardown.</p>
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Partial" href="#xdi.providers.Partial">Partial</a>[<a class="autorefs autorefs-internal" title="xdi.T_Injected" href="../xdi/#xdi.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_CallableDep" href="#xdi.providers._T_CallableDep">_T_CallableDep</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Partial" href="#xdi.providers.Partial">Partial</a>[<a class="autorefs autorefs-internal" title="xdi.core.T_Injected" href="../core/#xdi.core.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="xdi.providers._T_CallableDep" href="#xdi.providers._T_CallableDep">_T_CallableDep</a>]</code></p>
 
 
       <p>Similar to a <code>Factory</code> provider, a <code>Callable</code> provider resolves to a 
@@ -2960,8 +2962,8 @@ callable that wraps the factory.</p>
 
 
 
-<h3 id="xdi.providers.ProvidedMarkerProvider" class="doc doc-heading">
-          <code>ProvidedMarkerProvider</code>
+<h3 id="xdi.providers.LookupMarkerProvider" class="doc doc-heading">
+          <code>LookupMarkerProvider</code>
 
 
 
@@ -2970,7 +2972,7 @@ callable that wraps the factory.</p>
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Factory" href="#xdi.providers.Factory">Factory</a>[<span title="xdi._common.lazy">lazy</span>.<span title="xdi._common.lazy.eval">eval</span>, <a class="autorefs autorefs-internal" title="xdi.providers._T_FactoryDep" href="#xdi.providers._T_FactoryDep">_T_FactoryDep</a>]</code></p>
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi.providers.Factory" href="#xdi.providers.Factory">Factory</a>[<a class="autorefs autorefs-internal" title="xdi._common.lookups" href="../common/#xdi._common.lookups">lookups</a>.<span title="xdi._common.lookups.look">look</span>, <a class="autorefs autorefs-internal" title="xdi.providers._T_FactoryDep" href="#xdi.providers._T_FactoryDep">_T_FactoryDep</a>]</code></p>
 
 
       <p>Provider for resolving <code>xdi.Lookup</code> dependencies. </p>

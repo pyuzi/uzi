@@ -4,7 +4,7 @@ theme:
   custom_dir: docs/override
   features:
     # - navigation.indexes
-    - navigation.expand
+    # - navigation.expand
     # - navigation.sections
     - toc.follow
 

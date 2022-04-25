@@ -1,4 +1,0 @@
-# Providers
-
-::: xdi.providers
-

@@ -5,7 +5,7 @@ import attr
 
 import pytest
 from xdi import Dep, DependencyMarker, is_injectable
-from xdi.providers import AnnotatedProvider as Provider
+from xdi.providers import AnnotationProvider as Provider
 from xdi.scopes import Scope
 
 from .abc import ProviderTestCase, _T_NewPro
@@ -35,7 +35,7 @@ class Marker(DependencyMarker):
 _T_NewPro = _T_NewPro[Provider]
 
 
-class AnnotatedProviderTests(ProviderTestCase[Provider]):
+class AnnotationProviderTests(ProviderTestCase[Provider]):
 
     expected = {
         t.Annotated[_Ta, _Ann, Dep(_Tb), t.Literal['abc'], None]: [

@@ -43,7 +43,7 @@ _T_Fn = t.TypeVar("_T_Fn", bound=abc.Callable, covariant=True)
 _T_Concrete = t.TypeVar("_T_Concrete")
 """Provider's `concrete` `TypeVar`"""
 
-_T_Dep = t.TypeVar('_T_Dep', bound=dependency.Dependency, covariant=True)
+_T_Binding = t.TypeVar('_T_Binding', bound=dependency.Dependency, covariant=True)
 """Dependency `TypeVar`"""
 
 
@@ -74,7 +74,7 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 @DependencyMarker.register
 @private_setattr(frozen='_frozen')
 @attr.s(slots=True, frozen=True, cache_hash=True, cmp=True)
-class Provider(t.Generic[_T_Concrete, _T_Dep]):
+class Provider(t.Generic[_T_Concrete, _T_Binding]):
     """The base class for all providers.
 
     Subclasses can implement the `_resolve()` method to return the appropriate
@@ -104,7 +104,7 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
     
     filters: tuple[abc.Callable[['Scope', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
     
-    _dependency_class: t.ClassVar[type[_T_Dep]] = None
+    _dependency_class: t.ClassVar[type[_T_Binding]] = None
     _dependency_kwargs: t.ClassVar = {}
 
     __class_getitem__ = classmethod(GenericAlias)
@@ -156,7 +156,7 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
                 return False
         return True
 
-    def resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Dep:
+    def resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
         """Resolve the given dependency.
 
         Used internally by `Scope`
@@ -172,7 +172,7 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
         if self.can_resolve(abstract, scope):
             return self._resolve(abstract, scope)
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Dep:
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
         return self._make_dependency(abstract, scope)
 
     def set_container(self, container: "Container") -> Self:
@@ -267,7 +267,7 @@ class Provider(t.Generic[_T_Concrete, _T_Dep]):
 
 
 @attr.s(slots=True, frozen=True)
-class Alias(Provider[T_Injectable, _T_Dep]):
+class Alias(Provider[T_Injectable, _T_Binding]):
     """Used to proxy another existing dependency. It resolves to the given `concrete`.
     
     For example. To use `_Ta` for dependency `_Tb`.
@@ -307,11 +307,11 @@ class Value(Provider[T_Injected, dependency.Value]):
 
 
 
-_T_FactoryDep = t.TypeVar('_T_FactoryDep', bound=dependency.Factory, covariant=True)
+_T_FactoryBinding = t.TypeVar('_T_FactoryBinding', bound=dependency.Factory, covariant=True)
 """Factory dependency `TypeVar`"""
 
 @attr.s(slots=True, cmp=True, init=False, frozen=True)
-class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryDep], t.Generic[T_Injected, _T_FactoryDep]):
+class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryBinding], t.Generic[T_Injected, _T_FactoryBinding]):
     """Resolves to the return value of the given factory. A factory can be a 
     `type`, `function` or a `Callable` object. 
 
@@ -519,11 +519,11 @@ class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryDep], t.Generic[
         )
         
 
-_T_SingletonDep = t.TypeVar('_T_SingletonDep', bound=dependency.Singleton, covariant=True)
+_T_SingletonBinding = t.TypeVar('_T_SingletonBinding', bound=dependency.Singleton, covariant=True)
 """Singleton dependency `TypeVar`"""
 
 @attr.s(slots=True, cmp=True, init=False)
-class Singleton(Factory[T_Injected, _T_SingletonDep]):
+class Singleton(Factory[T_Injected, _T_SingletonBinding]):
     """A `Singleton` provider is a `Factory` that returns same instance on every
     call.
 
@@ -569,12 +569,12 @@ class Singleton(Factory[T_Injected, _T_SingletonDep]):
 
 
 
-_T_ResourceDep = t.TypeVar('_T_ResourceDep', bound=dependency.Singleton, covariant=True)
+_T_ResourceBinding = t.TypeVar('_T_ResourceBinding', bound=dependency.Singleton, covariant=True)
 """Resource dependency `TypeVar`"""
 
 
 @attr.s(slots=True, cmp=True, init=False)
-class Resource(Singleton[T_Injected, _T_ResourceDep]):
+class Resource(Singleton[T_Injected, _T_ResourceBinding]):
     """A `Resource` provider is a `Singleton` that has initialization and/or 
     teardown.
     
@@ -594,13 +594,13 @@ class Resource(Singleton[T_Injected, _T_ResourceDep]):
 
 
 
-_T_PartialDep = t.TypeVar('_T_PartialDep', bound=dependency.Partial, covariant=True)
+_T_PartialBinding  = t.TypeVar('_T_PartialBinding', bound=dependency.Partial, covariant=True)
 """Partial dependency `TypeVar`"""
 
 
 
 @attr.s(slots=True, init=False)
-class Partial(Factory[T_Injected, _T_PartialDep]):
+class Partial(Factory[T_Injected, _T_PartialBinding]):
     """A `Factory` provider that accepts extra arguments during resolution.
 
     Used internally to inject entry-point functions.
@@ -618,12 +618,12 @@ class Partial(Factory[T_Injected, _T_PartialDep]):
 
 
 
-_T_CallableDep = t.TypeVar('_T_CallableDep', bound=dependency.Callable, covariant=True)
+_T_CallableBinding = t.TypeVar('_T_CallableBinding', bound=dependency.Callable, covariant=True)
 """Callable dependency `TypeVar`"""
 
 
 @attr.s(slots=True, init=False)
-class Callable(Partial[T_Injected, _T_CallableDep]):
+class Callable(Partial[T_Injected, _T_CallableBinding]):
     """Similar to a `Factory` provider, a `Callable` provider resolves to a 
     callable that wraps the factory.
     
@@ -640,7 +640,7 @@ class Callable(Partial[T_Injected, _T_CallableDep]):
 
 
 @attr.s(slots=True, frozen=True)
-class LookupMarkerProvider(Factory[lookups.look, _T_FactoryDep]):
+class LookupMarkerProvider(Factory[lookups.look, _T_FactoryBinding]):
     """Provider for resolving `xdi.Lookup` dependencies. 
     """
     
@@ -683,7 +683,7 @@ class UnionProvider(Provider[_T_Concrete]):
 
 
 @attr.s(slots=True, frozen=True)
-class AnnotatedProvider(UnionProvider[_T_Concrete]):
+class AnnotationProvider(UnionProvider[_T_Concrete]):
     """Annotated types provider
     """
     abstract = t.get_origin(t.Annotated[t.Any, None])

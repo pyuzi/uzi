@@ -7,7 +7,7 @@ from typing_extensions import Self
 import attr
 
 
-from . import Injectable, InjectionMarker
+from . import Injectable, DependencyMarker
 from ._common import private_setattr, frozendict
 from .providers import Provider, AbstractProviderRegistry
 
@@ -16,7 +16,7 @@ logger = getLogger(__name__)
 
 
 
-@InjectionMarker.register
+@DependencyMarker.register
 @attr.s(slots=True, frozen=True, repr=True, cmp=False)
 @private_setattr(frozen='_frozen')
 class Container(AbstractProviderRegistry, frozendict[Injectable, Provider]):

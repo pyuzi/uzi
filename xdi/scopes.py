@@ -10,7 +10,7 @@ from xdi._common import Missing, private_setattr
 from xdi._common import frozendict
 from xdi.providers import Provider
 
-from . import Injectable, is_injectable
+from .core import Injectable, is_injectable
 from ._dependency import Dependency, LookupErrorDependency
 
 from .containers import Container

@@ -3,45 +3,27 @@
 # cython: wraparound=False
 
 
-from contextlib import AbstractAsyncContextManager
 import typing as t
-from asyncio import AbstractEventLoop, ensure_future, get_running_loop
-from collections.abc import (
-    Callable,
-    ItemsView,
-    Iterator,
-    Mapping,
-    ValuesView,
-)
+from asyncio import AbstractEventLoop, Future, ensure_future, get_running_loop
+from collections.abc import Callable, ItemsView, Iterator, Mapping, ValuesView
+from contextlib import AbstractAsyncContextManager
 from inspect import Parameter, Signature
 from logging import getLogger
-from typing_extensions import Self
-from logging import getLogger
 
 import attr
 from typing_extensions import Self
 
-from asyncio import Future
 from xdi._common import frozendict
 
-
-import attr
-
 from ._common import Missing, frozendict
+from .core import Injectable, is_injectable_annotation
+from .makers import DependencyMarker
 
-
-from . import (
-    Injectable,
-    InjectionMarker,
-    is_injectable_annotation,
-)
-
-if t.TYPE_CHECKING: # pragma: no cover
-    from .scopes import Scope
-    from .injectors import Injector
-    from .containers import Container
+if t.TYPE_CHECKING:  # pragma: no cover
     from ._dependency import Dependency
-
+    from .containers import Container
+    from .injectors import Injector
+    from .scopes import Scope
 
 
 logger = getLogger(__name__)
@@ -61,16 +43,11 @@ _EMPTY = Parameter.empty
 _T = t.TypeVar("_T")
 
 
-
 _frozendict = frozendict()
 
 
 _object_new = object.__new__
 _object_setattr = object.__setattr__
-
-
-
-
 
 
 class BoundParam:
@@ -90,7 +67,7 @@ class BoundParam:
     value: _T
     default: t.Any
     injectable: Injectable
-    dependency: 'Dependency'
+    dependency: "Dependency"
 
     def __new__(
         cls, param: Parameter, value: t.Any = _EMPTY, key: t.Union[str, int] = None
@@ -101,12 +78,12 @@ class BoundParam:
         self.dependency = self.injectable = None
         self.has_default = False
 
-        if isinstance(value, InjectionMarker):
+        if isinstance(value, DependencyMarker):
             self.injectable = value
         elif not value is _EMPTY:
             self.value = value
 
-        if isinstance(param.default, InjectionMarker):
+        if isinstance(param.default, DependencyMarker):
             if None is self.injectable:
                 self.injectable = param.default
         else:
@@ -134,7 +111,7 @@ class BoundParam:
 
     @property
     def has_value(self):
-        return hasattr(self, 'value')
+        return hasattr(self, "value")
 
     @property
     def default(self):
@@ -147,7 +124,6 @@ class BoundParam:
     @property
     def kind(self):
         return self.param.kind
-
 
 
 @attr.s(slots=True, frozen=True)
@@ -163,9 +139,9 @@ class BoundParams:
     vals: frozendict[str, t.Any] = attr.ib(converter=frozendict)
     _pos_vals: int = attr.ib(converter=int)
     _pos_deps: int = attr.ib(converter=int)
- 
+
     @property
-    def dependencies(self) -> set['Dependency']:
+    def dependencies(self) -> set["Dependency"]:
         return dict.fromkeys(p.dependency for p in self.params if p.dependency).keys()
 
     @classmethod
@@ -177,7 +153,7 @@ class BoundParams:
         aw_kwds = []
         pos_vals = pos_deps = i = 0
         skip_pos = False
-        
+
         params = tuple(params)
         for p in params:
             if p.kind in _POSITIONAL_KINDS:
@@ -205,15 +181,29 @@ class BoundParams:
             pos_deps=pos_deps,
             aw_args=aw_args,
             aw_kwds=aw_kwds,
-            is_async=not not(aw_args or aw_kwds)
+            is_async=not not (aw_args or aw_kwds),
         )
 
     @classmethod
-    def bind(cls, sig: Signature, scope: 'Scope'=None, container: 'Container'=None, args: tuple=(), kwargs: dict=frozendict()) -> Self:
-        return cls.make(cls._iter_bind(sig, scope, container, args, kwargs))        
+    def bind(
+        cls,
+        sig: Signature,
+        scope: "Scope" = None,
+        container: "Container" = None,
+        args: tuple = (),
+        kwargs: dict = frozendict(),
+    ) -> Self:
+        return cls.make(cls._iter_bind(sig, scope, container, args, kwargs))
 
     @classmethod
-    def _iter_bind(cls, sig: Signature, scope: 'Scope'=None, container: 'Container'=None, args=(), kwargs=frozendict()):
+    def _iter_bind(
+        cls,
+        sig: Signature,
+        scope: "Scope" = None,
+        container: "Container" = None,
+        args=(),
+        kwargs=frozendict(),
+    ):
         bound = sig.bind_partial(*args, **kwargs).arguments
 
         for n, p in sig.parameters.items():
@@ -237,14 +227,8 @@ class BoundParams:
                     bp.dependency = scope[bp.injectable]
                 yield bp
 
-    def __bool__(self): 
+    def __bool__(self):
         return not not self.params
-
-
-
-
-
-
 
 
 class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
@@ -282,7 +266,7 @@ class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
             else:
                 yield fn()
 
-    if t.TYPE_CHECKING: # pragma: no cover
+    if t.TYPE_CHECKING:  # pragma: no cover
 
         def get_raw(index: int) -> tuple[t.Any, Callable[[], _T]]:
             ...
@@ -342,15 +326,17 @@ class _KeywordDeps(dict[str, Callable[[], _T]], t.Generic[_T]):
     raw_values = dict.values
 
 
-
-
-
-
-
-
 class FutureFactoryWrapper:
 
-    __slots__ = "_func", "_args", "_kwargs", "_vals", "_aw_args", "_aw_kwargs", "_aw_call"
+    __slots__ = (
+        "_func",
+        "_args",
+        "_kwargs",
+        "_vals",
+        "_aw_args",
+        "_aw_kwargs",
+        "_aw_call",
+    )
 
     _func: Callable
     _args: "_PositionalArgs"
@@ -409,7 +395,7 @@ class FutureCallableWrapper(FutureFactoryWrapper):
         return CallableFuture(self, aw_args, aw_kwargs, args=a, kwargs=kw, loop=loop)
 
 
-class FutureResourceWrapper(FutureFactoryWrapper): # pragma: no cover
+class FutureResourceWrapper(FutureFactoryWrapper):  # pragma: no cover
 
     __slots__ = (
         "_aw_enter",
@@ -436,7 +422,6 @@ class FutureResourceWrapper(FutureFactoryWrapper): # pragma: no cover
             aw_kwargs = {n: ensure_future(d(), loop=loop) for n, d in aw_kwargs}
 
         return ResourceFuture(self, aw_args, aw_kwargs, loop=loop)
-
 
 
 class FactoryFuture(Future):
@@ -475,7 +460,7 @@ class FactoryFuture(Future):
                     aw_kwargs[k] = yield from aw_kwargs[k]
             else:
                 aw_kwargs = _frozendict
-                
+
             res = factory._func(*args, **aw_kwargs, **factory._kwargs, **factory._vals)
             if factory._aw_call:
                 res = yield from ensure_future(res, loop=self._loop)
@@ -549,7 +534,7 @@ class CallableFuture(Future):
     __iter__ = __await__
 
 
-class ResourceFuture(Future): # pragma: no cover
+class ResourceFuture(Future):  # pragma: no cover
 
     _asyncio_future_blocking = False
     _loop: AbstractEventLoop
@@ -624,5 +609,3 @@ class ResourceFuture(Future): # pragma: no cover
         return self.result()
 
     __iter__ = __await__
-
-

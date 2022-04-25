@@ -6,13 +6,13 @@ from enum import IntEnum
 
 from typing_extensions import Self
 
-from . import Injectable, T_Default, T_Injectable, T_Injected
+from .core import Injectable, T_Default, T_Injectable, T_Injected
 from ._common import Missing, private_setattr
 from ._common.lazy import LazyOp as BaseLazyOp
 
 
 
-class InjectionMarker(Injectable, t.Generic[T_Injectable]):
+class DependencyMarker(Injectable, t.Generic[T_Injectable]):
     """Abstract base class for dependency markers. 
 
     Dependency markers are used reperesent and/or annotate dependencies. 
@@ -52,7 +52,7 @@ _object_new = object.__new__
 
 
 @private_setattr
-class PureDep(InjectionMarker, t.Generic[T_Injectable]):
+class PureDep(DependencyMarker, t.Generic[T_Injectable]):
     """Explicitly marks given injectable as a dependency. 
 
     Attributes:
@@ -121,7 +121,7 @@ _pure_dep_defaults = PureDep.scope, PureDep.default
 
 
 @private_setattr
-class Dep(InjectionMarker, _AbcDepTuple):
+class Dep(DependencyMarker, _AbcDepTuple):
 
     """Marks an injectable as a `dependency` to be injected."""
 
@@ -170,7 +170,7 @@ class Dep(InjectionMarker, _AbcDepTuple):
 
     @property
     def injects_default(self):
-        return isinstance(self.default, InjectionMarker)
+        return isinstance(self.default, DependencyMarker)
 
     @property
     def provided(self):
@@ -180,7 +180,7 @@ class Dep(InjectionMarker, _AbcDepTuple):
 
 
 @InjectionDescriptor.register
-class Provided(InjectionMarker, BaseLazyOp):
+class Provided(DependencyMarker, BaseLazyOp):
     """Represents a lazy lookup of a given dependency.
 
     Attributes:

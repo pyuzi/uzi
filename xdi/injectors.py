@@ -2,13 +2,13 @@ import logging
 import sys
 import typing as t
 from collections.abc import Callable
-from types import FunctionType, MethodType
+from types import MethodType
 
-import attr
 from typing_extensions import Self
 
 
-from . import providers, Injectable, T_Default, T_Injectable, T_Injected, InjectorLookupError
+from . import providers
+from .core import Injectable, T_Injectable, T_Injected, InjectorLookupError
 from ._common import Missing, frozendict, private_setattr
 from ._dependency import Dependency
 

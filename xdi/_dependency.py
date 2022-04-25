@@ -2,7 +2,6 @@
 
 
 from abc import ABC, abstractmethod
-from enum import Enum, auto
 import logging
 from threading import Lock
 from typing_extensions import Self
@@ -11,10 +10,10 @@ import typing as t
 
 from collections.abc import Callable
 
-from xdi._common import Missing, private_setattr
+from ._common import Missing, private_setattr
 from ._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
 
-from . import InjectorLookupError, T_Injectable, T_Injected
+from .core import InjectorLookupError, T_Injectable, T_Injected
 
 
 if t.TYPE_CHECKING: # pragma: no cover

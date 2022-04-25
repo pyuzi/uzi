@@ -1,24 +1,22 @@
-from abc import ABC, abstractmethod
 import sys
-from types import FunctionType, GenericAlias
 import typing as t
+from abc import ABC, abstractmethod
 from collections import abc
 from functools import wraps
-from inspect import (Parameter, Signature, iscoroutinefunction)
+from inspect import Parameter, Signature, iscoroutinefunction
 from logging import getLogger
-
-from typing_extensions import Self
+from types import FunctionType, GenericAlias
 
 import attr
+from typing_extensions import Self
 
 from xdi._common import lazy
 
-from . import (Dep, Injectable, InjectionMarker, Provided, PureDep, T_Injectable, T_Injected,
-                is_injectable, _dependency as dependency)
-from ._common import Missing, private_setattr, typed_signature, frozendict
+from . import _dependency as dependency
+from ._common import Missing, frozendict, private_setattr, typed_signature
 from ._functools import BoundParams
-
-
+from .core import Injectable, T_Injectable, T_Injected, is_injectable
+from .makers import Dep, DependencyMarker, Provided, PureDep
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
     _UnionType = type(t.Union[t.Any, None])
@@ -73,7 +71,7 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 
 
 
-@InjectionMarker.register
+@DependencyMarker.register
 @private_setattr(frozen='_frozen')
 @attr.s(slots=True, frozen=True, cache_hash=True, cmp=True)
 class Provider(t.Generic[_T_Concrete, _T_Dep]):
@@ -691,7 +689,7 @@ class AnnotatedProvider(UnionProvider[_T_Concrete]):
 
     def get_all_args(self, abstract: t.Annotated):
         for a in abstract.__metadata__[::-1]:
-            if isinstance(a, InjectionMarker):
+            if isinstance(a, DependencyMarker):
                 yield a
         yield abstract.__origin__
 

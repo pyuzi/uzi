@@ -4,7 +4,7 @@ from unittest import mock
 import attr
 
 import pytest
-from xdi import Dep, InjectionMarker, is_injectable
+from xdi import Dep, DependencyMarker, is_injectable
 from xdi.providers import AnnotatedProvider as Provider
 from xdi.scopes import Scope
 
@@ -23,7 +23,7 @@ _Ann = object()
 
 
 @attr.s(frozen=True)
-class Marker(InjectionMarker):
+class Marker(DependencyMarker):
     name = attr.ib(default='<MARKER>')
 
     @property

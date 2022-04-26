@@ -25,13 +25,14 @@ if t.TYPE_CHECKING: # pragma: no cover
 
 _object_new = object.__new__
 
-_T_Use = t.TypeVar('_T_Use')
 
+_T_Concrete = t.TypeVar("_T_Concrete")
+"""Provided `concrete` `TypeVar`"""
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Binding(ABC, t.Generic[_T_Use]):
+class Binding(ABC, t.Generic[_T_Concrete]):
     """Marks binding an injectable as a `dependency` to be injected."""
     
     @abstractmethod
@@ -42,7 +43,7 @@ class Binding(ABC, t.Generic[_T_Use]):
     scope: "Scope" = attr.ib()
     provider: "Provider" = attr.ib(default=None, repr=lambda p: str(p and id(p)))
 
-    concrete: _T_Use = attr.ib(kw_only=True, default=Missing, repr=True)
+    concrete: _T_Concrete = attr.ib(kw_only=True, default=Missing, repr=True)
 
     is_async: bool = False
     dependencies = frozenset[Self]()
@@ -124,7 +125,7 @@ class LookupErrorBinding:
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class SimpleBinding(Binding[_T_Use]):
+class SimpleBinding(Binding[_T_Concrete]):
 
     def bind(self, injector: 'Injector'):
         return self.concrete(injector)

@@ -51,6 +51,9 @@ _object_setattr = object.__setattr__
 
 
 class BoundParam:
+    """A bound param    
+    """
+
 
     __slots__ = (
         "param",
@@ -128,6 +131,8 @@ class BoundParam:
 
 @attr.s(slots=True, frozen=True)
 class BoundParams:
+    """A collection of bound params
+    """
 
     params: tuple[BoundParam] = attr.ib(converter=tuple)
 

@@ -1,0 +1,3 @@
+# Bindings
+
+::: xdi._bindings

@@ -13,7 +13,7 @@ from typing_extensions import Self
 from ._common import lookups
 
 from . import _bindings as bindings
-from ._bindings import _T_Binding
+from ._bindings import _T_Binding, _T_Concrete
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .core import Injectable, T_Injectable, T_Injected, is_injectable
@@ -39,9 +39,6 @@ logger = getLogger(__name__)
 
 _T = t.TypeVar("_T")
 _T_Fn = t.TypeVar("_T_Fn", bound=abc.Callable, covariant=True)
-
-_T_Concrete = t.TypeVar("_T_Concrete")
-"""Provider's `concrete` `TypeVar`"""
 
 
 def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):

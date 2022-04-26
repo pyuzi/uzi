@@ -1,0 +1,4 @@
+# Functools
+
+::: xdi._functools
+

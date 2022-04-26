@@ -20,7 +20,8 @@ use_directory_urls: false
 
 nav:
   - 'Home': 'index.md'
-  - 'features.md'
+  - 'why.md'
+  # - 'features.md'
   - 'concepts.md'
   - 'install.md'
   - 'Basic User Guide': 

@@ -20,7 +20,9 @@ pip install xdi
 ## Features
 
 - Async support: `xdi` will `await` for you.
-- Lots Providers to choose from.
+- Lots of Providers to choose from. E.g.
+[Value](https://pyxdi.github.io/xdi/basic/providers/value.html), 
+[Alias](https://pyxdi.github.io/xdi/basic/providers/alias.html).
 - Extensibility through `Container` inheritance.
 - Multi scope support.
 - Fast: minus the cost of an additional stack frame, `xdi` resolves dependencies 
@@ -32,6 +34,7 @@ nearly as efficiently as resolving them by hand.
 - __[Documentation][docs-link]__
 - __[API Reference][api-docs-link]__
 - __[Installation][install-link]__
+- __[Get Started][why-link]__
 - __[Contributing][contributing-link]__
 
 
@@ -47,6 +50,7 @@ Will be production ready from version `v1.0.0` onwards.
 [docs-link]: https://pyxdi.github.io/xdi/
 [api-docs-link]: https://pyxdi.github.io/xdi/api/
 [install-link]: https://pyxdi.github.io/xdi/install.html
+[why-link]: https://pyxdi.github.io/xdi/why.html
 [contributing-link]: https://pyxdi.github.io/xdi/0.5.x/contributing.html
 [pypi-image]: https://img.shields.io/pypi/v/xdi.svg?color=%233d85c6
 [pypi-link]: https://pypi.python.org/pypi/xdi

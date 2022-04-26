@@ -7,7 +7,6 @@ theme:
     - navigation.instant
     - navigation.tracking
     - navigation.top
-
     # - navigation.indexes
     # - navigation.expand
     # - navigation.sections
@@ -29,6 +28,8 @@ nav:
     - 'basic/providers/index.md'
   - 'Advanced User Guide': 
     - 'advanced/index.md'
+  - 'Examples': 
+    - 'examples/index.md'
   - 'API Reference': 
     - 'xdi.core': 'api/core.md'
     - 'xdi.markers': 'api/markers.md'

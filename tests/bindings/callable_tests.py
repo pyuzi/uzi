@@ -9,12 +9,12 @@ from xdi._common import FrozenDict
 
 
 
-from xdi._dependency import Callable as Dependency
+from xdi._bindings import Callable as Dependency
 from xdi._functools import BoundParams
 from xdi.injectors import Injector
 
 
-from .abc import DependencyTestCase, _T_NewDep
+from .abc import BindingsTestCase, _T_NewBinding
 
 
 
@@ -24,7 +24,7 @@ parametrize = pytest.mark.parametrize
 
 _T_Dep = t.TypeVar('_T_Dep', bound=Dependency, covariant=True)
 
-T_NewDep = _T_NewDep[_T_Dep]
+T_NewDep = _T_NewBinding[_T_Dep]
 
 
 
@@ -59,7 +59,7 @@ def new_kwargs(new_kwargs, bound_params):
 
 
 
-class CallableDependencyTests(DependencyTestCase[Dependency]):
+class CallableDependencyTests(BindingsTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()
@@ -88,9 +88,9 @@ class CallableDependencyTests(DependencyTestCase[Dependency]):
 
 
 
-from xdi._dependency import AsyncCallable as Dependency
+from xdi._bindings import AsyncCallable as Dependency
 
-class AsyncCallableDependencyTests(DependencyTestCase[Dependency]):
+class AsyncCallableDependencyTests(BindingsTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()
@@ -119,9 +119,9 @@ class AsyncCallableDependencyTests(DependencyTestCase[Dependency]):
 
 
 
-from xdi._dependency import AwaitParamsCallable as Dependency
+from xdi._bindings import AwaitParamsCallable as Dependency
 
-class AwaitParamsCallableDependencyTests(DependencyTestCase[Dependency]):
+class AwaitParamsCallableDependencyTests(BindingsTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()
@@ -152,9 +152,9 @@ class AwaitParamsCallableDependencyTests(DependencyTestCase[Dependency]):
 
 
 
-from xdi._dependency import AwaitParamsAsyncCallable as Dependency
+from xdi._bindings import AwaitParamsAsyncCallable as Dependency
 
-class AwaitParamsAsyncCallableDependencyTests(DependencyTestCase[Dependency]):
+class AwaitParamsAsyncCallableDependencyTests(BindingsTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()

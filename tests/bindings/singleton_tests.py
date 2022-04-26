@@ -8,12 +8,12 @@ from xdi import Dep
 
 
 
-from xdi._dependency import Singleton as Dependency
+from xdi._bindings import Singleton as Dependency
 from xdi.injectors import Injector
 from xdi._functools import BoundParams
 
 
-from .abc import _T_NewDep, DependencyTestCase
+from .abc import _T_NewBinding, BindingsTestCase
 
 
 
@@ -23,7 +23,7 @@ parametrize = pytest.mark.parametrize
 
 
 
-T_NewDep = _T_NewDep[Dependency]
+T_NewDep = _T_NewBinding[Dependency]
 
 
 _Ta = t.TypeVar('_Ta')
@@ -44,7 +44,7 @@ def new_kwargs(new_kwargs, bound_params):
 
 
 
-class SingletonDependencyTests(DependencyTestCase[Dependency]):
+class SingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture
@@ -57,7 +57,7 @@ class SingletonDependencyTests(DependencyTestCase[Dependency]):
 
         return fn
 
-    def test_validity(self, new: _T_NewDep, mock_injector: Injector):
+    def test_validity(self, new: _T_NewBinding, mock_injector: Injector):
         subject= new()
         fn = subject.bind(mock_injector)
         val = fn()
@@ -67,9 +67,9 @@ class SingletonDependencyTests(DependencyTestCase[Dependency]):
 
 
 
-from xdi._dependency import AsyncSingleton as Dependency
+from xdi._bindings import AsyncSingleton as Dependency
 
-class AsyncSingletonDependencyTests(DependencyTestCase[Dependency]):
+class AsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture
@@ -93,9 +93,9 @@ class AsyncSingletonDependencyTests(DependencyTestCase[Dependency]):
 
 
 
-from xdi._dependency import AwaitParamsSingleton as Dependency
+from xdi._bindings import AwaitParamsSingleton as Dependency
 
-class AwaitParamsSingletonDependencyTests(DependencyTestCase[Dependency]):
+class AwaitParamsSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture
@@ -121,9 +121,9 @@ class AwaitParamsSingletonDependencyTests(DependencyTestCase[Dependency]):
 
 
 
-from xdi._dependency import AwaitParamsAsyncSingleton as Dependency
+from xdi._bindings import AwaitParamsAsyncSingleton as Dependency
 
-class AwaitParamsAsyncSingletonDependencyTests(DependencyTestCase[Dependency]):
+class AwaitParamsAsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture

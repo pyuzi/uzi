@@ -11,7 +11,7 @@ from xdi._common import FrozenDict
 from xdi.providers import Provider
 
 from .core import Injectable, is_injectable
-from ._dependency import Dependency, LookupErrorDependency
+from ._bindings import Binding, LookupErrorBinding
 
 from .containers import Container
 from ._builtin import __builtin_container__
@@ -25,7 +25,7 @@ class EmptyScopeError(RuntimeError):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Scope(FrozenDict[tuple, t.Union[Dependency, None]]):
+class Scope(FrozenDict[tuple, t.Union[Binding, None]]):
     """An isolated dependency resolution `scope` for a given container. 
 
     Scopes assemble the dependency graphs of dependencies registered in their container.
@@ -119,7 +119,7 @@ class Scope(FrozenDict[tuple, t.Union[Dependency, None]]):
     def __contains__(self, o) -> bool:
         return self.__contains(o) or o in self.maps or o in self.parent
 
-    def __missing__(self, abstract: Injectable, *, recursive=True) -> t.Union[Dependency, None]:
+    def __missing__(self, abstract: Injectable, *, recursive=True) -> t.Union[Binding, None]:
         if implicit := getattr(abstract, '__xdi_provider__', None):
             return self[implicit]
         elif is_injectable(abstract):
@@ -129,7 +129,7 @@ class Scope(FrozenDict[tuple, t.Union[Dependency, None]]):
             if dep := recursive and self.parent[abstract]:
                 return self.__setdefault(abstract, dep)
             else:
-                return LookupErrorDependency(abstract, self)
+                return LookupErrorBinding(abstract, self)
         raise TypeError(f'Scope key must be an `Injectable` not `{abstract.__class__.__qualname__}`')
 
     def __eq__(self, o) -> bool:
@@ -181,7 +181,7 @@ class NullScope(Scope):
         return False
     def __getitem__(self, abstract): 
         if is_injectable(abstract):
-            return LookupErrorDependency(abstract, self)
+            return LookupErrorBinding(abstract, self)
         else:
             raise TypeError(f'Scope keys must be `Injectable` not `{abstract.__class__.__qualname__}`')
         

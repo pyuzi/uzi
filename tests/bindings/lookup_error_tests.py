@@ -8,7 +8,7 @@ from tests.abc import BaseTestCase
 from xdi import InjectorLookupError
 
 
-from xdi._dependency import LookupErrorDependency as Dependency, SimpleDependency
+from xdi._bindings import LookupErrorBinding as Dependency, SimpleBinding
 from xdi.injectors import Injector
 
 
@@ -53,7 +53,7 @@ class LookupErrorDependencyTests(BaseTestCase[Dependency]):
 
     def test_compare(self, new: _T_NewDep, abstract, mock_scope):
         subject, subject_2 = new(), new()
-        simp = SimpleDependency(abstract, mock_scope)
+        simp = SimpleBinding(abstract, mock_scope)
         assert subject.__class__ is subject_2.__class__
         assert subject == subject_2 == abstract
         assert subject != object()

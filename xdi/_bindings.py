@@ -27,10 +27,12 @@ _object_new = object.__new__
 
 _T_Use = t.TypeVar('_T_Use')
 
+
+
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Dependency(ABC, t.Generic[_T_Use]):
-    """Marks an injectable as a `dependency` to be injected."""
+class Binding(ABC, t.Generic[_T_Use]):
+    """Marks binding an injectable as a `dependency` to be injected."""
     
     @abstractmethod
     def bind(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]: 
@@ -63,14 +65,14 @@ class Dependency(ABC, t.Generic[_T_Use]):
     def __eq__(self, o: Self) -> bool:
         if o.__class__ is self.__class__:
             return o._v_ident == self._v_ident
-        elif isinstance(o, Dependency):
+        elif isinstance(o, Binding):
             return False
         return NotImplemented
 
     def __ne__(self, o: Self) -> bool:
         if o.__class__ is self.__class__:
             return o._v_ident != self._v_ident
-        elif isinstance(o, Dependency):
+        elif isinstance(o, Binding):
             return True
         return NotImplemented
 
@@ -79,8 +81,14 @@ class Dependency(ABC, t.Generic[_T_Use]):
 
 
 
+_T_Binding = t.TypeVar('_T_Binding', bound=Binding, covariant=True)
+"""Dependency `TypeVar`"""
+
+
+
+
 @private_setattr
-class LookupErrorDependency:
+class LookupErrorBinding:
 
     __slots__ = 'abstract', 'scope',
 
@@ -116,7 +124,7 @@ class LookupErrorDependency:
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class SimpleDependency(Dependency[_T_Use]):
+class SimpleBinding(Binding[_T_Use]):
 
     def bind(self, injector: 'Injector'):
         return self.concrete(injector)
@@ -127,7 +135,7 @@ class SimpleDependency(Dependency[_T_Use]):
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class Value(Dependency[T_Injected]):
+class Value(Binding[T_Injected]):
 
     concrete: T_Injected = attr.ib(kw_only=True, default=None)
     is_async: t.Final = False
@@ -141,9 +149,14 @@ class Value(Dependency[T_Injected]):
 
 
 
+_T_ValueBinding = t.TypeVar('_T_ValueBinding', bound=Value, covariant=True)
+"""Value binding `TypeVar`"""
+
+
+
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class Factory(Dependency[T_Injected]):
+class Factory(Binding[T_Injected]):
 
     concrete: T_Injected = attr.ib(kw_only=True)
     params: 'BoundParams' = attr.ib(kw_only=True, default=BoundParams.make(()))
@@ -187,6 +200,9 @@ class Factory(Dependency[T_Injected]):
 
 
 
+
+_T_FactoryBinding = t.TypeVar('_T_FactoryBinding', bound=Factory, covariant=True)
+"""Factory binding `TypeVar`"""
 
 
 
@@ -272,6 +288,10 @@ class Singleton(Factory[T_Injected]):
         return factory
 
 
+_T_SingletonBinding = t.TypeVar('_T_SingletonBinding', bound=Singleton, covariant=True)
+"""Singleton binding `TypeVar`"""
+
+
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncSingleton(Singleton[T_Injected]):
@@ -307,6 +327,17 @@ class AwaitParamsAsyncSingleton(AwaitParamsSingleton[T_Injected]):
 
 
 
+@attr.s(slots=True, frozen=True, cmp=False)
+class Resource(Singleton[T_Injected]):
+    """Binds resources.
+    """
+
+
+_T_ResourceBinding = t.TypeVar('_T_ResourceBinding', bound=Resource, covariant=True)
+"""Resource binding `TypeVar`"""
+
+
+
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
@@ -327,6 +358,10 @@ class Partial(Factory[T_Injected]):
     def bind(self: Self, injector: "Injector"):
         return self.factory(injector)
 
+
+
+_T_PartialBinding  = t.TypeVar('_T_PartialBinding', bound=Partial, covariant=True)
+"""Partial binding `TypeVar`"""
 
 
 
@@ -359,12 +394,17 @@ class AwaitParamsAsyncPartial(AwaitParamsPartial[T_Injected]):
 
 
 
+
 @attr.s(slots=True, frozen=True, cmp=False)
 class Callable(Partial[T_Injected]):
 
     def bind(self: Self, injector: "Injector"):
         func = self.factory(injector)
         return lambda: func
+
+
+_T_CallableBinding = t.TypeVar('_T_CallableBinding', bound=Callable, covariant=True)
+"""Callable binding `TypeVar`"""
 
 
 

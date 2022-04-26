@@ -20,7 +20,7 @@ from .core import Injectable, is_injectable_annotation
 from .markers import DependencyMarker
 
 if t.TYPE_CHECKING:  # pragma: no cover
-    from ._dependency import Dependency
+    from ._bindings import Binding
     from .containers import Container
     from .injectors import Injector
     from .scopes import Scope
@@ -67,7 +67,7 @@ class BoundParam:
     value: _T
     default: t.Any
     injectable: Injectable
-    dependency: "Dependency"
+    dependency: "Binding"
 
     def __new__(
         cls, param: Parameter, value: t.Any = _EMPTY, key: t.Union[str, int] = None
@@ -141,7 +141,7 @@ class BoundParams:
     _pos_deps: int = attr.ib(converter=int)
 
     @property
-    def dependencies(self) -> set["Dependency"]:
+    def dependencies(self) -> set["Binding"]:
         return dict.fromkeys(p.dependency for p in self.params if p.dependency).keys()
 
     @classmethod

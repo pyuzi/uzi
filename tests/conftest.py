@@ -8,7 +8,7 @@ from xdi.containers import Container
 from xdi.injectors import Injector
 from xdi.providers import Provider
 
-from xdi._dependency import Dependency
+from xdi._bindings import Binding
 from xdi.scopes import Scope
 
 
@@ -62,7 +62,7 @@ def MockContainer():
 @pytest.fixture
 def MockDependency():
     def make(abstract=None, scope=None, **kw):
-        mk = MagicMock(Dependency)
+        mk = MagicMock(Binding)
 
         if not abstract is None:
             kw['abstract'] = abstract
@@ -76,7 +76,7 @@ def MockDependency():
             setattr(mk, k, v)
         return mk
 
-    return MagicMock(type[Dependency], wraps=make)
+    return MagicMock(type[Binding], wraps=make)
 
 
 

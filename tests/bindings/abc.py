@@ -9,7 +9,7 @@ from xdi._common import Missing
 
 
 # from xdi.providers import 
-from xdi._dependency import Dependency, SimpleDependency
+from xdi._bindings import Binding, SimpleBinding, _T_Binding
 from xdi.injectors import Injector
 
 from ..abc import BaseTestCase
@@ -21,13 +21,12 @@ parametrize = pytest.mark.parametrize
 _notset = object()
 
 _T = t.TypeVar("_T")
-_T_Dep = t.TypeVar("_T_Dep", bound=Dependency, covariant=True)
-_T_NewDep = Callable[..., _T_Dep]
+_T_NewBinding = Callable[..., _T_Binding]
 
 
-class DependencyTestCase(BaseTestCase[_T_Dep]):
+class BindingsTestCase(BaseTestCase[_T_Binding]):
 
-    type_: t.ClassVar[type[_T_Dep]] = Dependency
+    type_: t.ClassVar[type[_T_Binding]] = Binding
 
     value = _notset
     
@@ -40,11 +39,11 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         return MagicMock(value_setter, wraps=value_setter)
 
     @pytest.fixture
-    def subject(self, new: _T_NewDep):
+    def subject(self, new: _T_NewBinding):
         return new()
 
     @pytest.fixture
-    def bound(self, subject: _T_Dep, mock_injector: Injector):
+    def bound(self, subject: _T_Binding, mock_injector: Injector):
         return subject.bind(mock_injector)
 
     def check_deps(self, deps: dict, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, AsyncMock]]):
@@ -56,9 +55,9 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
                _x.assert_awaited()
             assert all(_ is _t or not deps[_] is _v for _ in deps)
 
-    def test_basic(self, new: _T_NewDep, cls: type[_T_Dep]):
+    def test_basic(self, new: _T_NewBinding, cls: type[_T_Binding]):
         subject = new()
-        assert isinstance(subject, Dependency)
+        assert isinstance(subject, Binding)
         assert subject.__class__ is cls
         assert cls.__slots__ is cls.__dict__["__slots__"]
         assert subject.is_async in (True, False)
@@ -66,14 +65,14 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         return subject
 
 
-    def test_copy(self, new: _T_NewDep):
+    def test_copy(self, new: _T_NewBinding):
         subject = new()
         cp = copy(subject)
         assert cp.__class__ is subject.__class__
         assert cp == subject
         return subject, cp
 
-    def test_compare(self, new: _T_NewDep, abstract, mock_scope):
+    def test_compare(self, new: _T_NewBinding, abstract, mock_scope):
         subject, subject_2 = new(), new()
         mock = mock_scope[abstract]
         assert subject.__class__ is subject_2.__class__
@@ -86,10 +85,10 @@ class DependencyTestCase(BaseTestCase[_T_Dep]):
         assert hash(subject) == hash(subject_2)
         return subject, subject_2
 
-    def test_immutable(self, new: _T_NewDep, immutable_attrs):
+    def test_immutable(self, new: _T_NewBinding, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)
 
-    async def test_bind(self, subject: _T_Dep, bound):
+    async def test_bind(self, subject: _T_Binding, bound):
         assert callable(bound)
         val = bound()
         if subject.is_async and isawaitable(val):

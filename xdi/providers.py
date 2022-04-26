@@ -12,7 +12,8 @@ from typing_extensions import Self
 
 from ._common import lookups
 
-from . import _dependency as dependency
+from . import _bindings as bindings
+from ._bindings import _T_Binding
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .core import Injectable, T_Injectable, T_Injected, is_injectable
@@ -33,7 +34,6 @@ if t.TYPE_CHECKING:  # pragma: no cover
 
 
 
-
 logger = getLogger(__name__)
 
 
@@ -42,10 +42,6 @@ _T_Fn = t.TypeVar("_T_Fn", bound=abc.Callable, covariant=True)
 
 _T_Concrete = t.TypeVar("_T_Concrete")
 """Provider's `concrete` `TypeVar`"""
-
-_T_Binding = t.TypeVar('_T_Binding', bound=dependency.Dependency, covariant=True)
-"""Dependency `TypeVar`"""
-
 
 
 def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
@@ -267,7 +263,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
 
 
 @attr.s(slots=True, frozen=True)
-class Alias(Provider[T_Injectable, _T_Binding]):
+class Alias(Provider[T_Injectable, bindings._T_Binding]):
     """Used to proxy another existing dependency. It resolves to the given `concrete`.
     
     For example. To use `_Ta` for dependency `_Tb`.
@@ -285,7 +281,7 @@ class Alias(Provider[T_Injectable, _T_Binding]):
 
 
 @attr.s(slots=True, frozen=True)
-class Value(Provider[T_Injected, dependency.Value]):
+class Value(Provider[T_Injected, bindings._T_ValueBinding]):
     """Provides the given object as it is. 
 
     Example:
@@ -298,7 +294,7 @@ class Value(Provider[T_Injected, dependency.Value]):
         concrete (T_Injected): The object to be provided
     """
 
-    _dependency_class = dependency.Value
+    _dependency_class = bindings.Value
 
     def _get_dependency_kwargs(self, **kwds):
         kwds.setdefault('concrete', self.concrete)
@@ -307,11 +303,9 @@ class Value(Provider[T_Injected, dependency.Value]):
 
 
 
-_T_FactoryBinding = t.TypeVar('_T_FactoryBinding', bound=dependency.Factory, covariant=True)
-"""Factory dependency `TypeVar`"""
 
 @attr.s(slots=True, cmp=True, init=False, frozen=True)
-class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryBinding], t.Generic[T_Injected, _T_FactoryBinding]):
+class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding], t.Generic[T_Injected, bindings._T_FactoryBinding]):
     """Resolves to the return value of the given factory. A factory can be a 
     `type`, `function` or a `Callable` object. 
 
@@ -373,10 +367,10 @@ class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryBinding], t.Gene
         Parameter('__Parameter_var_keyword', Parameter.VAR_KEYWORD),
     ])
 
-    _sync_dependency_class: t.ClassVar = dependency.Factory
-    _async_dependency_class: t.ClassVar = dependency.AsyncFactory
-    _await_params_sync_dependency_class: t.ClassVar = dependency.AwaitParamsFactory
-    _await_params_async_dependency_class: t.ClassVar = dependency.AwaitParamsAsyncFactory
+    _sync_dependency_class: t.ClassVar = bindings.Factory
+    _async_dependency_class: t.ClassVar = bindings.AsyncFactory
+    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsFactory
+    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncFactory
 
     def __init__(self, concrete: abc.Callable[[], T_Injectable] = None, /, *args, **kwargs):
         self.__attrs_init__(
@@ -519,11 +513,9 @@ class Factory(Provider[abc.Callable[..., T_Injected], _T_FactoryBinding], t.Gene
         )
         
 
-_T_SingletonBinding = t.TypeVar('_T_SingletonBinding', bound=dependency.Singleton, covariant=True)
-"""Singleton dependency `TypeVar`"""
 
 @attr.s(slots=True, cmp=True, init=False)
-class Singleton(Factory[T_Injected, _T_SingletonBinding]):
+class Singleton(Factory[T_Injected, bindings._T_SingletonBinding]):
     """A `Singleton` provider is a `Factory` that returns same instance on every
     call.
 
@@ -539,10 +531,10 @@ class Singleton(Factory[T_Injected, _T_SingletonBinding]):
     is_shared: t.ClassVar[bool] = True
     is_thread_safe: bool = attr.ib(init=False, default=None)
 
-    _sync_dependency_class: t.ClassVar = dependency.Singleton
-    _async_dependency_class: t.ClassVar = dependency.AsyncSingleton
-    _await_params_sync_dependency_class: t.ClassVar = dependency.AwaitParamsSingleton
-    _await_params_async_dependency_class: t.ClassVar = dependency.AwaitParamsAsyncSingleton
+    _sync_dependency_class: t.ClassVar = bindings.Singleton
+    _async_dependency_class: t.ClassVar = bindings.AsyncSingleton
+    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsSingleton
+    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncSingleton
 
     def thread_safe(self, is_thread_safe: bool=True) -> Self:
         """_Mark/Unmark_ this provider as thread safe. Updates the `is_thread_safe`
@@ -569,12 +561,8 @@ class Singleton(Factory[T_Injected, _T_SingletonBinding]):
 
 
 
-_T_ResourceBinding = t.TypeVar('_T_ResourceBinding', bound=dependency.Singleton, covariant=True)
-"""Resource dependency `TypeVar`"""
-
-
 @attr.s(slots=True, cmp=True, init=False)
-class Resource(Singleton[T_Injected, _T_ResourceBinding]):
+class Resource(Singleton[T_Injected, bindings._T_ResourceBinding]):
     """A `Resource` provider is a `Singleton` that has initialization and/or 
     teardown.
     
@@ -594,22 +582,17 @@ class Resource(Singleton[T_Injected, _T_ResourceBinding]):
 
 
 
-_T_PartialBinding  = t.TypeVar('_T_PartialBinding', bound=dependency.Partial, covariant=True)
-"""Partial dependency `TypeVar`"""
-
-
-
 @attr.s(slots=True, init=False)
-class Partial(Factory[T_Injected, _T_PartialBinding]):
+class Partial(Factory[T_Injected, bindings._T_PartialBinding]):
     """A `Factory` provider that accepts extra arguments during resolution.
 
     Used internally to inject entry-point functions.
     """
 
-    _sync_dependency_class: t.ClassVar = dependency.Partial
-    _async_dependency_class: t.ClassVar = dependency.AsyncPartial
-    _await_params_sync_dependency_class: t.ClassVar = dependency.AwaitParamsPartial
-    _await_params_async_dependency_class: t.ClassVar = dependency.AwaitParamsAsyncPartial
+    _sync_dependency_class: t.ClassVar = bindings.Partial
+    _async_dependency_class: t.ClassVar = bindings.AsyncPartial
+    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsPartial
+    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncPartial
 
     def _fallback_signature(self):
         return self._arbitrary_signature
@@ -618,21 +601,17 @@ class Partial(Factory[T_Injected, _T_PartialBinding]):
 
 
 
-_T_CallableBinding = t.TypeVar('_T_CallableBinding', bound=dependency.Callable, covariant=True)
-"""Callable dependency `TypeVar`"""
-
-
 @attr.s(slots=True, init=False)
-class Callable(Partial[T_Injected, _T_CallableBinding]):
+class Callable(Partial[T_Injected, bindings._T_CallableBinding]):
     """Similar to a `Factory` provider, a `Callable` provider resolves to a 
     callable that wraps the factory.
     
     """
 
-    _sync_dependency_class: t.ClassVar = dependency.Callable
-    _async_dependency_class: t.ClassVar = dependency.AsyncCallable
-    _await_params_sync_dependency_class: t.ClassVar = dependency.AwaitParamsCallable
-    _await_params_async_dependency_class: t.ClassVar = dependency.AwaitParamsAsyncCallable
+    _sync_dependency_class: t.ClassVar = bindings.Callable
+    _async_dependency_class: t.ClassVar = bindings.AsyncCallable
+    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsCallable
+    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncCallable
 
 
 
@@ -640,7 +619,7 @@ class Callable(Partial[T_Injected, _T_CallableBinding]):
 
 
 @attr.s(slots=True, frozen=True)
-class LookupMarkerProvider(Factory[lookups.look, _T_FactoryBinding]):
+class LookupMarkerProvider(Factory[lookups.look, bindings._T_FactoryBinding]):
     """Provider for resolving `xdi.Lookup` dependencies. 
     """
     
@@ -705,12 +684,12 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     """
     abstract = Dep
     concrete = attr.ib(init=False, default=Dep)
-    _dependency_class = dependency.Value
+    _dependency_class = bindings.Value
 
     def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
         return isinstance(abstract, (self.concrete, Dep, PureDep))
 
-    def _resolve(self, marker: Dep, scope: 'Scope') -> dependency.Dependency:
+    def _resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
         abstract, where = marker.abstract, marker.scope
 
         if where == Dep.SKIP_SELF:

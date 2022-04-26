@@ -7,7 +7,7 @@ import typing as t
 
 
 from xdi.providers import Alias as Provider
-from xdi._dependency import Dependency
+from xdi._bindings import Binding
 from xdi.scopes import Scope
 
 

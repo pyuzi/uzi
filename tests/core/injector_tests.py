@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi import InjectorLookupError
 from xdi._common import FrozenDict
 from xdi.injectors import Injector, NullInjector
-from xdi._dependency import SimpleDependency, Dependency, LookupErrorDependency
+from xdi._bindings import SimpleBinding, Binding, LookupErrorBinding
 
 
 from xdi.scopes import NullScope, Scope
@@ -35,7 +35,7 @@ class InjectorTests(BaseTestCase[Injector]):
 
     @pytest.fixture
     def mock_scope(self, mock_scope):
-        mock_scope[_T_Miss] = LookupErrorDependency(_T_Miss, mock_scope)
+        mock_scope[_T_Miss] = LookupErrorBinding(_T_Miss, mock_scope)
         return mock_scope
 
     @pytest.fixture
@@ -65,12 +65,12 @@ class InjectorTests(BaseTestCase[Injector]):
     @xfail(raises=(InjectorLookupError, TypeError), strict=True)
     @parametrize('key', [
         _T_Miss, 
-        SimpleDependency(_T_Miss, NullScope(), concrete=MagicMock(_T_Miss))
+        SimpleBinding(_T_Miss, NullScope(), concrete=MagicMock(_T_Miss))
     ])
     def test_lookup_error(self, new: _T_FnNew, key):
         sub = new()
         assert not key in sub
-        if isinstance(key, Dependency):
+        if isinstance(key, Binding):
             sub[key]
         else:
             sub.make(key)

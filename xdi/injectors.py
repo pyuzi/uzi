@@ -10,7 +10,7 @@ from typing_extensions import Self
 from . import providers
 from .core import Injectable, T_Injectable, T_Injected, InjectorLookupError
 from ._common import Missing, FrozenDict, private_setattr
-from ._dependency import Dependency
+from ._bindings import Binding
 
 
 if t.TYPE_CHECKING: # pragma: no cover
@@ -75,7 +75,7 @@ class Injector(FrozenDict[T_Injectable, Callable[[], T_Injected]]):
     def __contains__(self, x) -> bool:
         return self.__contains(x) or x in self.parent
 
-    def __missing__(self, dep: Dependency):
+    def __missing__(self, dep: Binding):
         try:
             return self.__setdefault(dep, (dep.scope is self.scope and dep.bind(self)) or self.parent[dep])   
         except AttributeError as e:
@@ -141,7 +141,7 @@ class NullInjector(Injector):
     
     def __reduce__(self): return self.__class__, ()
 
-    def __getitem__(self, dep: Dependency):
+    def __getitem__(self, dep: Binding):
         try:
             dep.bind(self)
         except (AttributeError, TypeError) as e:

@@ -8,7 +8,7 @@ import pytest
 from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi import InjectorLookupError
 from xdi._common import FrozenDict
-from xdi._dependency import SimpleDependency
+from xdi._bindings import SimpleBinding
 from xdi.injectors import Injector, NullInjector
 
 
@@ -59,7 +59,7 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         self.assert_immutable(new(), immutable_attrs)
 
     @xfail(raises=InjectorLookupError, strict=True)
-    @parametrize('key', [_T, SimpleDependency(_T, NullScope(), concrete=MagicMock())])
+    @parametrize('key', [_T, SimpleBinding(_T, NullScope(), concrete=MagicMock())])
     def test_lookup_error(self, new: _T_FnNew, key):
         new()[key]
    

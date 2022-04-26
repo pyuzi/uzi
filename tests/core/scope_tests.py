@@ -11,7 +11,7 @@ from xdi._common import FrozenDict
 from xdi import is_injectable
 from xdi.containers import Container
 from xdi.providers import Provider
-from xdi._dependency import Dependency
+from xdi._bindings import Binding
 from xdi.scopes import EmptyScopeError, NullScope, Scope
 
 
@@ -244,7 +244,7 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         mock_scope.__contains__.return_value = False
         sub = new(parent=mock_scope)
         dep = mock_scope[_T]
-        assert isinstance(dep, Dependency)
+        assert isinstance(dep, Binding)
         assert sub.find_local(_T) is None
         assert sub[_T] is dep
         assert sub.find_local(_T) is None 
@@ -254,7 +254,7 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         sub = new(parent=mock_scope)
         sub.container.__getitem__.return_value = mock_provider
         dep = mock_provider.resolve(_T, sub)
-        assert isinstance(dep, Dependency)
+        assert isinstance(dep, Binding)
         assert sub.find_local(_T) is dep
         assert sub[_T] is dep
        
@@ -264,11 +264,11 @@ class ScopeTest(BaseTestCase[_T_Scp]):
         sub.container.__getitem__.return_value = mock_provider
         rdep = mock_scope[_T]
 
-        assert isinstance(rdep, Dependency)
+        assert isinstance(rdep, Binding)
         assert sub.find_remote(_T) is rdep
 
         ldep = mock_provider.resolve(_T, sub)
-        assert isinstance(ldep, Dependency)
+        assert isinstance(ldep, Binding)
         assert sub[_T] is ldep
         assert sub.find_remote(_T) is rdep
 

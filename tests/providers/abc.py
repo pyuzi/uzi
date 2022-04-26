@@ -8,7 +8,7 @@ from tests.conftest import Container
 
 
 from xdi.providers import Provider
-from xdi._dependency import Dependency
+from xdi._bindings import Binding
 from xdi.scopes import Scope
 
 
@@ -223,14 +223,14 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         with patch.object(cls, '_get_dependency_kwargs', wraps=lambda *a, **kw: orig(subject, *a, **kw)):
             subject = new()
             dep = subject._make_dependency(abstract, mock_scope)
-            assert isinstance(dep, Dependency)
+            assert isinstance(dep, Binding)
             subject._get_dependency_kwargs.assert_called_once()
             return subject, dep
 
     def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_NewPro, mock_scope: Scope):
         subject = new()
         res = subject.resolve(abstract, mock_scope)
-        assert isinstance(res, Dependency)
+        assert isinstance(res, Binding)
         assert subject._frozen
         return subject, res    
 
@@ -253,7 +253,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         subject = new()
         dep = subject.resolve(abstract, mock_scope)
 
-        assert isinstance(dep, Dependency)
+        assert isinstance(dep, Binding)
         func = dep.bind(mock_injector)
         assert callable(func)
         res = func()

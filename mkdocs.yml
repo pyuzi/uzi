@@ -16,13 +16,13 @@ repo_name: pyxdi/xdi
 repo_url: https://github.com/pyxdi/xdi
 edit_uri: "blob/master/docs/"
 
+use_directory_urls: false
 
 nav:
   - 'Home': 'index.md'
-  - 'Introduction':
-    - 'features.md'
-    - 'concepts.md'
-    - 'install.md'
+  - 'features.md'
+  - 'concepts.md'
+  - 'install.md'
   - 'Basic User Guide': 
     - 'basic/index.md'
     - 'basic/providers/index.md'
@@ -30,6 +30,10 @@ nav:
     - 'advanced/index.md'
   - 'Examples': 
     - 'examples/index.md'
+  - 'Framework Integration': 
+    - 'Overview': 'frameworks/index.md'
+    - 'frameworks/django.md'
+    - 'frameworks/sanic.md'
   - 'API Reference': 
     - 'xdi.core': 'api/core.md'
     - 'xdi.markers': 'api/markers.md'

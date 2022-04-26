@@ -2,12 +2,12 @@
 
 ## Supported Python Versions
 
-`xdi` only supports __python 3.9__ or higher. 
+`xdi` only supports __python 3.9__ or __higher__. 
 
 Support for __python 3.8__ might be added in the near future.
 
 
-## Standalone
+## Standalone Mode.
 
 `xdi` is available on [PyPi](https://pypi.org/project/xdi/). To install, run:-
 
@@ -15,7 +15,7 @@ Support for __python 3.8__ might be added in the near future.
 pip install xdi
 ```
 
-## Integrated
+## Integrated Mode
 
 `xdi` provides seamless integrations with some popular python frameworks like 
 [Django](frameworks/django.md), [Sanic](frameworks/sanic.md) 

@@ -35,6 +35,7 @@ nav:
     - 'frameworks/django.md'
     - 'frameworks/sanic.md'
   - 'API Reference': 
+    - 'xdi': 'api/index.md'
     - 'xdi.core': 'api/core.md'
     - 'xdi.markers': 'api/markers.md'
     - 'xdi.containers': 'api/containers.md'

@@ -10,6 +10,11 @@
 `XDI` is a [dependency injection](https://en.wikipedia.org/wiki/Dependency_injection) library for Python.
 
 
+__[Documentation][docs-link]__ |
+__[API Reference][api-docs-link]__ |
+__[Installation][install-link]__ |
+__[Contributing][contributing-link]__
+
 ## Why Use XDI?
 
 - Fast: minus the cost of an additional stack frame, `xdi` resolves dependencies 
@@ -184,6 +189,9 @@ __This package is still in active development and should not be used in producti
 
 
 [docs-link]: https://pyxdi.github.io/xdi/
+[api-docs-link]: https://pyxdi.github.io/xdi/api/
+[install-link]: https://pyxdi.github.io/xdi/install.html
+[contributing-link]: https://pyxdi.github.io/xdi/0.5.x/contributing.html
 [pypi-image]: https://img.shields.io/pypi/v/xdi.svg?color=%233d85c6
 [pypi-link]: https://pypi.python.org/pypi/xdi
 [pyversions-image]: https://img.shields.io/pypi/pyversions/xdi.svg

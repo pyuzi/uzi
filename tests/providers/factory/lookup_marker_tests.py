@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import typing as t
-from xdi.makers import Lookup
+from xdi.markers import Lookup
 
 
 

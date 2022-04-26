@@ -1,4 +1,4 @@
-# Alias Provider
+# Alias
 
 ::: xdi.providers.Alias
 

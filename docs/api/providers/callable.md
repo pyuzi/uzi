@@ -1,4 +1,4 @@
-# Callable Provider
+# Callable
 
 ::: xdi.providers.Callable
 

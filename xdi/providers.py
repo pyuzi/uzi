@@ -16,7 +16,7 @@ from . import _dependency as dependency
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .core import Injectable, T_Injectable, T_Injected, is_injectable
-from .makers import Dep, DependencyMarker, Lookup, PureDep
+from .markers import Dep, DependencyMarker, Lookup, PureDep
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
     _UnionType = type(t.Union[t.Any, None])

@@ -7,7 +7,7 @@ from .core import (
 )
 
 
-from .makers import Dep, DependencyMarker, Lookup, PureDep
+from .markers import Dep, DependencyMarker, Lookup, PureDep
 
 from . import injectors, providers
 from .containers import Container

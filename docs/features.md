@@ -1,4 +1,4 @@
-# Introduction
+# Why Use XDI
 
 Before we start, it would be good to introduce some core concepts used in `xdi` and  
 across this documentation.

@@ -1,4 +1,4 @@
-# Provider Registry
+# AbstractProviderRegistry
 
 ::: xdi.providers.AbstractProviderRegistry
 

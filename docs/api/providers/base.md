@@ -1,4 +1,4 @@
-# Base Provider
+# Provider
 
 ::: xdi.providers.Provider
 

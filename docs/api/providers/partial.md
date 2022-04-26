@@ -1,4 +1,4 @@
-# Partial Provider
+# Partial
 
 ::: xdi.providers.Partial
 

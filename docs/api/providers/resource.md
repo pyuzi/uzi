@@ -1,4 +1,4 @@
-# Resource Provider
+# Resource
 
 ::: xdi.providers.Resource
 

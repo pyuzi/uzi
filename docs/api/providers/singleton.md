@@ -1,4 +1,4 @@
-# Singleton Provider
+# Singleton
 
 ::: xdi.providers.Singleton
 

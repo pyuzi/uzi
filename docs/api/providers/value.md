@@ -1,4 +1,4 @@
-# Value Provider
+# Value
 
 ::: xdi.providers.Value
 

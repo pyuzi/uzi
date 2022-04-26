@@ -1,3 +1,0 @@
-# Makers
-
-::: xdi.makers

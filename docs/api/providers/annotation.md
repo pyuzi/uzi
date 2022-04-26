@@ -1,0 +1,4 @@
+# AnnotationProvider
+
+
+::: xdi.providers.AnnotationProvider

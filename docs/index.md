@@ -1,4 +1,4 @@
-# XDI
+# Introduction
 
 
 [![PyPi version][pypi-image]][pypi-link]

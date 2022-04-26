@@ -3,16 +3,53 @@ theme:
   name: material
   custom_dir: docs/override
   features:
+    - toc.follow
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+
     # - navigation.indexes
     # - navigation.expand
     # - navigation.sections
-    - toc.follow
 
 
 repo_name: pyxdi/xdi
 repo_url: https://github.com/pyxdi/xdi
 edit_uri: "blob/master/docs/"
 
+
+nav:
+  - 'Home': 'index.md'
+  - 'Introduction':
+    - 'features.md'
+    - 'concepts.md'
+    - 'install.md'
+  - 'Basic User Guide': 
+    - 'basic/index.md'
+    - 'basic/providers/index.md'
+  - 'Advanced User Guide': 
+    - 'advanced/index.md'
+  - 'API Reference': 
+    - 'xdi.core': 'api/core.md'
+    - 'xdi.markers': 'api/markers.md'
+    - 'xdi.containers': 'api/containers.md'
+    - 'xdi.scopes': 'api/scopes.md'
+    - 'xdi.injectors': 'api/injectors.md'
+    - 'xdi.providers':
+      - 'api/providers/base.md'
+      - 'api/providers/alias.md'
+      - 'api/providers/value.md'
+      - 'api/providers/factory.md'
+      - 'api/providers/singleton.md'
+      - 'api/providers/resource.md'
+      - 'api/providers/partial.md'
+      - 'api/providers/callable.md'
+      - 'api/providers/dep.md'
+      - 'api/providers/lookup.md'
+      - 'api/providers/union.md'
+      - 'api/providers/annotation.md'
+      - 'api/providers/registry.md'
+  - 'Contributing': 'contributing.md'
 
 markdown_extensions:
   - admonition
@@ -21,6 +58,8 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - def_list
+  - toc:
+      permalink: True
   - pymdownx.snippets:
       base_path: .
   - pymdownx.tasklist:

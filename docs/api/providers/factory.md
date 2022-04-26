@@ -1,4 +1,4 @@
-# Factory Provider
+# Factory
 
 ::: xdi.providers.Factory
 

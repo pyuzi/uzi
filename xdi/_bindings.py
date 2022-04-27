@@ -137,6 +137,8 @@ class SimpleBinding(Binding[_T_Concrete]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Value(Binding[T_Injected]):
+    """Value binding
+    """
 
     concrete: T_Injected = attr.ib(kw_only=True, default=None)
     is_async: t.Final = False
@@ -158,6 +160,7 @@ _T_ValueBinding = t.TypeVar('_T_ValueBinding', bound=Value, covariant=True)
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Factory(Binding[T_Injected]):
+    """Factory binding"""
 
     concrete: T_Injected = attr.ib(kw_only=True)
     params: 'BoundParams' = attr.ib(kw_only=True, default=BoundParams.make(()))
@@ -209,6 +212,7 @@ _T_FactoryBinding = t.TypeVar('_T_FactoryBinding', bound=Factory, covariant=True
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncFactory(Factory[T_Injected]):
+    """AsyncFactory binding"""
 
     is_async: bool = True
     async_call: bool = True
@@ -218,6 +222,7 @@ class AsyncFactory(Factory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsFactory(Factory[T_Injected]):
+    """AwaitParamsFactory binding"""
     
     is_async: bool = True
     async_call: bool = False
@@ -246,6 +251,7 @@ class AwaitParamsFactory(Factory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncFactory(AwaitParamsFactory[T_Injected]):
+    """AwaitParamsAsyncFactory binding"""
     
     async_call: bool = True
 
@@ -255,6 +261,7 @@ class AwaitParamsAsyncFactory(AwaitParamsFactory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Singleton(Factory[T_Injected]):
+    """Singleton binding"""
 
     # aw_enter: bool = attr.ib(kw_only=True, default=False)
 
@@ -296,6 +303,7 @@ _T_SingletonBinding = t.TypeVar('_T_SingletonBinding', bound=Singleton, covarian
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncSingleton(Singleton[T_Injected]):
+    """AsyncSingleton binding"""
 
     is_async: bool = True
     async_call: bool = True
@@ -312,6 +320,7 @@ class AsyncSingleton(Singleton[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsSingleton(Singleton[T_Injected], AwaitParamsFactory[T_Injected]):
+    """AwaitParamsSingleton binding"""
 
     is_async: bool = True
     async_call: bool = False
@@ -323,6 +332,7 @@ class AwaitParamsSingleton(Singleton[T_Injected], AwaitParamsFactory[T_Injected]
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncSingleton(AwaitParamsSingleton[T_Injected]):
+    """AwaitParamsAsyncSingleton binding"""
     
     async_call: bool = True
 
@@ -343,6 +353,7 @@ _T_ResourceBinding = t.TypeVar('_T_ResourceBinding', bound=Resource, covariant=T
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Partial(Factory[T_Injected]):
+    """Partial binding"""
 
     def factory(self: Self, injector: "Injector"):
         args = self.resolve_args(injector)
@@ -368,6 +379,7 @@ _T_PartialBinding  = t.TypeVar('_T_PartialBinding', bound=Partial, covariant=Tru
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncPartial(Partial[T_Injected]):
+    """AsyncPartial binding"""
 
     async_call: bool = True
     is_async: bool = True
@@ -376,6 +388,7 @@ class AsyncPartial(Partial[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsPartial(Partial[T_Injected], AwaitParamsFactory[T_Injected]):
+    """AwaitParamsPartial binding"""
     
     async_call: bool = False
     is_async: bool = True
@@ -388,6 +401,7 @@ class AwaitParamsPartial(Partial[T_Injected], AwaitParamsFactory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncPartial(AwaitParamsPartial[T_Injected]):
+    """AwaitParamsAsyncPartial binding"""
     
     async_call: bool = True
 
@@ -398,6 +412,7 @@ class AwaitParamsAsyncPartial(AwaitParamsPartial[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Callable(Partial[T_Injected]):
+    """Callable binding"""
 
     def bind(self: Self, injector: "Injector"):
         func = self.factory(injector)
@@ -411,17 +426,20 @@ _T_CallableBinding = t.TypeVar('_T_CallableBinding', bound=Callable, covariant=T
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncCallable(Callable[T_Injected], AsyncPartial[T_Injected]):
+    """AsyncCallable binding"""
     is_async: bool = True
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsCallable(Callable[T_Injected], AwaitParamsPartial[T_Injected]):
+    """AwaitParamsCallable binding"""
     
     is_async: bool = True
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncCallable(Callable[T_Injected], AwaitParamsAsyncPartial[T_Injected]):
+    """AwaitParamsAsyncCallable binding"""
     
     async_call: bool = True

@@ -140,7 +140,16 @@ def MockScope(MockContainer, MockDependency):
         mi.__contains__ = MagicMock(operator.__contains__, wraps=lambda k: deps.get(k) or is_injectable(k)) 
         
         deps = {}
-        mi.__getitem__ = mi.find_local = Mock(wraps=lambda k: deps[k] if k in deps else deps.setdefault(k, MockDependency(abstract=k, scope=mi)))
+
+        def getitem(k):
+            if k in deps:
+                return deps[k]
+            elif isinstance(k, tuple):
+                return deps.setdefault(k, MockDependency(abstract=k, scope=mi))
+            else:
+                return getitem((k,cm))
+
+        mi.__getitem__ = mi.find_local = Mock(wraps=getitem)
         mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))
 
         if parent:

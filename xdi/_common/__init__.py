@@ -3,6 +3,7 @@ from copy import deepcopy
 from functools import wraps
 import inspect
 import operator
+import re
 import sys
 import types
 import typing as t
@@ -36,28 +37,40 @@ def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn
 
     def decorator(cls_):
 
-        def setter(self: Self, name=None, value=None, force=False, /, **kw):
+        def _setfunc(self: Self, force=False):
             if not force and frozen and getattr(self, frozen, False):
-                setter_ = _setattr
+                return _setattr
             else:
-                setter_ = setattr_fn
+                return setattr_fn
+
+        def setter(self: Self, name=None, value=None, force=False, /, **kw):
+            setter_ = _setfunc(self, force)
+            
             name and kw.setdefault(name. value)
             for k,v in kw.items():
                 setter_(self, k, v)
         
-        def __setattr__(self: Self, name, value):
+        def __setattr__(self: Self, name: str, value):
+            if self._privateattr_regex.search(name):
+                if not frozen or getattr(self, frozen, False):
+                    return setattr_fn(self, name, value)
             getattr(self, name)
             raise AttributeError(f"`cannot set {name!r} on frozen {self.__class__.__qualname__!r}.")
 
         _base__init_subclass__ = cls_.__init_subclass__
         
-        def __init_subclass__(cls, **kwargs):
-            if not hasattr(cls, fn := f'_{cls.__name__}__{name}'):
+        def __init_subclass__(cls: type[Self], **kwargs):
+            if not hasattr(cls, fn := f'_{cls.__name__.lstrip("_")}__{name}'):
                 _setattr(cls, fn, setter)
+            pre = r'|'.join(f'_{c.__name__.lstrip("_")}__' for c in cls.__mro__)
+            cls._privateattr_regex = re.compile(f"^(?:{pre}).+")
             _base__init_subclass__(**kwargs)
         cls_.__init_subclass__ = classmethod(__init_subclass__)
 
-        if not hasattr(cls_, fn := f'_{cls_.__name__}__{name}'):
+        pre = r'|'.join(f'_{c.__name__.lstrip("_")}__' for c in cls_.__mro__)
+        cls_._privateattr_regex = (f"^(?:{pre}).+")
+
+        if not hasattr(cls_, fn := f'_{cls_.__name__.lstrip("_")}__{name}'):
             _setattr(cls_, fn, setter)
 
         if setattr and cls_.__setattr__ is _object_setattr:

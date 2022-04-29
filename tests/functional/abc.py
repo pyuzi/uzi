@@ -75,7 +75,7 @@ class FooBarBaz(t.Generic[T_Foo, T_Baz]):
 
 class Service:
     
-    def __init__(self, foo: Foo, bar: Bar, baz: Baz, /, *, foobar: FooBar, foobarbaz: FooBarBaz, bar_or_baz: t.Union[Bar, Baz], baz_bar: t.Annotated[Bar, Dep(FooBarBaz).provided.deps[1::-1][0].bar]) -> None:
+    def __init__(self, foo: Foo, bar: Bar, baz: Baz, /, *, foobar: FooBar, foobarbaz: FooBarBaz, bar_or_baz: t.Union[Bar, Baz], baz_bar: t.Annotated[Bar, Dep(FooBarBaz).lookup.deps[1::-1][0].bar]) -> None:
         self.deps = foo, bar, baz, foobar, foobarbaz, bar_or_baz, baz_bar
         assert isinstance(foo, Foo)
         assert isinstance(bar, Bar)

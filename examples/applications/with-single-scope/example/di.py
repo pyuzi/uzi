@@ -38,7 +38,7 @@ ioc.singleton(
 ioc.singleton(
     services.DatabaseConnection,
     sqlite3.connect,
-    Dep(Settings).provided.database.dns
+    Dep(Settings).lookup.database.dns
 )
 
 
@@ -46,13 +46,13 @@ ioc.singleton(
         S3Client,
         boto3.client, 
         service_name="s3",
-        aws_access_key_id=Dep(Settings).provided.aws.access_key_id,
-        aws_secret_access_key=Dep(Settings).provided.aws.secret_access_key,
+        aws_access_key_id=Dep(Settings).lookup.aws.access_key_id,
+        aws_secret_access_key=Dep(Settings).lookup.aws.secret_access_key,
     )
 
 
 
-ioc.factory(services.AuthService, token_ttl=Dep(Settings).provided.auth.token_ttl)
+ioc.factory(services.AuthService, token_ttl=Dep(Settings).lookup.auth.token_ttl)
 
 
 ioc.provide(

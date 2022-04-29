@@ -8,7 +8,8 @@ from typing_extensions import Self
 
 
 from . import providers
-from .core import Injectable, T_Injectable, T_Injected, InjectorLookupError
+from .core import Injectable, T_Injectable, T_Injected
+from .exceptions import InjectorLookupError
 from ._common import Missing, FrozenDict, private_setattr
 from ._bindings import Binding
 

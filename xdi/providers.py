@@ -63,14 +63,13 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 
 
 
-
 @DependencyMarker.register
 @private_setattr(frozen='_frozen')
 @attr.s(slots=True, frozen=True, cache_hash=True, cmp=True)
 class Provider(t.Generic[_T_Concrete, _T_Binding]):
     """The base class for all providers.
 
-    Subclasses can implement the `_resolve()` method to return the appropriate
+    Subclasses can implement the `resolve()` method to return the appropriate
     `Dependency` object for any given dependency. Also, conditional providers can
     implement the `_can_resolve()' method which should return `True` when the 
     provider can resolve or `False` if otherwise.
@@ -80,6 +79,9 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         container (Container): The Container where this provider is defined.
         is_default (bool): Whether this provider is the default. 
             A default provider only gets used if none other was provided to override it.
+        is_final (bool): Whether this provider is final. 
+            A final provider will error if overridden by containers further 
+            down the provider resolution order.
         is_async (bool): Whether this provider is asyncnous
         filters (tuple[Callable]): Called to determine whether this provider can be resolved.
 
@@ -92,6 +94,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     container: "Container" = attr.ib(kw_only=True, default=None) 
 
     is_default: bool = attr.ib(kw_only=True, default=False)
+    is_final: bool = attr.ib(kw_only=True, default=False)
     
     is_async: bool = attr.ib(init=False, default=None)
     
@@ -116,10 +119,25 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(is_default=is_default)
+        self.__setattr(is_default=not not is_default)
         return self
+    
+    def final(self, is_final: bool = True) -> Self:
+        """_Mark/Unmark_ this provider as final. Updates `is_final` attribute.
+        
+        A final provider will error if overridden by containers further down the 
+        provider resolution order. This does not apply to providers marked as
+        default. Default providers will get skipped silently.
 
-
+        Args:
+            is_final (bool, optional): `True` to _mark_ or `False` to _unmark_. 
+                Defaults to `True`.
+        Returns:
+            self (Provider): this provider
+        """
+        self.__setattr(is_final=not not is_final)
+        return self
+    
     def can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
         """Check if this provider can resolve the given dependency in the given 
         scope.
@@ -136,20 +154,9 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             bool: `True` if dependency can be resolved or `False` if otherwise.
         """
-        return (not (container := self.container) or container in scope) \
-            and self._can_resolve(abstract, scope) \
-            and self._apply_filters(abstract, scope)
+        return 
 
-    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        return True
-
-    def _apply_filters(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        for fl in self.filters:
-            if not fl(self, abstract, scope):
-                return False
-        return True
-
-    def resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
         """Resolve the given dependency.
 
         Used internally by `Scope`
@@ -162,10 +169,21 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
             dependency (Optional[Dependency]):
         """
         self._freeze()
-        if self.can_resolve(abstract, scope):
-            return self._resolve(abstract, scope)
+        return self._can_resolve(abstract, scope) \
+            and self._apply_filters(abstract, scope) \
+            and self.resolve(abstract, scope) \
+                or None
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
+    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        return (self.container or scope.container) in scope
+
+    def _apply_filters(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        for fl in self.filters:
+            if not fl(self, abstract, scope):
+                return False
+        return True
+
+    def resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
         return self._make_dependency(abstract, scope)
 
     def set_container(self, container: "Container") -> Self:
@@ -222,9 +240,10 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Filters are callables that determine whether this provider can provide a
         given dependency.
         
-        Filters are called with 3 arguments. Namely: `provider`- this provide, 
-        `abstract` - the dependency to be provided
-        and `scope`- scope within which the dependency is getting resolved.
+        Filters are called with 4 arguments:- `provider`- this provide, 
+        `abstract` - the dependency to be provided, `scope`- scope within which 
+        the dependency is getting resolved and `dependant` the `Container` from 
+        which the dependency was requested.
 
         Args:
             *filters (Callable): The filter callables.
@@ -271,8 +290,8 @@ class Alias(Provider[T_Injectable, bindings._T_Binding]):
         concrete (Injectable): The dependency to be proxied
     """
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
-        return scope[self.concrete]
+    def resolve(self, abstract: T_Injectable, scope: 'Scope'):
+        return scope[self.concrete, scope.container]
   
   
 
@@ -648,7 +667,7 @@ class UnionProvider(Provider[_T_Concrete]):
     def get_injectable_args(self, abstract: Injectable):
         return filter(is_injectable, self.get_all_args(abstract))
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
+    def resolve(self, abstract: T_Injectable, scope: 'Scope'):
         for arg in self.get_injectable_args(abstract):
             if rv := scope[arg]:
                 return rv
@@ -686,21 +705,20 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
         return isinstance(abstract, (self.concrete, Dep, PureDep))
 
-    def _resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
-        abstract, where = marker.abstract, marker.scope
-
+    def resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
+        abstract, where, container = marker.abstract, marker.scope, self.container
         if where == Dep.SKIP_SELF:
-            if dep := scope.find_remote(abstract):
+            if dep := scope.parent[abstract, container]:
                 return dep
         elif where == Dep.ONLY_SELF:
-            dep = scope.find_local(abstract)
+            dep = scope.resolve_binding((abstract, container), recursive=False)
             if dep and scope is dep.scope:
                 return dep
-        elif dep := scope[abstract]:
+        elif dep := scope[abstract, container]:
             return dep
         
         if marker.injects_default:
-            return scope[marker.default]
+            return scope[marker.default, container]
         elif marker.has_default:
             return self._make_dependency(marker, scope, concrete=marker.default)
 

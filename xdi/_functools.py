@@ -210,26 +210,26 @@ class BoundParams:
         kwargs=FrozenDict(),
     ):
         bound = sig.bind_partial(*args, **kwargs).arguments
-
+        container = container or scope.container
         for n, p in sig.parameters.items():
             if p.kind is Parameter.VAR_POSITIONAL:
                 p = p.replace(annotation=Parameter.empty)
                 for v in bound.get(n) or (Parameter.empty,):
                     bp = BoundParam(p, v)
                     if scope and bp.is_injectable:
-                        bp.dependency = scope[bp.injectable]
+                        bp.dependency = scope[bp.injectable, container]
                     yield bp
             elif p.kind is Parameter.VAR_KEYWORD:
                 p = p.replace(annotation=Parameter.empty)
                 for k, v in (bound.get(n) or {n: Parameter.empty}).items():
                     bp = BoundParam(p, v, key=k)
                     if scope and bp.is_injectable:
-                        bp.dependency = scope[bp.injectable]
+                        bp.dependency = scope[bp.injectable, container]
                     yield bp
             else:
                 bp = BoundParam(p, bound.get(n, Parameter.empty))
                 if scope and bp.is_injectable:
-                    bp.dependency = scope[bp.injectable]
+                    bp.dependency = scope[bp.injectable, container]
                 yield bp
 
     def __bool__(self):

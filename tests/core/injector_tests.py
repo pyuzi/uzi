@@ -6,7 +6,7 @@ import pytest
 
 
 from collections.abc import Callable, Iterator, Set, MutableSet
-from xdi import InjectorLookupError
+from xdi.exceptions import InjectorLookupError
 from xdi._common import FrozenDict
 from xdi.injectors import Injector, NullInjector
 from xdi._bindings import SimpleBinding, Binding, LookupErrorBinding

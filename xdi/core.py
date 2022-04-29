@@ -1,17 +1,17 @@
+from collections import abc
+from functools import wraps
+import operator
 import typing as t
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 from inspect import Parameter
 from logging import getLogger
-from types import FunctionType, GenericAlias, MethodType
+from types import FunctionType, GenericAlias, MethodType, new_class
+from typing_extensions import Self
+from weakref import WeakKeyDictionary, ref
 
 import attr
 
-from ._common import Missing
-
-if t.TYPE_CHECKING:
-    from .providers import Provider
-    from .scopes import Scope
-    ProviderType = type[Provider]
+from ._common import Missing, private_setattr
 
 
 T_Injected = t.TypeVar("T_Injected", covariant=True)
@@ -77,18 +77,6 @@ def is_injectable_annotation(typ):
     return is_injectable(typ)
 
 
-@attr.s()
-class InjectorLookupError(KeyError):
-    """Raised by ~Injector` when a missing dependency is requested.
-    
-    Args:
-        abstract (Injectable): the missing dependency
-    """
-
-    abstract: "Injectable" = attr.ib(default=None)
-    scope: "Scope" = attr.ib(default=None)
-
-
 
 class Injectable(metaclass=ABCMeta):
     """Abstract base class for injectable types.
@@ -111,6 +99,7 @@ Injectable.register(type(t.Union))
 
 
 class NonInjectable(metaclass=ABCMeta):
+    """Abstract base class for non-injectable types."""
     __slots__ = ()
 
 

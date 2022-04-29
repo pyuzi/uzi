@@ -1,13 +1,15 @@
+import operator
 from threading import Lock
 import typing as t
 from logging import getLogger
-from collections.abc import Set
+from collections import abc
 from typing_extensions import Self
 
 import attr
 
 
-from . import Injectable, DependencyMarker
+from . import Injectable
+from .markers import DependencyMarker
 from ._common import private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
 
@@ -37,8 +39,8 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     
     _frozen: bool = attr.ib(init=False, repr=False, default=False)
     
-    id: int = attr.ib(init=False)
-    @id.default
+    _id: int = attr.ib(init=False)
+    @_id.default
     def _init_id(self):
         with self.__class__.__lock:
             self.__class__.__id += 1
@@ -48,6 +50,7 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     bases: tuple[Self] = attr.ib(default=(), init=True, repr=True and (lambda s: f"[{', '.join(f'{c.name!r}' for c in s)}]")) 
     _pro: tuple[Self] = attr.ib(default=None, init=False, repr=False and (lambda s: f"[{', '.join(f'{c.name!r}' for c in s)}]")) 
     __setitem = dict[Injectable,  Provider].__setitem__
+    __contains = dict[Injectable,  Provider].__contains__
 
     @property
     def pro(self) -> tuple[Self]:
@@ -119,10 +122,12 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
             bool:
         """
         return other in self.pro
-        
-    
+
     def _on_register(self, abstract: Injectable, provider: Provider):
         pass
+
+    def __contains__(self, x):
+        return self.__contains(x) or any(x in b for b in self.bases)
 
     def __setitem__(self, abstract: Injectable, provider: Provider) -> Self:
         """Register a dependency provider 

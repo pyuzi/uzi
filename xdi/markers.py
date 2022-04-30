@@ -81,9 +81,10 @@ _T_PredVar = t.TypeVar('_T_PredVar', covariant=True)
 _T_PredVars = t.TypeVar('_T_PredVars', bound=tuple, covariant=True)
 _T_Pred = t.TypeVar('_T_Pred', bound='ProPredicate', covariant=True)
 
-@private_setattr
-class ProPredicate(ABC, t.Generic[_T_PredVars]):
 
+
+class ProPredicate(t.Generic[_T_PredVars]):
+    
     __slots__ = 'vars',
 
     vars: _T_PredVars
@@ -92,10 +93,6 @@ class ProPredicate(ABC, t.Generic[_T_PredVars]):
         self = _object_new(cls)
         self.__setattr(vars=vars)
         return self
-
-    @abstractmethod
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
-        pass
 
     @classmethod
     def __subclasshook__(cls, sub):
@@ -219,8 +216,7 @@ class ProInvertPredicate(ProSubPredicate[tuple[_T_Pred]]):
 
 
 
-@ProPredicate[tuple[_T_PredVar]].register
-class ProEnumPredicate(t.Generic[_T_PredVar]):
+class ProEnumPredicate(ProPredicate, t.Generic[_T_PredVar]):
 
     __slots__ = ()
     

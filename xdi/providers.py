@@ -291,7 +291,7 @@ class Alias(Provider[T_Injectable, bindings._T_Binding]):
     """
 
     def resolve(self, abstract: T_Injectable, scope: 'Scope'):
-        return scope[self.concrete, self.container or scope.container]
+        return scope[self.concrete]
   
   
 
@@ -681,7 +681,7 @@ class UnionProvider(Provider[_T_Concrete]):
 class AnnotationProvider(UnionProvider[_T_Concrete]):
     """Annotated types provider
     """
-    abstract = t.get_origin(t.Annotated[t.Any, None])
+    abstract = t.get_origin(t.Annotated[t.Any, object()])
     concrete = attr.ib(init=False, default=_AnnotatedType)
 
     def get_all_args(self, abstract: t.Annotated):
@@ -711,14 +711,14 @@ class DepMarkerProvider(Provider[_T_Concrete]):
             if dep := scope.parent[abstract]:
                 return dep
         elif where == Dep.ONLY_SELF:
-            dep = scope.resolve_binding((abstract, container), recursive=False)
+            dep = scope.resolve_binding(abstract, recursive=False)
             if dep and scope is dep.scope:
                 return dep
-        elif dep := scope[abstract, container]:
+        elif dep := scope[abstract]:
             return dep
         
         if marker.injects_default:
-            return scope[marker.default, container]
+            return scope[marker.default]
         elif marker.has_default:
             return self._make_dependency(marker, scope, concrete=marker.default)
 

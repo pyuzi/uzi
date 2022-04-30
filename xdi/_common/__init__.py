@@ -68,7 +68,7 @@ def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn
         cls_.__init_subclass__ = classmethod(__init_subclass__)
 
         pre = r'|'.join(f'_{c.__name__.lstrip("_")}__' for c in cls_.__mro__)
-        cls_._privateattr_regex = (f"^(?:{pre}).+")
+        cls_._privateattr_regex = re.compile(f"^(?:{pre}).+")
 
         if not hasattr(cls_, fn := f'_{cls_.__name__.lstrip("_")}__{name}'):
             _setattr(cls_, fn, setter)

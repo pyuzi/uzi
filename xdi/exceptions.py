@@ -38,6 +38,10 @@ class ProIndexError(IndexError, XdiException):
     """
 
 
+class ProValueError(ValueError, XdiException):
+    ...
+
+
 
 
 from .providers import Provider

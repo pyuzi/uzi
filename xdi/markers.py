@@ -1,6 +1,7 @@
 from functools import wraps
 from inspect import Parameter, signature
 from itertools import chain
+from logging import getLogger
 import operator
 from types import GenericAlias, new_class
 import typing as t
@@ -23,6 +24,8 @@ if t.TYPE_CHECKING: # pragma: no cover
     from .scopes import Scope
 
 
+logger = getLogger(__name__)
+
 __static_makers = {
     t.Union,
     t.Annotated,
@@ -33,7 +36,7 @@ __static_makers = {
 def is_dependency_marker(obj: 'DependencyMarker') -> True: ...
 @t.overload
 def is_dependency_marker(obj: object) -> False: ...
-def is_dependency_marker(obj:t.Any) -> bool:
+def is_dependency_marker(obj:t.Any, ind=0) -> bool:
     """Check if object is a `DependencyMarker`
     Args:
         obj (Any): the object to check
@@ -41,6 +44,13 @@ def is_dependency_marker(obj:t.Any) -> bool:
     Returns:
         bool: 
     """
+    res = isinstance(obj, DependencyMarker) \
+            or obj in __static_makers \
+            or (not not (orig := t.get_origin(obj)) and is_dependency_marker(orig, ind+1))
+
+    ins = '  '*ind
+    logger.info(f'{ins} - is_dependency_marker({res})={obj=}')
+    return res
     return isinstance(obj, DependencyMarker) \
             or obj in __static_makers \
             or (not not (orig := t.get_origin(obj)) and is_dependency_marker(orig))
@@ -71,7 +81,7 @@ class InjectionDescriptor(Injectable, t.Generic[T_Injectable]):
 _object_new = object.__new__
 
 
-_none_slice = None, None, None
+_3_nones = None, None, None
 
 _T_ProStart = t.TypeVar('_T_ProStart', 'ProContext', 'Container', None)
 _T_ProStop = t.TypeVar('_T_ProStop', 'ProContext', 'Container', None)
@@ -83,22 +93,35 @@ _T_Pred = t.TypeVar('_T_Pred', bound='ProPredicate', covariant=True)
 
 
 
-class ProPredicate(t.Generic[_T_PredVars]):
+@private_setattr
+class _PredicateOpsMixin(t.Generic[_T_PredVars]):
     
-    __slots__ = 'vars',
+    __slots__ = ()
 
-    vars: _T_PredVars
-
-    def __new__(cls, *vars: _T_PredVar):
-        self = _object_new(cls)
-        self.__setattr(vars=vars)
-        return self
-
-    @classmethod
-    def __subclasshook__(cls, sub):
-        if cls is ProPredicate:
-            return callable(getattr(sub, 'pro_entries', None))
+    def __or__(self, x):    
+        if isinstance(x, ProPredicate):
+            if x ==  self:
+                return self
+            return ProOrPredicate(self, x)
         return NotImplemented
+
+    def __and__(self, x):
+        if isinstance(x, ProPredicate):
+            if x ==  self:
+                return self
+            return ProAndPredicate(self, x)
+        return NotImplemented
+   
+    def __invert__(self, x):
+        if isinstance(x, ProPredicate):
+            return ProInvertPredicate(self)
+        return NotImplemented
+
+
+
+class _PredicateCompareMixin:
+    
+    __slots__ = ()
 
     def __eq__(self, o) -> bool:
         if isinstance(o, self.__class__):
@@ -108,29 +131,6 @@ class ProPredicate(t.Generic[_T_PredVars]):
     def __ne__(self, o) -> bool:
         if isinstance(o, self.__class__):
             return self.vars != o.vars
-        return NotImplemented
-
-    def __hash__(self) -> int:
-        return hash(self.vars)
-
-    def __or__(self, x):    
-        if isinstance(x, ProPredicate):
-            return ProOrPredicate(self, x)
-        return NotImplemented
-
-    def __and__(self, x):
-        if isinstance(x, ProPredicate):
-            return ProAndPredicate(self, x)
-        return NotImplemented
-        
-    def __sub__(self, x):
-        if isinstance(x, ProPredicate):
-            return ProSubPredicate(self, x)
-        return NotImplemented
-        
-    def __invert__(self, x):
-        if isinstance(x, ProPredicate):
-            return ProInvertPredicate(self)
         return NotImplemented
 
     def __forward_op(op):
@@ -149,9 +149,35 @@ class ProPredicate(t.Generic[_T_PredVars]):
     __ge__, __gt__ = __forward_op(operator.ge), __forward_op(operator.gt)
     __le__, __lt__ = __forward_op(operator.le), __forward_op(operator.lt)
 
-    __hash__, __bool__ = __forward_op(hash), __forward_op(bool)
+    __hash__ = __forward_op(hash)
     
     del __forward_op
+
+
+
+
+class ProPredicate(_PredicateOpsMixin[_T_PredVars], _PredicateCompareMixin, ABC):
+    
+    __slots__ = 'vars',
+
+    vars: _T_PredVars
+
+    def __new__(cls, *vars: _T_PredVar):
+        self = _object_new(cls)
+        self.__setattr(vars=vars)
+        return self
+
+    @abstractmethod
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
+        raise NotImplementedError(f'{self.__class__.__qualname__}.pro_entries()')
+
+    @classmethod
+    def __subclasshook__(cls, sub):
+        if cls is ProPredicate:
+            return callable(getattr(sub, 'pro_entries', None))
+        return NotImplemented
+
+
 
 
 
@@ -160,6 +186,15 @@ class ProPredicate(t.Generic[_T_PredVars]):
 class ProNoopPredicate(ProPredicate):
 
     __slots__ = ()
+
+    vars = ()
+    __pred = None
+
+    def __new__(cls):
+        if self := cls.__pred:
+            return self
+        self = cls.__pred = _object_new(cls)
+        return self
 
     def pro_entries(self, it: abc.Iterable['Container'], *args) -> abc.Iterable['Container']:
         return it
@@ -215,14 +250,22 @@ class ProInvertPredicate(ProSubPredicate[tuple[_T_Pred]]):
         return super().__new__(cls, ProNoopPredicate(), right)
 
 
+@ProPredicate[tuple[_T_PredVar]].register
+class ProEnumPredicate(_PredicateOpsMixin[tuple[_T_PredVar]], _PredicateCompareMixin):
 
-class ProEnumPredicate(ProPredicate, t.Generic[_T_PredVar]):
+    __slots__ = 'vars',
 
-    __slots__ = ()
-    
+    vars: _T_PredVars
+
+    def __new__(cls, *vars: _T_PredVar):
+        self = _object_new(cls)
+        self.__setattr(vars=vars)
+        return self
+
     def __index__(self):
         return self.vars[0]
     __int__ = __index__
+
 
 
 class AccessLevel(ProEnumPredicate[int], Enum):  
@@ -245,6 +288,8 @@ class AccessLevel(ProEnumPredicate[int], Enum):
 
     def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
         return tuple(c for c in it if self <= scope.access_level(c, dependant))
+
+    __setattr__ = object.__setattr__
 
 
 
@@ -311,7 +356,7 @@ class ProSlice(ProPredicate[tuple[_T_ProStart, _T_ProStop, _T_ProStep]]):
             if start.__class__ is cls:
                 return start
             elif isinstance(start, tuple):
-                start, stop, step = start + _none_slice[:len(start) - 3]
+                start, stop, step = start + _3_nones[:len(start) - 3]
       
         return super().__new__(start, stop, step)
 
@@ -349,26 +394,86 @@ class ProSlice(ProPredicate[tuple[_T_ProStart, _T_ProStop, _T_ProStep]]):
 
 
 _T_FilterPred = t.TypeVar('_T_FilterPred', bound=abc.Callable[..., bool], covariant=True)
-class ProFilterPredicate(ProPredicate[tuple[_T_FilterPred, int]]):
+class ProFilter(ProPredicate[tuple[_T_FilterPred, int]]):
     
     __slots__ = ()
 
-    def __new__(cls: type[Self], filter: _T_FilterPred) -> Self:
-        try:
-            sig = signature(filter)    
-        except Exception:
-            ln = 0
-        else:
-            ln = len(sig.parameters) - 1
-            if ln > 1 or any(p.kind is Parameter.VAR_POSITIONAL for p in sig.parameters.values()):
-                return max(2, ln)
-            return ln
-        return super().__new__(cls, filter, ln)
+    def __new__(cls: type[Self], filter: _T_FilterPred, extra_args: int=None) -> Self:
+        if extra_args is None:
+            try:
+                sig = signature(filter)    
+            except Exception:
+                extra_args = 0
+            else:
+                extra_args = len(sig.parameters) - 1
+                if extra_args > 1 or any(p.kind is Parameter.VAR_POSITIONAL for p in sig.parameters.values()):
+                    extra_args = max(2, extra_args)
+        return super().__new__(cls, filter, extra_args)
 
     def pro_entries(self, it: abc.Iterable['Container'], *args) -> abc.Iterable['Container']:
         fn, ln = self.vars
         args = args[:ln]
         return tuple(c for c in it if fn(c, *args))
+
+
+
+_noop_pred = ProNoopPredicate()
+
+
+
+class DepKey(tuple[Injectable, 'Container', ProPredicate]):
+
+    __slots__ = ()
+
+    def __new__(cls: type[Self], abstract: Injectable, container: 'Container'=None, predicate: ProPredicate=ProNoopPredicate()) -> Self:
+        return tuple.__new__(cls, (
+            abstract, 
+            container, 
+            predicate or _noop_pred
+        ))
+
+    @property
+    def abstract(self):
+        return self[0]
+
+    @property
+    def container(self):
+        return self[1]
+
+    @property
+    def predicate(self):
+        return self[2]
+
+    @property
+    def path(self):
+        return self[1:]
+
+    def replace(self, *, abstract: Injectable=None, container: 'Container'=None, predicate: ProPredicate=None):
+        return self.__class__(
+            abstract or self.abstract,
+            container or self.container,
+            predicate or self.predicate,
+        )
+
+    def __and__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=self.predicate & x)
+        return NotImplemented
+    
+    def __rand__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=x & self.predicate)
+        return NotImplemented
+    
+    def __or__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=self.predicate | x)
+        return NotImplemented
+
+    def __ror__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=x | self.predicate)
+        return NotImplemented
 
 
 

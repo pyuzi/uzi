@@ -31,7 +31,7 @@ class AliasProviderTests(ProviderTestCase[Provider]):
 
     def test_resolve(self, cls, abstract, concrete, new: _T_NewPro, mock_scope: Scope):
         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
-        mock_scope.__getitem__.assert_called_once_with((concrete, mock_scope.container))
+        mock_scope.__getitem__.assert_called_once_with(concrete)
         
 
 

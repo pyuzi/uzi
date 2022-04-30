@@ -6,6 +6,7 @@ import typing as t
 from xdi import is_injectable
 from xdi.containers import Container
 from xdi.injectors import Injector
+from xdi.markers import DepKey
 from xdi.providers import Provider
 
 from xdi._bindings import Binding
@@ -144,12 +145,17 @@ def MockScope(MockContainer, MockDependency):
         def getitem(k):
             if k in deps:
                 return deps[k]
-            elif isinstance(k, tuple):
-                if len(k) == 2 and k[1] is cm and k[0] in deps:
-                    return deps.setdefault(k, deps[k[0]])
-                return deps.setdefault(k, MockDependency(abstract=k, scope=mi))
-            else:
-                return deps.setdefault(k, getitem((k,cm)))
+            elif not isinstance(k, DepKey):
+                return deps.setdefault(k, getitem(DepKey(k, cm)))
+                
+            return deps.setdefault(k, MockDependency(abstract=k, scope=mi))
+
+            # elif isinstance(k, tuple):
+            #     if len(k) == 2 and k[1] is cm and k[0] in deps:
+            #         return deps.setdefault(k, deps[k[0]])
+            #     return deps.setdefault(k, MockDependency(abstract=k, scope=mi))
+            # else:
+            #     return deps.setdefault(k, getitem((k,cm)))
 
         mi.__getitem__ = mi.find_local = Mock(wraps=getitem)
         mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))

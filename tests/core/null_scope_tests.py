@@ -32,13 +32,11 @@ class NullScopeTests(BaseTestCase[NullScope]):
         sub = new()
         assert isinstance(sub, NullScope)
         assert isinstance(sub, FrozenDict)
-        assert isinstance(sub.maps, Set)
-        assert not isinstance(sub.maps, MutableSet)
         assert sub.parent is None
         assert sub.level == -1
         assert not sub
         assert not sub.container
-        assert not sub.maps
+        assert not sub.pros
         str(sub)
         
     def test_compare(self, new: _T_FnNew):

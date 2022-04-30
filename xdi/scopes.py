@@ -257,8 +257,8 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
             return AccessLevel.public
             
     def find_provider(self, dep: DepKey):
-        abstract, pro = dep.abstract, self.pros[dep.path]
-        rv = [p for c in pro if (p := c[abstract])]
+        abstract, container, pro = dep[:2], self.pros[dep.path]
+        rv = [p for c in pro if (p := c[abstract]) and p.access_level <= self.access_level(c, container)]
         if rv:
             if len(rv) > 1:
                 rv.sort(key=lambda p: int(not not p.is_default))

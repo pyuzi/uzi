@@ -17,7 +17,7 @@ from ._bindings import _T_Binding, _T_Concrete
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .core import Injectable, T_Injectable, T_Injected, is_injectable
-from .markers import Dep, DependencyMarker, Lookup, PureDep
+from .markers import AccessLevel, Dep, DependencyMarker, Lookup, PureDep
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
     _UnionType = type(t.Union[t.Any, None])
@@ -77,12 +77,15 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     Attributes:
         concrete (Any): The object used to resolve 
         container (Container): The Container where this provider is defined.
+        access_level (t.Optional[AccessLevel]): The minimum access level required
+            to access provider 
         is_default (bool): Whether this provider is the default. 
             A default provider only gets used if none other was provided to override it.
         is_final (bool): Whether this provider is final. 
             A final provider will error if overridden by containers further 
             down the provider resolution order.
         is_async (bool): Whether this provider is asyncnous
+        
         filters (tuple[Callable]): Called to determine whether this provider can be resolved.
 
     """
@@ -92,6 +95,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
 
     concrete: _T_Concrete = attr.ib(default=Missing)
     container: "Container" = attr.ib(kw_only=True, default=None) 
+    access_level: t.Optional[AccessLevel] = attr.ib(kw_only=True, default=None) 
 
     is_default: bool = attr.ib(kw_only=True, default=False)
     is_final: bool = attr.ib(kw_only=True, default=False)
@@ -136,6 +140,54 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
             self (Provider): this provider
         """
         self.__setattr(is_final=not not is_final)
+        return self
+    
+    def private(self) -> Self:
+        """Set the `access_level` for this provider to `AccessLevel.private`.
+        
+        A private provider is only avaliable to dependants declared in the same
+        container.
+        
+        Returns:
+            self (Provider): this provider
+        """
+        self.__setattr(access_level=AccessLevel.private)
+        return self
+    
+    def guarded(self) -> Self:
+        """Set the `access_level` for this provider to `AccessLevel.guarded`.
+        
+        A guarded provider is only visible to dependants declared in the 
+        provider's container and it's bases.
+        
+        Returns:
+            self (Provider): this provider
+        """
+        self.__setattr(access_level=AccessLevel.guarded)
+        return self
+    
+    def protected(self) -> Self:
+        """Set the `access_level` for this provider to `AccessLevel.protected`.
+        
+        A protected provider is only visible to dependants declared in containers
+        within the inheritance heirachy of the provider's container. This includes
+        both base and derived containers.
+
+        Returns:
+            self (Provider): this provider
+        """
+        self.__setattr(access_level=AccessLevel.protected)
+        return self
+    
+    def public(self) -> Self:
+        """Set the `access_level` for this provider to `AccessLevel.public`.
+        
+        A public provider is visible to all dependants within it's scope.
+
+        Returns:
+            self (Provider): this provider
+        """
+        self.__setattr(access_level=AccessLevel.public)
         return self
     
     def can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:

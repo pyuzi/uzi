@@ -246,25 +246,14 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
                 predicate
             )
 
-    def access_level(self, container: Container, dependant: Container):
-        if dependant is container:
-            return AccessLevel.private
-        elif container.extends(dependant):
-            return AccessLevel.guarded
-        elif dependant.extends(container):
-            return AccessLevel.protected
-        else:
-            return AccessLevel.public
-            
     def find_provider(self, dep: DepKey):
-        abstract, container, pro = dep[:2], self.pros[dep.path]
-        rv = [p for c in pro if (p := c[abstract]) and p.access_level <= self.access_level(c, container)]
+        rv = [p for c in self.pros[dep.path] for p in (c[dep],) if p]
         if rv:
             if len(rv) > 1:
                 rv.sort(key=lambda p: int(not not p.is_default))
                 if final := next((p for p in rv if p.is_final), None):
                     if overrides := rv[:rv.index(final)]:
-                        raise FinalProviderOverrideError(abstract, final, overrides)
+                        raise FinalProviderOverrideError(dep, final, overrides)
             return rv[0]
     
     def resolve_binding(self, dep_: _T_DepKey, *, recursive: bool=True):
@@ -284,18 +273,18 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
 
         abstract = dep.abstract
         if is_injectable(abstract):
-            if pro := self.find_provider(dep):
-                if pro.container and not pro.container is dep.container:
-                    return self.__setdefault(dep, self[self.make_key(abstract, pro.container)])
+            if prov := self.find_provider(dep):
+                if prov.container and not prov.container is dep.container:
+                    return self.__setdefault(dep, self[self.make_key(abstract, prov.container)])
                 
-                with self._resolvestack.push(pro):
-                    if bind := pro._resolve(abstract, self):
+                with self._resolvestack.push(prov):
+                    if bind := prov._resolve(abstract, self):
                         return self.__setdefault(dep, bind)
 
             elif is_dependency_marker(abstract):
-                if pro := self.find_provider(dep.replace(abstract=abstract.__origin__)):
-                    with self._resolvestack.push(pro):
-                        if bind := pro._resolve(abstract, self):
+                if prov := self.find_provider(dep.replace(abstract=abstract.__origin__)):
+                    with self._resolvestack.push(prov):
+                        if bind := prov._resolve(abstract, self):
                             return self.__setdefault(dep, bind)
             elif origin := t.get_origin(abstract):
                 if bind := self.resolve_binding(dep.replace(abstract=origin), recursive=False):

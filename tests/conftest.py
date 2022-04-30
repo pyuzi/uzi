@@ -121,9 +121,9 @@ def MockProvider(MockDependency):
                 deps[a,s] = MockDependency(a, s, provider=mi)
             return deps[a,s]
 
-        mi.resolve = MagicMock(wraps=mock_dep)
+        mi._resolve = MagicMock(wraps=mock_dep)
         mi.container = None
-        mi.set_container = MagicMock(wraps=lambda c: (mi.container and mi) or setattr(mi, 'container', c) or mi)
+        mi._setup = MagicMock(wraps=lambda c, a=None: (mi.container and mi) or setattr(mi, 'container', c) or mi)
         for k,v in kw.items():
             setattr(mi, k, v)
 

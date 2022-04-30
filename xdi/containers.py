@@ -1,3 +1,4 @@
+from email.policy import default
 import operator
 from threading import Lock
 import typing as t
@@ -7,11 +8,18 @@ from typing_extensions import Self
 
 import attr
 
+from xdi.core import is_injectable
+
 
 from . import Injectable, signals
-from .markers import DependencyMarker
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, DepKey, DependencyMarker
 from ._common import private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
+
+
+if t.TYPE_CHECKING:
+    from .scopes import Scope
+
 
 logger = getLogger(__name__)
 
@@ -19,7 +27,6 @@ logger = getLogger(__name__)
 
 
 @DependencyMarker.register
-@attr.s(slots=True, frozen=True, repr=True, cmp=False)
 @private_setattr(frozen='_frozen')
 class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     """A mapping of dependencies to their providers. We use them to bind 
@@ -28,32 +35,35 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     Attributes:
         name (str): The container's name
         bases (tuple[Container]): The container's bases
-
-    Params:
-        name (str, optional): Name of the container
-        bases (tuple[Container], optional): Base container.
-    
+        default_access_level (AccessLevel): The default `access_level` to assign 
+        to providers registered in this container
     """
-    __id = -2
-    __lock = Lock()
-    
-    _frozen: bool = attr.ib(init=False, repr=False, default=False)
-    
-    _id: int = attr.ib(init=False)
-    @_id.default
-    def _init_id(self):
-        with self.__class__.__lock:
-            self.__class__.__id += 1
-            return self.__class__.__id
+    __slots__ = 'name', 'bases', 'default_access_level', '_pro',
 
-    name: str = attr.ib(default='<anonymous>')
-    bases: tuple[Self] = attr.ib(default=(), init=True, repr=True and (lambda s: f"[{', '.join(f'{c.name!r}' for c in s)}]")) 
-    _pro: tuple[Self] = attr.ib(default=None, init=False, repr=False and (lambda s: f"[{', '.join(f'{c.name!r}' for c in s)}]")) 
+    name: str
+    bases: tuple[Self]
+    default_access_level: AccessLevel 
+    _pro: tuple[Self]
+    
     __setitem = dict[Injectable,  Provider].__setitem__
     __contains = dict[Injectable,  Provider].__contains__
 
-    def __attrs_post_init__(self):
-        signals.on_container_init.send(self.__class__, container=self)
+    def __init__(self, name: str='<anonymous>', *bases: Self, access_level: AccessLevel=GUARDED) -> None:
+        """Create a container.
+        
+        Params:
+            name (str, optional): Name of the container
+            *bases (Container, optional): Base container.
+            access_level (AccessLevel, optional): The default `access_level`
+                to assign providers
+        """
+        self.__setattr(_pro=None, bases=(), name=name, default_access_level=AccessLevel(access_level))
+        bases and self.extend(*bases)
+        signals.on_container_create.send(self.__class__, container=self)
+
+    @property
+    def _frozen(self) -> bool:
+        return not not self._pro
 
     @property
     def pro(self) -> tuple[Self]:
@@ -67,10 +77,15 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
         """
         if pro := self._pro:
             return pro
-        self.__setattr(_pro=self._pro_entries())
+        self.__setattr(_pro=self._evaluate_pro())
         return self._pro
 
-    def _pro_entries(self):
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container'):
+        if self in {*it}:
+            return self,
+        return ()
+
+    def _evaluate_pro(self):
         bases = [*self.bases]
 
         if not bases:
@@ -118,7 +133,7 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     def extends(self, other: Self) -> bool:
         """Check whether this container extends the given base. 
         
-        Args:
+        Params:
             base (Container): The base container to check
 
         Returns:
@@ -126,13 +141,31 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
         """
         return other in self.pro
 
+    def access_level(self, accessor: Self):
+        """Get the `AccessLevel` 
+
+        Params:
+            accessor (Container): 
+
+        Returns:
+            access_level (AccessLevel):
+        """
+        if accessor is self:
+            return PRIVATE
+        elif self.extends(accessor):
+            return GUARDED
+        elif accessor.extends(self):
+            return PROTECTED
+        else:
+            return PUBLIC
+
     def _on_register(self, abstract: Injectable, provider: Provider):
         pass
 
     def __contains__(self, x):
         return self.__contains(x) or any(x in b for b in self.bases)
 
-    def __setitem__(self, abstract: Injectable, provider: Provider) -> Self:
+    def __setitem__(self, key: Injectable, provider: Provider) -> Self:
         """Register a dependency provider 
         
             container[_T] = providers.Value('abc')
@@ -141,13 +174,25 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
             abstract (Injectable): The dependency to be provided
             provider (Provider): The provider to provide the dependency
         """
-        if pro :=  provider.set_container(self):
-            self._on_register(abstract, pro)
-            self.__setitem(abstract, pro)
+        if not is_injectable(key):
+            raise TypeError(f'expected `Injectable` not. `{key.__class__.__qualname__}`')
 
-    def __missing__(self, abstract):
-        if isinstance(abstract, Provider) and (abstract.container or self) is self:
-            return abstract
+        if prov := provider._setup(self, key):
+            self._on_register(key, prov)
+            self.__setitem(key, prov)
+            signals.on_provider_registered.send(self, abstract=key, provider=provider)
+
+    def __missing__(self, key):
+        if isinstance(key, Provider) and (key.container or self) is self:
+            return key
+            
+    def _resolve(self, key: DepKey, scope: 'Scope'):
+        abstract, container = key[:2]
+        if prov := self[abstract]:
+            access = prov.access_level or self.default_access_level
+            if self.access_level(container) in access:
+                if prov._can_resolve(key, scope):
+                    return prov
 
     def __bool__(self):
         return True
@@ -159,5 +204,5 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
         return not o is self or (True if isinstance(o, Container) else NotImplemented)
 
     def __hash__(self):
-        return hash(self.name)
+        return hash(id(self))
 

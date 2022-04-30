@@ -62,7 +62,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         c1, c2, c3, c4, c5, c6 = new('c1'), new('c2'), new('c3'), new('c4'), new('c5'), new('c6')
         c1.extend(c2.extend(c4.extend(c5, c6)))
         c1.extend(c3.extend(c5))
-        pro = c1._pro_entries()
+        pro = c1._evaluate_pro()
         assert isinstance(pro, tuple)
         print(*(f'{c}' for c in c1.pro), sep='\n  - ')
         assert pro == c1.pro
@@ -81,7 +81,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert _T in sub
         assert sub[_T] is mock_provider
         mock_provider.container is sub
-        mock_provider.set_container.assert_called_once_with(sub)
+        mock_provider._setup.assert_called_once_with(sub)
     
     def test_getitem(self, new: _T_FnNew, mock_provider: Provider):
         sub = new()

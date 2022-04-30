@@ -17,7 +17,7 @@ from ._bindings import _T_Binding, _T_Concrete
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .core import Injectable, T_Injectable, T_Injected, is_injectable
-from .markers import AccessLevel, Dep, DependencyMarker, Lookup, PureDep
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, Dep, DepKey, DependencyMarker, Lookup, PureDep
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
     _UnionType = type(t.Union[t.Any, None])
@@ -70,9 +70,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     """The base class for all providers.
 
     Subclasses can implement the `resolve()` method to return the appropriate
-    `Dependency` object for any given dependency. Also, conditional providers can
-    implement the `_can_resolve()' method which should return `True` when the 
-    provider can resolve or `False` if otherwise.
+    `Dependency` object for any given dependency.
     
     Attributes:
         concrete (Any): The object used to resolve 
@@ -90,7 +88,8 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
 
     """
 
-
+    abstract: Injectable = None
+    
     _frozen: bool = attr.ib(init=False, cmp=False, default=False)
 
     concrete: _T_Concrete = attr.ib(default=Missing)
@@ -151,7 +150,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=AccessLevel.private)
+        self.__setattr(access_level=PRIVATE)
         return self
     
     def guarded(self) -> Self:
@@ -163,7 +162,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=AccessLevel.guarded)
+        self.__setattr(access_level=GUARDED)
         return self
     
     def protected(self) -> Self:
@@ -176,7 +175,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=AccessLevel.protected)
+        self.__setattr(access_level=PROTECTED)
         return self
     
     def public(self) -> Self:
@@ -187,7 +186,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=AccessLevel.public)
+        self.__setattr(access_level=PUBLIC)
         return self
     
     def can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
@@ -221,28 +220,39 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
             dependency (Optional[Dependency]):
         """
         self._freeze()
-        return self._can_resolve(abstract, scope) \
-            and self._apply_filters(abstract, scope) \
-            and self.resolve(abstract, scope) \
+        return self.resolve(abstract, scope) \
                 or None
 
-    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        return (self.container or scope.container) in scope
+    def _can_resolve(self, dep: DepKey, scope: "Scope") -> bool:
+        """Check whether this provider is avaliable to the given dep.
 
-    def _apply_filters(self, abstract: T_Injectable, scope: "Scope") -> bool:
+        Unlike `_resolve`, this method will be called on all matching dependencies.
+        If available, the provider's `filters` will be applied and the result is 
+        returned. 
+        
+        Returns `True` if no filters are available.
+
+        Args:
+            dep (DepKey): _description_
+            scope (Scope): _description_
+
+        Returns:
+            bool: `True` if filters passed or `False` if otherwise
+        """
         for fl in self.filters:
-            if not fl(self, abstract, scope):
+            if not fl(self, dep, scope):
                 return False
         return True
 
     def resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
         return self._make_dependency(abstract, scope)
 
-    def set_container(self, container: "Container") -> Self:
-        """Sets the provide's container
+    def _setup(self, container: "Container", abstract: T_Injectable=None) -> Self:
+        """Called when the provider is added to a container. 
 
         Args:
-            container (Container): _description_
+            container (Container): the container
+            abstract (T_Injectable): the bound dependency 
 
         Raises:
             AttributeError: When another container was already set
@@ -250,11 +260,14 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             self (Provider): this provider
         """
+
         if not self.container is None:
             if not container is self.container:
                 raise AttributeError(
                     f"container for `{self}` already set to `{self.container}`."
                 )
+        elif abstract and not self.abstract in (None, abstract):
+            raise ValueError(f'invalid abstract type `{abstract}`. expected `{self.abstract}`') 
         else:
             self.__setattr(container=container)
         return self
@@ -312,7 +325,11 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         return self
 
     def _freeze(self):
-        self._frozen or (self._onfreeze(), self.__setattr(_frozen=True))
+        if not self._frozen:
+            self._onfreeze()
+            # if self.abstract and not self.container:
+            #     raise RuntimeError(f'`{self.__class__.__name__}` cannot be used inline.')
+            self.__setattr(_frozen=True)
 
     def _onfreeze(self):
         ...
@@ -694,9 +711,6 @@ class LookupMarkerProvider(Factory[lookups.look, bindings._T_FactoryBinding]):
     abstract = Lookup
     concrete = attr.ib(init=False, default=lookups.look)
 
-    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        return isinstance(abstract, Lookup)
-
     def _bind_params(self, scope: "Scope", marker: Lookup, *, sig=None, arguments=()):
         if not arguments:
             abstract = marker.__abstract__
@@ -724,9 +738,6 @@ class UnionProvider(Provider[_T_Concrete]):
             if rv := scope[arg]:
                 return rv
 
-    # def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-    #     assert isinstance(abstract, self.concrete)
-
 
 
 @attr.s(slots=True, frozen=True)
@@ -753,9 +764,6 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     abstract = Dep
     concrete = attr.ib(init=False, default=Dep)
     _dependency_class = bindings.Value
-
-    def _can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        return isinstance(abstract, (self.concrete, Dep, PureDep))
 
     def resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
         abstract, where, container = marker.abstract, marker.scope, self.container or scope.container

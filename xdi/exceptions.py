@@ -8,6 +8,7 @@ class XdiException(Exception):
 
 
 
+
 @attr.s()
 class FinalProviderOverrideError(TypeError, XdiException):
     """Raised when a final provider has an override.
@@ -32,10 +33,6 @@ class InjectorLookupError(KeyError, XdiException):
 
 
 
-
-class ProIndexError(IndexError, XdiException):
-    """Raised 
-    """
 
 
 class ProValueError(ValueError, XdiException):

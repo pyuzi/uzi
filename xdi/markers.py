@@ -12,7 +12,6 @@ from enum import Enum, IntEnum, IntFlag, auto
 from typing_extensions import Self
 from weakref import WeakKeyDictionary, ref
 
-from xdi.exceptions import ProIndexError
 
 from .core import Injectable, T_Default, T_Injectable, T_Injected
 from ._common import Missing, private_setattr
@@ -255,15 +254,16 @@ class ProEnumPredicate(_PredicateOpsMixin[tuple[_T_PredVar]], _PredicateCompareM
 
     __slots__ = 'vars',
 
-    vars: _T_PredVars
+    vars: _T_PredVar
 
-    def __new__(cls, *vars: _T_PredVar):
+    def __new__(cls, vars: _T_PredVar):
         self = _object_new(cls)
         self.__setattr(vars=vars)
         return self
 
     def __index__(self):
-        return self.vars[0]
+        return self.vars
+        
     __int__ = __index__
 
 
@@ -287,11 +287,19 @@ class AccessLevel(ProEnumPredicate[int], Enum):
             return cls.guarded
 
     def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
-        return tuple(c for c in it if self <= scope.access_level(c, dependant))
+        return tuple(c for c in it if self <= c.access_level(dependant))
 
     __setattr__ = object.__setattr__
 
+    def __contains__(self, obj) -> bool:
+        if isinstance(obj, AccessLevel):
+            return self.vars >= obj.vars
+        return NotImplemented
 
+PUBLIC = AccessLevel.public
+PROTECTED = AccessLevel.protected
+GUARDED = AccessLevel.guarded
+PRIVATE = AccessLevel.private
 
 
 class DepScope(IntEnum):

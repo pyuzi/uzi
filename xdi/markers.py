@@ -285,16 +285,21 @@ class AccessLevel(ProEnumPredicate[int], Enum):
     def _missing_(cls, val):
         if not val:
             return cls.guarded
+        return super()._missing_(val)
 
     def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
-        return tuple(c for c in it if self <= c.access_level(dependant))
+        return tuple(c for c in it if self in c.access_level(dependant))
 
     __setattr__ = object.__setattr__
 
     def __contains__(self, obj) -> bool:
         if isinstance(obj, AccessLevel):
             return self.vars >= obj.vars
+        elif obj in (None, 0):
+            return False
         return NotImplemented
+
+
 
 PUBLIC = AccessLevel.public
 PROTECTED = AccessLevel.protected

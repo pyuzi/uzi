@@ -81,7 +81,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert _T in sub
         assert sub[_T] is mock_provider
         mock_provider.container is sub
-        mock_provider._setup.assert_called_once_with(sub)
+        mock_provider._setup.assert_called_once_with(sub, _T)
     
     def test_getitem(self, new: _T_FnNew, mock_provider: Provider):
         sub = new()

@@ -247,7 +247,10 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
             )
 
     def find_provider(self, dep: DepKey):
-        rv = [p for c in self.pros[dep.path] for p in (c[dep],) if p]
+        rv = [p for c in self.pros[dep.path] for p in c._resolve(dep, self) if p]
+        # logger.info(f'find_provider({dep=})', )
+        # logger.info(f' ---> {rv}', )
+        
         if rv:
             if len(rv) > 1:
                 rv.sort(key=lambda p: int(not not p.is_default))

@@ -189,10 +189,20 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     def _resolve(self, key: DepKey, scope: 'Scope'):
         abstract, container = key[:2]
         if prov := self[abstract]:
+
+            
             access = prov.access_level or self.default_access_level
-            if self.access_level(container) in access:
+
+            # logger.info(f'_resolve({abstract=})', )
+            # logger.info(f' ---> {container=}', )
+            # logger.info(f' ---> {access=!s}', )
+            # logger.info(f' ---> {self.access_level(container)=!s}', )
+            # logger.info(f' ---> {access in self.access_level(container)=!s}', )
+            # logger.info(f' ---> {prov._can_resolve(key, scope)=!s}', )
+            if access in self.access_level(container):
                 if prov._can_resolve(key, scope):
-                    return prov
+                    return prov,
+        return ()
 
     def __bool__(self):
         return True

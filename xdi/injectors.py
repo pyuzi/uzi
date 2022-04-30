@@ -64,9 +64,13 @@ class Injector(FrozenDict[T_Injectable, Callable[[], T_Injected]]):
         if dep := scope[abstract]:
             return self[dep](*args, **kwds)
         elif callable(abstract):
-            pro = providers.Partial(abstract)
-            setattr(abstract, '__xdi_provider__', pro)
-            return self[scope[abstract]](*args, **kwds)
+            if prov := getattr(abstract, '__xdi_provider__', None):
+                if dep := scope[prov]:
+                    return self[dep](*args, **kwds)
+                return 
+            prov = providers.Partial(abstract)
+            setattr(abstract, '__xdi_provider__', prov)
+            return self[scope[prov]](*args, **kwds)
         else:
             return self[abstract](*args, **kwds)
 

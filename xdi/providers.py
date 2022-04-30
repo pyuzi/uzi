@@ -13,7 +13,7 @@ from typing_extensions import Self
 from ._common import lookups
 
 from . import _bindings as bindings
-from ._bindings import _T_Binding, _T_Concrete
+from ._bindings import _T_Binding, _T_Concrete, Binding
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .core import Injectable, T_Injectable, T_Injected, is_injectable
@@ -103,8 +103,8 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     
     filters: tuple[abc.Callable[['Scope', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
     
-    _dependency_class: t.ClassVar[type[_T_Binding]] = None
-    _dependency_kwargs: t.ClassVar = {}
+    _binding_class: t.ClassVar[type[_T_Binding]] = None
+    _default_binding_kwargs: t.ClassVar = {}
 
     __class_getitem__ = classmethod(GenericAlias)
 
@@ -207,22 +207,6 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         """
         return 
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
-        """Resolve the given dependency.
-
-        Used internally by `Scope`
-
-        Args:
-            abstract (T_Injectable): dependency to be resolved 
-            scope (Scope): Scope within which the dependency is getting resolved.
-
-        Returns:
-            dependency (Optional[Dependency]):
-        """
-        self._freeze()
-        return self.resolve(abstract, scope) \
-                or None
-
     def _can_resolve(self, dep: DepKey, scope: "Scope") -> bool:
         """Check whether this provider is avaliable to the given dep.
 
@@ -239,13 +223,23 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         Returns:
             bool: `True` if filters passed or `False` if otherwise
         """
+        self._freeze()
         for fl in self.filters:
             if not fl(self, dep, scope):
                 return False
         return True
 
-    def resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
-        return self._make_dependency(abstract, scope)
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
+        """Resolves the given dependency.
+
+        Args:
+            abstract (T_Injectable): dependency to be resolved 
+            scope (Scope): Scope within which the dependency is getting resolved.
+
+        Returns:
+            binding (Binding): 
+        """
+        return self._make_binding(abstract, scope)
 
     def _setup(self, container: "Container", abstract: T_Injectable=None) -> Self:
         """Called when the provider is added to a container. 
@@ -327,19 +321,17 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     def _freeze(self):
         if not self._frozen:
             self._onfreeze()
-            # if self.abstract and not self.container:
-            #     raise RuntimeError(f'`{self.__class__.__name__}` cannot be used inline.')
             self.__setattr(_frozen=True)
 
     def _onfreeze(self):
         ...
 
-    def _get_dependency_kwargs(self, **kwds):
-        return self._dependency_kwargs | kwds
+    def _binding_kwargs(self, **kwds):
+        return self._default_binding_kwargs | kwds
 
-    def _make_dependency(self, abstract: T_Injectable, scope: 'Scope', **kwds):
-        if cls := self._dependency_class:
-            return cls(abstract, scope, self, **self._get_dependency_kwargs(**kwds))
+    def _make_binding(self, abstract: T_Injectable, scope: 'Scope', **kwds):
+        if cls := self._binding_class:
+            return cls(abstract, scope, self, **self._binding_kwargs(**kwds))
         raise NotImplementedError(f'{self.__class__.__name__}._make_dependency()') # pragma: no cover
 
 
@@ -359,7 +351,7 @@ class Alias(Provider[T_Injectable, bindings._T_Binding]):
         concrete (Injectable): The dependency to be proxied
     """
 
-    def resolve(self, abstract: T_Injectable, scope: 'Scope'):
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
         return scope[self.concrete]
   
   
@@ -379,11 +371,11 @@ class Value(Provider[T_Injected, bindings._T_ValueBinding]):
         concrete (T_Injected): The object to be provided
     """
 
-    _dependency_class = bindings.Value
+    _binding_class = bindings.Value
 
-    def _get_dependency_kwargs(self, **kwds):
+    def _binding_kwargs(self, **kwds):
         kwds.setdefault('concrete', self.concrete)
-        return super()._get_dependency_kwargs(**kwds)
+        return super()._binding_kwargs(**kwds)
 
 
 
@@ -452,10 +444,10 @@ class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding
         Parameter('__Parameter_var_keyword', Parameter.VAR_KEYWORD),
     ])
 
-    _sync_dependency_class: t.ClassVar = bindings.Factory
-    _async_dependency_class: t.ClassVar = bindings.AsyncFactory
-    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsFactory
-    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncFactory
+    _sync_binding_class: t.ClassVar = bindings.Factory
+    _asyns_binding_class: t.ClassVar = bindings.AsyncFactory
+    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsFactory
+    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncFactory
 
     def __init__(self, concrete: abc.Callable[[], T_Injectable] = None, /, *args, **kwargs):
         self.__attrs_init__(
@@ -575,26 +567,26 @@ class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding
         args, kwargs = arguments or self.arguments
         return BoundParams.bind(sig, scope, self.container, args, kwargs)
 
-    def _get_dependency_kwargs(self, **kwds):
+    def _binding_kwargs(self, **kwds):
         kwds.setdefault('concrete', self.concrete)
-        return super()._get_dependency_kwargs(**kwds)
+        return super()._binding_kwargs(**kwds)
 
-    def _make_dependency(self, abstract: T_Injectable, scope: 'Scope', **kwds):
+    def _make_binding(self, abstract: T_Injectable, scope: 'Scope', **kwds):
         params = self._bind_params(scope, abstract)
         if params.is_async:
             if self.is_async:
-                cls = self._await_params_async_dependency_class
+                cls = self._await_params_async_binding_class
             else:
-                cls = self._await_params_sync_dependency_class
+                cls = self._await_params_sync_binding_class
         elif self.is_async:
-            cls = self._async_dependency_class
+            cls = self._asyns_binding_class
         else:
-            cls = self._sync_dependency_class
+            cls = self._sync_binding_class
 
         return cls(
             abstract, scope, self, 
             params=params, 
-            **self._get_dependency_kwargs(**kwds),
+            **self._binding_kwargs(**kwds),
         )
         
 
@@ -616,10 +608,10 @@ class Singleton(Factory[T_Injected, bindings._T_SingletonBinding]):
     is_shared: t.ClassVar[bool] = True
     is_thread_safe: bool = attr.ib(init=False, default=None)
 
-    _sync_dependency_class: t.ClassVar = bindings.Singleton
-    _async_dependency_class: t.ClassVar = bindings.AsyncSingleton
-    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsSingleton
-    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncSingleton
+    _sync_binding_class: t.ClassVar = bindings.Singleton
+    _async_binding_class: t.ClassVar = bindings.AsyncSingleton
+    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsSingleton
+    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncSingleton
 
     def thread_safe(self, is_thread_safe: bool=True) -> Self:
         """_Mark/Unmark_ this provider as thread safe. Updates the `is_thread_safe`
@@ -638,9 +630,9 @@ class Singleton(Factory[T_Injected, bindings._T_SingletonBinding]):
         self.__setattr(is_thread_safe=is_thread_safe)
         return self
 
-    def _get_dependency_kwargs(self, **kwds):
+    def _binding_kwargs(self, **kwds):
         kwds.setdefault('thread_safe', self.is_thread_safe)
-        return super()._get_dependency_kwargs(**kwds)
+        return super()._binding_kwargs(**kwds)
 
 
 
@@ -661,9 +653,9 @@ class Resource(Singleton[T_Injected, bindings._T_ResourceBinding]):
         self.__setattr(is_awaitable=is_awaitable)
         return self
         
-    def _get_dependency_kwargs(self, **kwds):
+    def _binding_kwargs(self, **kwds):
         # kwds.setdefault('aw_enter', self.is_awaitable)
-        return super()._get_dependency_kwargs(**kwds)
+        return super()._binding_kwargs(**kwds)
 
 
 
@@ -674,10 +666,10 @@ class Partial(Factory[T_Injected, bindings._T_PartialBinding]):
     Used internally to inject entry-point functions.
     """
 
-    _sync_dependency_class: t.ClassVar = bindings.Partial
-    _async_dependency_class: t.ClassVar = bindings.AsyncPartial
-    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsPartial
-    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncPartial
+    _sync_binding_class: t.ClassVar = bindings.Partial
+    _async_binding_class: t.ClassVar = bindings.AsyncPartial
+    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsPartial
+    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncPartial
 
     def _fallback_signature(self):
         return self._arbitrary_signature
@@ -693,10 +685,10 @@ class Callable(Partial[T_Injected, bindings._T_CallableBinding]):
     
     """
 
-    _sync_dependency_class: t.ClassVar = bindings.Callable
-    _async_dependency_class: t.ClassVar = bindings.AsyncCallable
-    _await_params_sync_dependency_class: t.ClassVar = bindings.AwaitParamsCallable
-    _await_params_async_dependency_class: t.ClassVar = bindings.AwaitParamsAsyncCallable
+    _sync_binding_class: t.ClassVar = bindings.Callable
+    _async_binding_class: t.ClassVar = bindings.AsyncCallable
+    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsCallable
+    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncCallable
 
 
 
@@ -733,7 +725,7 @@ class UnionProvider(Provider[_T_Concrete]):
     def get_injectable_args(self, abstract: Injectable):
         return filter(is_injectable, self.get_all_args(abstract))
 
-    def resolve(self, abstract: T_Injectable, scope: 'Scope'):
+    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
         for arg in self.get_injectable_args(abstract):
             if rv := scope[arg]:
                 return rv
@@ -763,9 +755,9 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     """
     abstract = Dep
     concrete = attr.ib(init=False, default=Dep)
-    _dependency_class = bindings.Value
+    _binding_class = bindings.Value
 
-    def resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
+    def _resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
         abstract, where, container = marker.abstract, marker.scope, self.container or scope.container
         if where == Dep.SKIP_SELF:
             if dep := scope.parent[abstract]:
@@ -780,7 +772,7 @@ class DepMarkerProvider(Provider[_T_Concrete]):
         if marker.injects_default:
             return scope[marker.default]
         elif marker.has_default:
-            return self._make_dependency(marker, scope, concrete=marker.default)
+            return self._make_binding(marker, scope, concrete=marker.default)
 
 
 

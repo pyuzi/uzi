@@ -60,7 +60,7 @@ class DepMarkerTests(ProviderTestCase[Provider]):
             assert not res is mock_scope[abstract.abstract]
         elif abstract.has_default:
             if abstract.injects_default:
-                assert res is mock_scope[abstract.default.abstract]
+                assert res is mock_scope[abstract.default]
             else:
                 assert not res is mock_scope[abstract.abstract]
                 assert isinstance(res, cls._dependency_class) 

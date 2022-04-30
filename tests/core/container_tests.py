@@ -41,7 +41,6 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert sub
         assert sub.name == 'test_ioc'
         assert sub[_T] is None
-        assert len(sub) == 0
         
     def test_compare(self, new: _T_FnNew):
         c1, c2 = new('c'), new('c')

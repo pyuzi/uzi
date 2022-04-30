@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from functools import reduce
 from itertools import chain
 from logging import getLogger
@@ -16,7 +17,6 @@ from .core import Injectable, is_injectable
 from ._bindings import _T_Binding, LookupErrorBinding
 from .exceptions import FinalProviderOverrideError
 from .containers import Container
-from ._builtin import __builtin_container__
 
 logger = getLogger(__name__)
 
@@ -72,14 +72,14 @@ class _ProMap(FrozenDict[_T_ProKey, _T_Pro]):
     __setdefault = dict.setdefault
 
     def __init__(self, scope: 'Scope'):
-        self.__setattr(scope=scope, root=tuple(scope.pro))
+        self.__setattr(scope=scope, root=tuple(scope.container.pro))
 
     def __missing__(self, key: _T_ProKey):
         dep, preds = key
         scope, pro = self.scope, self.root
         for pred in preds:
             pro = pred.pro_entries(pro, scope, dep)
-        return self.__setdefault(key, pro)
+        return self.__setdefault(key, tuple(pro))
 
 
 
@@ -115,51 +115,24 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
     def _init_v_hash(self):
         return hash(self.ident)
 
-    _builtins: tuple['Container'] = attr.ib(kw_only=True, repr=False)
-    @_builtins.default
-    def _init_builtins(self):
-        return __builtin_container__,
-
     # _injector_class: type[Injector] = attr.ib(kw_only=True, default=Injector, repr=False)
     
     maps: abc.Set[Container] = attr.ib(init=False, repr=False)
     @maps.default
     def _init_maps(self):
-        con, builtin = self.container, self._builtins
-        dct = { c: i 
-            for i, c in enumerate(chain(con.pro, *(c.pro for c in builtin)))
-        }
+        con = self.container
+        dct = { c: i for i, c in enumerate(con.pro) }
         return t.cast(abc.Set[Container], dct.keys())
-
-    pro: tuple[Container] = attr.ib(init=False, repr=False)
-    @pro.default
-    def _init_pro(self):
-        return *self.maps,
 
     pros: _ProMap = attr.ib(init=False, repr=False)
     @pros.default
     def _init_pros(self):
         return _ProMap(self)
 
-    # _possible_default_ident_slices: frozenset[tuple] = attr.ib(init=False, repr=False)
-    # @_possible_default_ident_slices.default
-    # def _init__default_ident_slices(self):
-    #     return frozenset([
-    #         (self,)
-    #         (self, None),
-    #         (self, None, 1),
-    #         (self, None, None),
-    #         (),
-    #         None,
-    #         (None,),
-    #         (None, None, 1),
-    #         (None, None, None),
-    #     ])
-
-    # _default_ident_slice: frozenset[tuple] = attr.ib(init=False, repr=False)
-    # @_default_ident_slice.default
-    # def _init__default_ident_slice(self):
-    #     return ProSlice()
+    _resolve_stack: ContextVar[tuple[Provider]] = attr.ib(init=False, repr=False)
+    @_resolve_stack.default
+    def _init__resolve_stack(self):
+        return _ProMap(self)
 
     __contains = dict.__contains__
     __setdefault = dict.setdefault
@@ -185,30 +158,12 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
         while parent:
             yield parent
             parent = parent.parent
- 
-    def locals(self, key: _T_DepKey):
-        res = self.get(key, Missing)
-        if res is Missing:
-            res = self.resolve_binding(key, recursive=False)
-        if res and self is res.scope:
-            return res
-
-    def nonlocals(self, key: _T_DepKey):
-        return self.parent[key]
 
     def __bool__(self):
         return True
     
     def __contains__(self, o) -> bool:
         return self.__contains(o) or o in self.maps or o in self.parent
-
-    # def __missing__(self, abstract: Injectable) -> t.Union[Binding, None]:
-    #     if is_injectable(abstract):
-    #         if abstract in self.container:
-    #             return self.__setdefault(abstract, BindingsMap(abstract, self))
-    #         return self.parent[abstract]
-    #     else:
-    #         raise TypeError(f'expected an `Injectable` not `{abstract.__class__.__qualname__}`')
 
     def access_level(self, container: Container, dependant: Container):
         if dependant is container:
@@ -234,29 +189,37 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
     def resolve_binding(self, key: _T_DepKey, *, recursive: bool=True):
         if self.__contains(key):
             res = self[key]
-            if recursive or (res and self is res.scope):
+            if recursive or not res or self is res.scope:
                 return res
-            return None
+            return
         elif not isinstance(key, tuple):
-            return self.resolve_binding((key, self.container), recursive=recursive)
+            tkey = key, self.container
+            res = self.resolve_binding(tkey)
+            if tkey in self:
+                res = self.__setdefault(key, res)
+            if recursive or not res or self is res.scope:
+                return res
+            return
 
         abstract, dependant, *predicates = key
         if is_injectable(abstract):
             if pro := self.find_provider(abstract, dependant, *predicates):
-                if not pro.container:
-                    if dep := pro._resolve(abstract, self):
-                        return self.__setdefault(key, dep)
-                elif pro.container is dependant:
-                    return self.__setdefault(key, pro._resolve(abstract, self))
-                else:
+                if not pro.container in (None, dependant):
                     return self.__setdefault(key, self[abstract, pro.container])
+                
+                if bind := pro._resolve(abstract, self):
+                    return self.__setdefault(key, bind)
+
             elif is_dependency_marker(abstract):
                 if pro := self.find_provider(abstract.__origin__, dependant, *predicates):
-                    if dep := pro._resolve(abstract, self):
-                        return self.__setdefault(key, dep)
-            
-            if recursive and ((dep := self.parent[key]) or key in self.parent):
-                return self.__setdefault(key, dep)
+                    if bind := pro._resolve(abstract, self):
+                        return self.__setdefault(key, bind)
+            elif origin := t.get_origin(abstract):
+                if bind := self.resolve_binding((origin,) + key[1:], recursive=False):
+                    return self.__setdefault(key, bind)
+                
+            if recursive and ((bind := self.parent[abstract]) or abstract in self.parent):
+                return self.__setdefault(key, bind)
         else:
             raise TypeError(f'expected an `Injectable` not `{abstract.__class__.__qualname__}`')
 

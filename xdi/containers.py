@@ -8,7 +8,7 @@ from typing_extensions import Self
 import attr
 
 
-from . import Injectable
+from . import Injectable, signals
 from .markers import DependencyMarker
 from ._common import private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
@@ -51,6 +51,9 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     _pro: tuple[Self] = attr.ib(default=None, init=False, repr=False and (lambda s: f"[{', '.join(f'{c.name!r}' for c in s)}]")) 
     __setitem = dict[Injectable,  Provider].__setitem__
     __contains = dict[Injectable,  Provider].__contains__
+
+    def __attrs_post_init__(self):
+        signals.on_container_init.send(self.__class__, container=self)
 
     @property
     def pro(self) -> tuple[Self]:

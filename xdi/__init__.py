@@ -16,3 +16,6 @@ from .containers import Container
 from .injectors import Injector
 from .providers import Provider
 from .scopes import Scope
+
+
+from . import _receivers

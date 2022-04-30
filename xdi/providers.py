@@ -291,7 +291,7 @@ class Alias(Provider[T_Injectable, bindings._T_Binding]):
     """
 
     def resolve(self, abstract: T_Injectable, scope: 'Scope'):
-        return scope[self.concrete, scope.container]
+        return scope[self.concrete, self.container or scope.container]
   
   
 
@@ -706,9 +706,9 @@ class DepMarkerProvider(Provider[_T_Concrete]):
         return isinstance(abstract, (self.concrete, Dep, PureDep))
 
     def resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
-        abstract, where, container = marker.abstract, marker.scope, self.container
+        abstract, where, container = marker.abstract, marker.scope, self.container or scope.container
         if where == Dep.SKIP_SELF:
-            if dep := scope.parent[abstract, container]:
+            if dep := scope.parent[abstract]:
                 return dep
         elif where == Dep.ONLY_SELF:
             dep = scope.resolve_binding((abstract, container), recursive=False)

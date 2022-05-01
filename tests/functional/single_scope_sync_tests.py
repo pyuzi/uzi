@@ -22,13 +22,16 @@ class Tests(FunctionalTestCase):
     def test(self):
         container = Container()
         container.provide(Foo, Bar, Baz, Service)
-        container.singleton(FooBar)
-        container.singleton(FooBarBaz)
+        # container.singleton(FooBar)
+        # container.singleton(FooBarBaz)
         container.alias(T_Foo, Foo)
         container.alias(T_Baz, Baz)
 
-        scope = Scope(container)
+        container2 = Container().extend(container)
+        container2.singleton(FooBar)
+        container2.singleton(FooBarBaz)
 
+        scope = Scope(container2)
         injector = Injector(scope)
 
         assert isinstance(injector.make(Foo), Foo)

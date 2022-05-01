@@ -48,7 +48,7 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     __setitem = dict[Injectable,  Provider].__setitem__
     __contains = dict[Injectable,  Provider].__contains__
 
-    def __init__(self, name: str='<anonymous>', *bases: Self, access_level: AccessLevel=GUARDED) -> None:
+    def __init__(self, name: str='<anonymous>', *bases: Self, access_level: AccessLevel=PUBLIC) -> None:
         """Create a container.
         
         Params:
@@ -189,16 +189,7 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     def _resolve(self, key: DepKey, scope: 'Scope'):
         abstract, container = key[:2]
         if prov := self[abstract]:
-
-            
             access = prov.access_level or self.default_access_level
-
-            # logger.info(f'_resolve({abstract=})', )
-            # logger.info(f' ---> {container=}', )
-            # logger.info(f' ---> {access=!s}', )
-            # logger.info(f' ---> {self.access_level(container)=!s}', )
-            # logger.info(f' ---> {access in self.access_level(container)=!s}', )
-            # logger.info(f' ---> {prov._can_resolve(key, scope)=!s}', )
             if access in self.access_level(container):
                 if prov._can_resolve(key, scope):
                     return prov,

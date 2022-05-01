@@ -247,7 +247,7 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
             )
 
     def find_provider(self, dep: DepKey):
-        rv = [p for c in self.pros[dep.path] for p in c._resolve(dep, self) if p]
+        rv = [p for c in self.pros[dep.path] for p in c._resolve(dep, self)]
         # logger.info(f'find_provider({dep=})', )
         # logger.info(f' ---> {rv}', )
         
@@ -268,7 +268,7 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
         dep = self.make_key(dep_)
         if dep_ != dep:
             bind = self.resolve_binding(dep)
-            if dep in self and is_injectable(dep_):
+            if dep in self:
                 bind = self.__setdefault(dep_, bind)
             if recursive or not bind or self is bind.scope:
                 return bind

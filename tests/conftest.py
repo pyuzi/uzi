@@ -54,6 +54,7 @@ def MockContainer():
         mi.__bool__.return_value = True
         mi.__hash__.return_value = id(mi)
         mi.__getitem__.return_value = None
+        mi._resolve = MagicMock(wraps=lambda k,s: mi[a := getattr(k, 'abstract', k)] and (mi[a],) or ()) # mi.__getitem__
         return mi
     return MagicMock(type[Container], wraps=make)
 

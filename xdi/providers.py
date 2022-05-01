@@ -188,25 +188,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         """
         self.__setattr(access_level=PUBLIC)
         return self
-    
-    def can_resolve(self, abstract: T_Injectable, scope: "Scope") -> bool:
-        """Check if this provider can resolve the given dependency in the given 
-        scope.
-
-        Used internally by the `resolve` method.
-
-        Runs the provider's `filters` and if any of them fails (returns `False`), 
-        this method will return `False`.
-        
-        Args:
-            abstract (T_Injectable): dependency to be resolved
-            scope (Scope): Scope within which the dependency is getting resolved.
-
-        Returns:
-            bool: `True` if dependency can be resolved or `False` if otherwise.
-        """
-        return 
-
+ 
     def _can_resolve(self, dep: DepKey, scope: "Scope") -> bool:
         """Check whether this provider is avaliable to the given dep.
 
@@ -758,7 +740,7 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     _binding_class = bindings.Value
 
     def _resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
-        abstract, where, container = marker.abstract, marker.scope, self.container or scope.container
+        abstract, where = marker.abstract, marker.scope
         if where == Dep.SKIP_SELF:
             if dep := scope.parent[abstract]:
                 return dep

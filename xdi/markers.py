@@ -272,8 +272,10 @@ class AccessLevel(ProEnumPredicate[int], Enum):
     """The context in which to provider resolution.
 
     Attributes:
-        - self (ProContext): start from the current scope.
-        - static (ProContext): start from the requesting 
+        public (AccessLevel): public
+        protected (AccessLevel): protected
+        guarded (AccessLevel): guarded
+        private (AccessLevel): private
     """
 
     public: "AccessLevel" = 1

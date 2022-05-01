@@ -64,7 +64,7 @@ class FooBar:
 
 class FooBarBaz(t.Generic[T_Foo, T_Baz]):
     
-    def __init__(self, foo: Foo, bar: Bar[T_Foo], baz: t.Annotated[t.Any, Dep(T_Baz)], /) -> None:
+    def __init__(self, foo: Foo, bar: Bar[T_Foo], baz: t.Annotated[T_Baz, Dep(T_Baz)], /) -> None:
         assert isinstance(foo, Foo)
         assert isinstance(bar, Bar)
         assert isinstance(baz, Baz)

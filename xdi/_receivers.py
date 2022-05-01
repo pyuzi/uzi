@@ -13,5 +13,5 @@ from .providers import AnnotationProvider, UnionProvider, DepMarkerProvider, Loo
 def _register_implicit_providers(sender: type[Container], container: Container):
     provs = UnionProvider(), DepMarkerProvider(), AnnotationProvider(), LookupMarkerProvider()
     for prov in provs:
-        container[prov.abstract] = prov.public()
+        container[prov.abstract] = prov
 

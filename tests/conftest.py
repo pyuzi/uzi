@@ -5,8 +5,9 @@ import pytest
 import typing as t
 from xdi import is_injectable
 from xdi.containers import Container
+from xdi.core import Injectable
 from xdi.injectors import Injector
-from xdi.markers import DepKey
+from xdi.markers import DepKey, DepSrc, ProPredicate
 from xdi.providers import Provider
 
 from xdi._bindings import Binding
@@ -49,12 +50,15 @@ def value_factory(value_factory_spec):
 @pytest.fixture
 def MockContainer():
     def make(spec=Container, **kw):
-        mi: Container = NonCallableMagicMock(spec, **kw)
+        mi: Container = NonCallableMagicMock(spec)
         mi.pro = (mi,)
         mi.__bool__.return_value = True
         mi.__hash__.return_value = id(mi)
         mi.__getitem__.return_value = None
         mi._resolve = MagicMock(wraps=lambda k,s: mi[a := getattr(k, 'abstract', k)] and (mi[a],) or ()) # mi.__getitem__
+
+        for k,v in kw.items():
+            setattr(mi, k, v)
         return mi
     return MagicMock(type[Container], wraps=make)
 
@@ -173,6 +177,48 @@ def MockScope(MockContainer, MockDependency):
 
 
 @pytest.fixture
+def MockProPredicate():
+    def make(spec=ProPredicate, **kw):
+        mi = NonCallableMagicMock(spec)
+
+        for k,v in kw.items():
+            setattr(mi, k, v)
+
+        return mi
+    return MagicMock(type[ProPredicate], wraps=make) 
+
+
+@pytest.fixture
+def MockDepKey(MockDepSrc):
+    def make(spec=DepKey, **kw):
+        mi = NonCallableMagicMock(spec)
+        mi.abstract = Mock(Injectable)
+        mi.src = src = MockDepSrc()
+        mi.container = src.container
+        mi.predicate =  src.predicate
+        mi.scope =  src.scope
+
+        for k,v in kw.items():
+            setattr(mi, k, v)
+        return mi
+    return MagicMock(type[DepKey], wraps=make) 
+
+@pytest.fixture
+def MockDepSrc(mock_scope, mock_pro_predicate):
+    def make(spec=DepSrc, **kw):
+        mi = MagicMock(spec)
+        mi.container =  mock_scope.container
+        mi.scope =  mock_scope
+        mi.predicate = mock_pro_predicate
+        
+        for k,v in kw.items():
+            setattr(mi, k, v)
+        return mi
+    return MagicMock(type[DepSrc], wraps=make) 
+
+
+
+@pytest.fixture
 def mock_container(MockContainer):
     return MockContainer()
 
@@ -191,6 +237,12 @@ def mock_provider(MockProvider):
 @pytest.fixture
 def mock_injector(Mockinjector, mock_scope):
     return Mockinjector(scope=mock_scope)
+
+
+
+@pytest.fixture
+def mock_pro_predicate(MockProPredicate):
+    return MockProPredicate()
 
 
 

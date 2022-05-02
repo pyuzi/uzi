@@ -13,7 +13,7 @@ from .exceptions import ProError
 
 
 from . import Injectable, signals
-from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, DepKey, DependencyMarker
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, DepKey, _PredicateOpsMixin, DepSrc, ProPredicate
 from ._common import private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
 
@@ -27,9 +27,9 @@ logger = getLogger(__name__)
 
 
 
-@DependencyMarker.register
+@ProPredicate.register
 @private_setattr(frozen='_frozen')
-class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
+class Container(_PredicateOpsMixin, AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
     """A mapping of dependencies to their providers. We use them to bind 
     dependencies to their providers. 
    
@@ -81,11 +81,10 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
         self.__setattr(_pro=self._evaluate_pro())
         return self._pro
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container'):
-        if self in {*it}:
-            return self,
-        return ()
-
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: DepSrc) -> abc.Iterable['Container']:
+        own = self.pro
+        return tuple(c for c in it if c in own)
+        
     def _evaluate_pro(self):
         bases = [*self.bases]
 

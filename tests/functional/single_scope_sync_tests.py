@@ -13,12 +13,14 @@ from .abc import *
 
 
 xfail = pytest.mark.xfail
+skip = pytest.mark.skip
 parametrize = pytest.mark.parametrize
 
 
 
 class Tests(FunctionalTestCase):
 
+    # @skip
     def test(self):
         container = Container()
         container.provide(Foo, Bar, Baz, Service)

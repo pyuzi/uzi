@@ -5,6 +5,7 @@ import typing as t
 from unittest.mock import Mock, patch
 import pytest
 from tests.conftest import Container
+from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC
 
 
 from xdi.providers import Provider
@@ -105,12 +106,47 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         subject._setup(MockContainer(), None)._setup(MockContainer(), None)
         return subject,
 
+    @xfail(raises=ValueError, strict=True)
+    def test_xfail_invalid_abstract(self, new: _T_New_, mock_container):
+        subject = new()
+        if subject.abstract:
+            _Tx = t.TypeVar('_Tx')
+            subject._setup(mock_container, _Tx)
+        else:
+            raise ValueError('')
+
     def test_is_default(self, new: _T_New_):
         subject = new()
-        subject.default()
+        assert subject is subject.default()
         assert subject.is_default is True
         subject.default(False)
         assert subject.is_default is False
+        return subject
+
+    def test_is_final(self, new: _T_New_):
+        subject = new()
+        assert subject is subject.final()
+        assert subject.is_final is True
+        subject.final(False)
+        assert subject.is_final is False
+        return subject
+
+    def test_access_level(self, new: _T_New_):
+        subject = new()
+        assert subject is subject.public()
+        assert subject.access_level is PUBLIC
+
+        assert subject is subject.protected()
+        assert subject.access_level is PROTECTED
+        
+        assert subject is subject.guarded()
+        assert subject.access_level is GUARDED
+        
+        assert subject is subject.private()
+        assert subject.access_level is PRIVATE
+
+        assert subject is subject.public()
+        assert subject.access_level is PUBLIC
         return subject
 
     @xfail(raises=AttributeError, strict=True)
@@ -118,6 +154,10 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         ["op", "args"],
         [
             ("default", ()),
+            ("public", ()),
+            ("protected", ()),
+            ("guarded", ()),
+            ("private", ()),
             ('when', ()),
             ("_setup", (None, None)),
         ],

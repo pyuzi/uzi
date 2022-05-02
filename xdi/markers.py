@@ -82,9 +82,9 @@ _object_new = object.__new__
 
 _3_nones = None, None, None
 
-_T_ProStart = t.TypeVar('_T_ProStart', 'ProContext', 'Container', None)
-_T_ProStop = t.TypeVar('_T_ProStop', 'ProContext', 'Container', None)
-_T_ProStep = t.TypeVar('_T_ProStep', int, abc.Callable[..., abc.Iterable['Container']], None)
+_T_Start = t.TypeVar('_T_Start', int, 'ProPredicate', None)
+_T_Stop = t.TypeVar('_T_Stop', int, 'ProPredicate', None)
+_T_Step = t.TypeVar('_T_Step', int, None)
 
 _T_PredVar = t.TypeVar('_T_PredVar', covariant=True)
 _T_PredVars = t.TypeVar('_T_PredVars', bound=tuple, covariant=True)
@@ -167,7 +167,7 @@ class ProPredicate(_PredicateOpsMixin[_T_PredVars], _PredicateCompareMixin, ABC)
         return self
 
     @abstractmethod
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
         raise NotImplementedError(f'{self.__class__.__qualname__}.pro_entries()')
 
     @classmethod
@@ -176,6 +176,103 @@ class ProPredicate(_PredicateOpsMixin[_T_PredVars], _PredicateCompareMixin, ABC)
             return callable(getattr(sub, 'pro_entries', None))
         return NotImplemented
 
+
+
+
+
+
+@ProPredicate[tuple[_T_PredVar]].register
+class ProEnumPredicate(_PredicateOpsMixin[tuple[_T_PredVar]], _PredicateCompareMixin):
+
+    __slots__ = 'vars',
+
+    vars: _T_PredVar
+
+    def __new__(cls, vars: _T_PredVar):
+        self = _object_new(cls)
+        self.__setattr(vars=vars)
+        return self
+
+    __setattr__ = object.__setattr__
+
+
+class _AccessLevel(ProEnumPredicate[int]):
+    __slots__ = ()
+
+
+
+class AccessLevel(_AccessLevel, Enum):  
+    """Access level for dependencies
+
+    Attributes:
+        public (AccessLevel): public
+        protected (AccessLevel): protected
+        guarded (AccessLevel): guarded
+        private (AccessLevel): private
+    """
+
+    public: "AccessLevel" = 1
+    protected: "AccessLevel" = 2
+    guarded: "AccessLevel" = 3
+    private: "AccessLevel" = 4
+
+    @classmethod
+    def _missing_(cls, val):
+        if not val:
+            return cls.guarded
+        return super()._missing_(val)
+
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
+        return tuple(c for c in it if self in c.access_level(src.container))
+
+    def __contains__(self, obj) -> bool:
+        if isinstance(obj, AccessLevel):
+            return self.vars >= obj.vars
+        elif obj in (None, 0):
+            return False
+        return NotImplemented
+
+
+class _ScopePredicate(ProEnumPredicate[int]):
+    __slots__ = ()
+
+
+
+
+class ScopePredicate(_ScopePredicate, Enum):
+    """The context in which to provider resolution.
+    """
+
+    only_self: "ScopePredicate" = True
+    """Only inject from the current scope without considering parents"""
+
+    skip_self: "ScopePredicate" = False
+    """Skip the current scope and resolve from it's parent instead."""
+    
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
+        if (scope is src.scope) == self.vars:
+            return it
+        return ()
+
+
+
+PUBLIC: AccessLevel = AccessLevel.public
+"""public access level"""
+
+PROTECTED: AccessLevel = AccessLevel.protected
+"""protected access level"""
+
+GUARDED: AccessLevel = AccessLevel.guarded
+"""guarded access level"""
+
+PRIVATE: AccessLevel = AccessLevel.private
+"""private access level"""
+
+ONLY_SELF: ScopePredicate = ScopePredicate.only_self
+"""Only inject from the current scope without considering parents"""
+
+SKIP_SELF: ScopePredicate = ScopePredicate.skip_self
+"""Skip the current scope and resolve from it's parent instead."""
 
 
 
@@ -246,127 +343,23 @@ class ProInvertPredicate(ProSubPredicate[tuple[_T_Pred]]):
     __slots__ = ()
 
     def __new__(cls: type[Self], right: _T_Pred) -> Self:
-        return super().__new__(cls, ProNoopPredicate(), right)
-
-
-@ProPredicate[tuple[_T_PredVar]].register
-class ProEnumPredicate(_PredicateOpsMixin[tuple[_T_PredVar]], _PredicateCompareMixin):
-
-    __slots__ = 'vars',
-
-    vars: _T_PredVar
-
-    def __new__(cls, vars: _T_PredVar):
-        self = _object_new(cls)
-        self.__setattr(vars=vars)
-        return self
-
-    def __index__(self):
-        return self.vars
-        
-    __int__ = __index__
-
-
-
-class AccessLevel(ProEnumPredicate[int], Enum):  
-    """The context in which to provider resolution.
-
-    Attributes:
-        public (AccessLevel): public
-        protected (AccessLevel): protected
-        guarded (AccessLevel): guarded
-        private (AccessLevel): private
-    """
-
-    public: "AccessLevel" = 1
-    protected: "AccessLevel" = 2
-    guarded: "AccessLevel" = 3
-    private: "AccessLevel" = 4
-
-    @classmethod
-    def _missing_(cls, val):
-        if not val:
-            return cls.guarded
-        return super()._missing_(val)
-
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
-        return tuple(c for c in it if self in c.access_level(dependant))
-
-    __setattr__ = object.__setattr__
-
-    def __contains__(self, obj) -> bool:
-        if isinstance(obj, AccessLevel):
-            return self.vars >= obj.vars
-        elif obj in (None, 0):
-            return False
-        return NotImplemented
-
-
-
-PUBLIC = AccessLevel.public
-PROTECTED = AccessLevel.protected
-GUARDED = AccessLevel.guarded
-PRIVATE = AccessLevel.private
-
-
-class DepScope(IntEnum):
-
-    any: "DepScope" = 0
-    """Inject from any scope.
-    """
-
-    only_self: "DepScope" = 1
-    """Only inject from the current scope without considering parents
-    """
-
-    skip_self: "DepScope" = 2
-    """Skip the current scope and resolve from it's parent instead.
-    """
-
-    @classmethod
-    def _missing_(cls, val):
-        if not val:
-            return cls.any
+        return super().__new__(cls, _noop_pred, right)
 
 
 
 
 
-class ProContext(IntFlag):  
-    """The context in which to provider resolution.
-
-    Attributes:
-        - self (ProContext): start from the current scope.
-        - static (ProContext): start from the requesting 
-    """
-
-
-    this: "ProContext" = auto()
-    super: "ProContext" = auto()
- 
-    static: "ProContext" = auto()
-    parent: "ProContext" = auto()
-
-    source: "ProContext" = auto()
-    target: "ProContext" = auto()
-
-    @classmethod
-    def _missing_(cls, val):
-        if not val:
-            return cls.this | cls.source
-        return super()._missing_(val)
 
 
 
-
-class ProSlice(ProPredicate[tuple[_T_ProStart, _T_ProStop, _T_ProStep]]):
+class ProSlice(ProPredicate[tuple[_T_Start, _T_Stop, _T_Step]]):
     """Represents a slice or the _Provider resolution order_"""
 
     __slots__ = ()
 
     # vars: tuple[_T_ProStart, _T_ProStop, _T_ProStep]
 
-    def __new__(cls: type[Self], start: _T_ProStart=None, stop: _T_ProStop=None, step: _T_ProStep=None) -> Self:
+    def __new__(cls: type[Self], start: _T_Start=None, stop: _T_Stop=None, step: _T_Step=None) -> Self:
         if not start is None is stop is step:
             if start.__class__ is cls:
                 return start
@@ -387,7 +380,7 @@ class ProSlice(ProPredicate[tuple[_T_ProStart, _T_ProStop, _T_ProStep]]):
     def step(self):
         return self.vars[2]
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', dependant: 'Container') -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
         from .containers import Container
         it = tuple(it)
         start, stop, step = self.vars
@@ -435,33 +428,44 @@ class ProFilter(ProPredicate[tuple[_T_FilterPred, int]]):
 _noop_pred = ProNoopPredicate()
 
 
+class DepSrc(t.NamedTuple):
+    container: 'Container'
+    scope: 'Scope' = None
+    predicate: ProPredicate = _noop_pred
 
-class DepKey(tuple[Injectable, 'Container', ProPredicate]):
 
-    __slots__ = ()
+
+
+@private_setattr
+class DepKey:
+
+    __slots__ = 'abstract', 'src', '_ash',
+
+    abstract: Injectable
+    src: DepSrc
+
+    scope: 'Scope' = None
+
+    def __init_subclass__(cls, scope=None) -> None:
+        cls.scope = scope
+        return super().__init_subclass__()
 
     def __new__(cls: type[Self], abstract: Injectable, container: 'Container'=None, predicate: ProPredicate=ProNoopPredicate()) -> Self:
-        return tuple.__new__(cls, (
-            abstract, 
+        self, src = _object_new(cls), DepSrc(
             container, 
+            cls.scope,
             predicate or _noop_pred
-        ))
-
-    @property
-    def abstract(self):
-        return self[0]
+        )
+        self.__setattr(abstract=abstract, src=src, _ash=hash((abstract, src)))
+        return self
 
     @property
     def container(self):
-        return self[1]
+        return self.src.container
 
     @property
     def predicate(self):
-        return self[2]
-
-    @property
-    def path(self):
-        return self[1:]
+        return self.src.predicate
 
     def replace(self, *, abstract: Injectable=None, container: 'Container'=None, predicate: ProPredicate=None):
         return self.__class__(
@@ -490,6 +494,21 @@ class DepKey(tuple[Injectable, 'Container', ProPredicate]):
             return self.replace(predicate=x | self.predicate)
         return NotImplemented
 
+    def __eq__(self, o) -> bool:
+        if isinstance(o, DepKey):
+            return o.abstract == self.abstract and o.src == self.src
+        return NotImplemented
+        
+    def __ne__(self, o) -> bool:
+        if isinstance(o, DepKey):
+            return o.abstract != self.abstract or o.src != self.src
+        return NotImplemented
+    
+    def __hash__(self) -> int:
+        return self._ash
+       
+       
+
 
 
 
@@ -508,11 +527,13 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
 
     _ident: T_Injected
 
-    scope: DepScope = DepScope.any
     default: T_Default = Missing
+    predicate: ProPredicate = ProNoopPredicate()
+
+    # scope: ScopePredicate = ScopePredicate.any
     has_default: bool = False
     injects_default: bool = False
-    container: t.Union[ProContext, 'ProSlice', 'Container'] = ProContext.this
+    # container: t.Union[_ProContext, 'ProSlice', 'Container'] = _ProContext.this
 
     def __new__(cls: type[Self], abstract: T_Injectable) -> Self:
         if abstract.__class__ is cls:
@@ -530,7 +551,7 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
         return Lookup(self)
 
     @property
-    def __origin__(self): return self.abstract
+    def __origin__(self): return self.__class__
 
     def __copy__(self):
         return self
@@ -544,6 +565,16 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
     def __init_subclass__(cls, *args, **kwargs):
         if not cls.__module__.startswith(__package__):
             raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__qualname__}")
+    
+    def _as_dict(self):
+        return {
+            'abstract': self.abstract,
+            'predicate': self.predicate,
+            'default': self.default,
+        }
+
+    def replace(self, **kwds):
+        return Dep(*(self._as_dict() | kwds).values())
 
     def __eq__(self, x) -> bool:
         cls = self.__class__
@@ -561,31 +592,34 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
             return self._ident != x._ident
         return NotImplemented
 
-    def forward_op(_op, *ops):
-        ops = (_op,) + ops
+    def __hash__(self) -> int:
+        return hash(self._ident)
 
-        @wraps(_op)
-        def method(self: Self, *a):
-            ident = self._ident
-            for op in ops:
-                if not (res := op(ident, *a)):
-                    break
-            return res
-        return method
-
-    __ge__, __gt__ = forward_op(operator.gt, operator.eq), forward_op(operator.gt)
-    __le__, __lt__ = forward_op(operator.lt, operator.eq), forward_op(operator.lt)
-
-    __hash__, __bool__ = forward_op(hash), forward_op(bool)
+    def __and__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=self.predicate & x)
+        return NotImplemented
     
-    del forward_op
+    def __rand__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=x & self.predicate)
+        return NotImplemented
+    
+    def __or__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=self.predicate | x)
+        return NotImplemented
 
+    def __ror__(self, x):
+        if isinstance(x, ProPredicate):
+            return self.replace(predicate=x | self.predicate)
+        return NotImplemented
 
 
 
 
 _pure_dep_default_set = frozenset([
-    (PureDep.scope, PureDep.container, PureDep.default),
+    (PureDep.predicate, PureDep.default),
 ])
 
 @private_setattr
@@ -593,34 +627,16 @@ class Dep(PureDep):
 
     """Marks an injectable as a `dependency` to be injected."""
 
-    __slots__ =  '_ident', '_ash'
+    __slots__ = '_ash'
 
-    # abstract: T_Injectable
-    # scope: DepScope
-    # default: T_Default
-    # container:  t.Union[ProContext, 'ProSlice', 'Container']
-
-    Scope = DepScope
-
-    ANY_SCOPE: t.Final = DepScope.any
-    """Inject from any scope.
-    """
-
-    ONLY_SELF: t.Final = DepScope.only_self
-    """Only inject from the current scope without considering parents
-    """
-
-    SKIP_SELF: t.Final = DepScope.skip_self
-    """Skip the current scope and resolve from it's parent instead.
-    """
     def __new__(
         cls: type[Self],
         abstract: T_Injectable,
-        scope: DepScope = ANY_SCOPE,
-        container: t.Union[ProContext, 'ProSlice', 'Container']= ProContext.this,
+        predicate: ProPredicate = ProNoopPredicate(),
         default = Missing,
     ):
-        ident = abstract or cls.ANY_SCOPE, scope, container or ProContext.this, default
+        
+        ident = abstract, predicate or _noop_pred, default
         if ident[1:] in _pure_dep_default_set:
             if abstract.__class__ in (cls, PureDep):
                 return abstract
@@ -639,16 +655,12 @@ class Dep(PureDep):
         return self._ident[0]
 
     @property
-    def scope(self):
+    def predicate(self):
         return self._ident[1]
 
     @property
-    def container(self):
-        return self._ident[2]
-
-    @property
     def default(self):
-        return self._ident[3]
+        return self._ident[2]
 
     @property
     def has_default(self):
@@ -666,8 +678,8 @@ class Dep(PureDep):
             return self._ash
 
     def __repr__(self) -> str:
-        abstract, scope, default = self.abstract, self.scope, self.default
-        return f'{self.__class__.__qualname__}({abstract=}, {scope=!r}, {default=!r})'
+        abstract, predicate, default = self.abstract, self.predicate, self.default
+        return f'{self.__class__.__qualname__}({abstract=}, {predicate=!r}, {default=!r})'
 
 
 

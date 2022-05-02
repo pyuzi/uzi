@@ -11,9 +11,10 @@ from xdi._common import FrozenDict
 
 from xdi import is_injectable
 from xdi.containers import Container
+from xdi.exceptions import ProError
 from xdi.providers import Provider
 from xdi._bindings import Binding
-from xdi.scopes import ProValueError, NullScope, Scope
+from xdi.scopes import NullScope, Scope
 
 
 
@@ -110,12 +111,12 @@ def test_parents(new: _T_FnNew, MockContainer: type[Container]):
     assert isinstance(it, Iterator)
     assert tuple(it) == (sub3, sub2, sub1)
 
-@xfail(raises=ProValueError, strict=True)
+@xfail(raises=ProError, strict=True)
 def test_parent_with_same_container(new: _T_FnNew, MockContainer: type[Container]):
     c = MockContainer()
     new(c, new(c)) 
 
-@xfail(raises=ProValueError, strict=True)
+@xfail(raises=ProError, strict=True)
 def test_parent_with_container(new: _T_FnNew, MockContainer: type[Container]):
     c1, c2 = (MockContainer() for i in range(2))
     c1.pro = c1, c2,

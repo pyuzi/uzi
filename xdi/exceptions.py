@@ -35,7 +35,7 @@ class InjectorLookupError(KeyError, XdiException):
 
 
 
-class ProValueError(ValueError, XdiException):
+class ProError(TypeError, XdiException):
     ...
 
 

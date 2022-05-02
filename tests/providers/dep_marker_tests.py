@@ -34,11 +34,11 @@ class DepMarkerTests(ProviderTestCase[Provider]):
         Dep(_Tx),
         Dep(_Tx, default='[DEFAULT]'),
         Dep(_Tx, default=Dep(_Ta)),
-        Dep(_Tx, scope=Dep.ONLY_SELF, default='[DEFAULT]'),
-        Dep(_Tx, scope=Dep.ONLY_SELF, default=Dep(_Ta)),
-        Dep(_Tx, scope=Dep.SKIP_SELF),
-        Dep(_Tx, scope=Dep.SKIP_SELF, default='[DEFAULT]'),
-        Dep(_Tx, scope=Dep.SKIP_SELF, default=Dep(_Ta)),
+        # Dep(_Tx, scope=Dep.ONLY_SELF, default='[DEFAULT]'),
+        # Dep(_Tx, scope=Dep.ONLY_SELF, default=Dep(_Ta)),
+        # Dep(_Tx, scope=Dep.SKIP_SELF),
+        # Dep(_Tx, scope=Dep.SKIP_SELF, default='[DEFAULT]'),
+        # Dep(_Tx, scope=Dep.SKIP_SELF, default=Dep(_Ta)),
     ]
 
     @pytest.fixture(params=expected)
@@ -49,21 +49,21 @@ class DepMarkerTests(ProviderTestCase[Provider]):
     def new_args(self):
         return ()
 
-    def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
-        if abstract.has_default and  abstract.scope != Dep.SKIP_SELF:
-            mock_scope[abstract.abstract] = None
+    # def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
+    #     if abstract.has_default and   abstract.scope != Dep.SKIP_SELF:
+    #         mock_scope[abstract.abstract] = None
 
-        subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+    #     subject, res = super().test_resolve(cls, abstract, new, mock_scope)
 
-        if abstract.scope == Dep.SKIP_SELF:
-            assert res is mock_scope.parent[abstract.abstract]
-            assert not res is mock_scope[abstract.abstract]
-        elif abstract.has_default:
-            if abstract.injects_default:
-                assert res is mock_scope[abstract.default]
-            else:
-                assert not res is mock_scope[abstract.abstract]
-                assert isinstance(res, cls._binding_class) 
+    #     if abstract.scope == Dep.SKIP_SELF:
+    #         assert res is mock_scope.parent[abstract.abstract]
+    #         assert not res is mock_scope[abstract.abstract]
+    #     elif abstract.has_default:
+    #         if abstract.injects_default:
+    #             assert res is mock_scope[abstract.default]
+    #         else:
+    #             assert not res is mock_scope[abstract.abstract]
+    #             assert isinstance(res, cls._binding_class) 
 
         # expected.injects =
         # assert res is mock_scope[abstract.__default__]

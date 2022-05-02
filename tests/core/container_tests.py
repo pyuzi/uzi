@@ -8,6 +8,7 @@ from xdi._common import FrozenDict
 
 
 from xdi.containers import Container
+from xdi.exceptions import ProError
 from xdi.providers import Provider, AbstractProviderRegistry
 
 
@@ -68,7 +69,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert pro == c1.pro
         assert pro == (c1, c2, c4, c3, c5, c6)
 
-    @xfail(raises=TypeError, strict=True)
+    @xfail(raises=ProError, strict=True)
     def test_inconsistent_pro(self, new: _T_FnNew):
         c1, c2, c3= new('c1'), new('c2'), new('c3')
         c1.extend(c3, c2.extend(c3))

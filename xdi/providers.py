@@ -722,9 +722,13 @@ class AnnotationProvider(UnionProvider[_T_Concrete]):
     concrete = attr.ib(init=False, default=_AnnotatedType)
 
     def get_all_args(self, abstract: t.Annotated):
+        logger.info(f'get_all_args --> {abstract}')
+        logger.info(f' --> {abstract.__metadata__=}')
+
         for a in abstract.__metadata__[::-1]:
             if isinstance(a, DependencyMarker):
                 yield a
+                logger.info(f'yield --> {a}')
         yield abstract.__origin__
 
   
@@ -740,22 +744,13 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     _binding_class = bindings.Value
 
     def _resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
-        abstract, where = marker.abstract, marker.scope
-        if where == Dep.SKIP_SELF:
-            if dep := scope.parent[abstract]:
-                return dep
-        elif where == Dep.ONLY_SELF:
-            dep = scope.resolve_binding(abstract, recursive=False)
-            if dep and scope is dep.scope:
-                return dep
-        elif dep := scope[abstract]:
-            return dep
-        
-        if marker.injects_default:
+        dep = scope.make_key(marker.abstract, predicate=marker.predicate)
+        if bind := scope[dep]:
+            return bind
+        elif marker.injects_default:
             return scope[marker.default]
         elif marker.has_default:
             return self._make_binding(marker, scope, concrete=marker.default)
-
 
 
 

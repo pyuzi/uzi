@@ -8,7 +8,8 @@ from typing_extensions import Self
 
 import attr
 
-from xdi.core import is_injectable
+from .core import is_injectable
+from .exceptions import ProError
 
 
 from . import Injectable, signals
@@ -98,7 +99,7 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
         while ml:
             if i == len(ml):
                 if miss >= i:
-                    raise TypeError(f'Cannot create a consistent provider resolution {miss=}, {ml=}')
+                    raise ProError(f'Cannot create a consistent provider resolution {miss=}, {ml=}')
                 i = 0
             ls = ml[i]
             h = ls[0]
@@ -187,10 +188,9 @@ class Container(AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
             return key
             
     def _resolve(self, key: DepKey, scope: 'Scope'):
-        abstract, container = key[:2]
-        if prov := self[abstract]:
+        if prov := self[key.abstract]:
             access = prov.access_level or self.default_access_level
-            if access in self.access_level(container):
+            if access in self.access_level(key.container):
                 if prov._can_resolve(key, scope):
                     return prov,
         return ()

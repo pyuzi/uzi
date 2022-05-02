@@ -12,19 +12,19 @@ from typing_extensions import Self
 from collections import abc
 
 from ._common import Missing, private_setattr, FrozenDict
-from .markers import AccessLevel, Dep, DepKey, ProNoopPredicate, ProPredicate, is_dependency_marker
+from .markers import AccessLevel, Dep, DepKey, DepSrc, ProNoopPredicate, ProPredicate, is_dependency_marker
 from .providers import Provider
 
 from .core import Injectable, is_injectable
 from ._bindings import _T_Binding, LookupErrorBinding
-from .exceptions import FinalProviderOverrideError, ProValueError
+from .exceptions import FinalProviderOverrideError, ProError
 from .containers import Container
 
 logger = getLogger(__name__)
 
 
 _T_Pro = tuple[Container]
-_T_ProPath = tuple[Container, ProPredicate]
+_T_ProPath = tuple['Scope', Container, ProPredicate]
 _T_DepKey = t.Union[DepKey, Injectable]
 
 
@@ -61,7 +61,7 @@ _T_DepKey = t.Union[DepKey, Injectable]
 
 
 @private_setattr
-class _ProResolver(FrozenDict[_T_ProPath, _T_Pro]):
+class _ProResolver(FrozenDict[DepSrc, _T_Pro]):
     __slots__ = 'scope', 'pro',
 
     scope: 'Scope'
@@ -74,16 +74,17 @@ class _ProResolver(FrozenDict[_T_ProPath, _T_Pro]):
         base = scope.parent.pros
         pro = {c:i for i,c in enumerate(scope.container.pro) if not c in base}
         if not pro:
-            raise ProValueError(f'{scope.name}')
+            raise ProError(f'{scope.name}')
         self.__setattr(scope=scope, pro=FrozenDict(pro))
 
     def __contains__(self, x) -> bool:
         return x in self.pro or self.__contains(x)
     
-    def __missing__(self, key: _T_ProPath):
-        (dep, pred), pro = key, tuple(self.pro)
-        pro = pred.pro_entries(pro, self.scope, dep)
-        return self.__setdefault(key, tuple(pro))
+    def __missing__(self, src: DepSrc):
+        pro, scope = tuple(self.pro), self.scope
+        src.scope.extends(scope)
+        pro = src.predicate.pro_entries(pro, scope, src)
+        return self.__setdefault(src, tuple(pro))
 
 
 
@@ -188,12 +189,11 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
 
     # # _injector_class: type[Injector] = attr.ib(kw_only=True, default=Injector, repr=False)
     
-    # maps: abc.Set[Container] = attr.ib(init=False, repr=False)
-    # @maps.default
-    # def _init_maps(self):
-    #     con = self.container
-    #     dct = { c: i for i, c in enumerate(con.pro) }
-    #     return t.cast(abc.Set[Container], dct.keys())
+    _key_class: type[DepKey] = attr.ib(init=False, repr=False)
+    @_key_class.default
+    def _init__key_class(self):
+        return type(f'ScopeDepKey', (DepKey,), {'scope': self})
+        
 
     pros: _ProResolver = attr.ib(init=False, repr=False)
     @pros.default
@@ -236,20 +236,21 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
     def __contains__(self, o) -> bool:
         return self.__contains(o) or o in self.pros or o in self.parent
 
+    def extends(self, scope: Self):
+        return scope is self or self.parent.extends(scope)
+
     def make_key(self, abstract: Injectable, container: 'Container'=None, predicate: ProPredicate=ProNoopPredicate()):
         if isinstance(abstract, DepKey):
             return abstract
         else:
-            return DepKey(
+            return self._key_class(
                 abstract,
                 container or (self._resolvestack.top_container),
                 predicate
             )
 
     def find_provider(self, dep: DepKey):
-        rv = [p for c in self.pros[dep.path] for p in c._resolve(dep, self)]
-        # logger.info(f'find_provider({dep=})', )
-        # logger.info(f' ---> {rv}', )
+        rv = [p for c in self.pros[dep.src] for p in c._resolve(dep, self)]
         
         if rv:
             if len(rv) > 1:
@@ -283,14 +284,13 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
                 with self._resolvestack.push(prov):
                     if bind := prov._resolve(abstract, self):
                         return self.__setdefault(dep, bind)
-
-            elif is_dependency_marker(abstract):
-                if prov := self.find_provider(dep.replace(abstract=abstract.__origin__)):
-                    with self._resolvestack.push(prov):
-                        if bind := prov._resolve(abstract, self):
-                            return self.__setdefault(dep, bind)
             elif origin := t.get_origin(abstract):
-                if bind := self.resolve_binding(dep.replace(abstract=origin), recursive=False):
+                if is_dependency_marker(abstract):
+                    if prov := self.find_provider(dep.replace(abstract=t.get_origin(abstract))):
+                        with self._resolvestack.push(prov):
+                            if bind := prov._resolve(abstract, self):
+                                return self.__setdefault(dep, bind)
+                elif bind := self.resolve_binding(dep.replace(abstract=origin), recursive=False):
                     return self.__setdefault(dep, bind)
                 
             if recursive and ((bind := self.parent[dep]) or dep in self.parent):
@@ -340,7 +340,8 @@ class NullScope(Scope):
     name = '<null>'
 
     def __init__(self) -> None: ...
-
+    def extends(self, scope: Self):
+        return False
     def __bool__(self): 
         return False
     def __repr__(self): 

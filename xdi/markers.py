@@ -5,7 +5,7 @@ from logging import getLogger
 import operator
 from types import GenericAlias, new_class
 import typing as t
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from collections import abc, namedtuple
 from enum import Enum, IntEnum, IntFlag, auto
 
@@ -43,19 +43,17 @@ def is_dependency_marker(obj:t.Any, ind=0) -> bool:
     Returns:
         bool: 
     """
-    res = isinstance(obj, DependencyMarker) \
-            or obj in __static_makers \
-            or (not not (orig := t.get_origin(obj)) and is_dependency_marker(orig, ind+1))
-
-    ins = '  '*ind
-    logger.info(f'{ins} - is_dependency_marker({res})={obj=}')
-    return res
-    return isinstance(obj, DependencyMarker) \
+    return isinstance(obj, (DependencyMarker, DependencyMarkerType)) \
             or obj in __static_makers \
             or (not not (orig := t.get_origin(obj)) and is_dependency_marker(orig))
 
 
-class DependencyMarker(Injectable, t.Generic[T_Injectable]):
+
+class DependencyMarkerType(ABCMeta):
+    ...
+
+
+class DependencyMarker(Injectable, t.Generic[T_Injectable], metaclass=DependencyMarkerType):
     """Abstract base class for dependency markers. 
 
     Dependency markers are used reperesent and/or annotate dependencies. 
@@ -186,11 +184,11 @@ class ProEnumPredicate(_PredicateOpsMixin[tuple[_T_PredVar]], _PredicateCompareM
 
     __slots__ = 'vars',
 
-    vars: _T_PredVar
+    vars: tuple[_T_PredVar]
 
     def __new__(cls, vars: _T_PredVar):
         self = _object_new(cls)
-        self.__setattr(vars=vars)
+        self.__setattr(vars=(vars,))
         return self
 
     __setattr__ = object.__setattr__
@@ -215,11 +213,13 @@ class AccessLevel(_AccessLevel, Enum):
     protected: "AccessLevel" = 2
     guarded: "AccessLevel" = 3
     private: "AccessLevel" = 4
+    
+    __empties = frozenset((None, 0, (0,), (None,)))
 
     @classmethod
     def _missing_(cls, val):
-        if not val:
-            return cls.guarded
+        if val in cls.__empties:
+            return cls.public
         return super()._missing_(val)
 
     def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
@@ -228,7 +228,7 @@ class AccessLevel(_AccessLevel, Enum):
     def __contains__(self, obj) -> bool:
         if isinstance(obj, AccessLevel):
             return self.vars >= obj.vars
-        elif obj in (None, 0):
+        elif obj in self.__empties:
             return False
         return NotImplemented
 
@@ -250,7 +250,7 @@ class ScopePredicate(_ScopePredicate, Enum):
     """Skip the current scope and resolve from it's parent instead."""
     
     def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
-        if (scope is src.scope) == self.vars:
+        if (scope is src.scope,) == self.vars:
             return it
         return ()
 

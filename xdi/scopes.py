@@ -285,7 +285,7 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
                     if bind := prov._resolve(abstract, self):
                         return self.__setdefault(dep, bind)
             elif origin := t.get_origin(abstract):
-                if is_dependency_marker(abstract):
+                if is_dependency_marker(origin):
                     if prov := self.find_provider(dep.replace(abstract=t.get_origin(abstract))):
                         with self._resolvestack.push(prov):
                             if bind := prov._resolve(abstract, self):

@@ -907,6 +907,13 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#xdi._common.ReadonlyDict" class="md-nav__link">
+    ReadonlyDict
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#xdi._common.FrozenDict" class="md-nav__link">
     FrozenDict
   </a>
@@ -1037,6 +1044,13 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#xdi._common.ReadonlyDict" class="md-nav__link">
+    ReadonlyDict
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#xdi._common.FrozenDict" class="md-nav__link">
     FrozenDict
   </a>
@@ -1145,12 +1159,12 @@
 
 
 
-<h3 id="xdi._common.FrozenDict" class="doc doc-heading">
-          <code>FrozenDict</code>
+<h3 id="xdi._common.ReadonlyDict" class="doc doc-heading">
+          <code>ReadonlyDict</code>
 
 
 
-<a href="#xdi._common.FrozenDict" class="headerlink" title="Permanent link">&para;</a></h3>
+<a href="#xdi._common.ReadonlyDict" class="headerlink" title="Permanent link">&para;</a></h3>
 
 
     <div class="doc doc-contents ">
@@ -1158,7 +1172,25 @@
           Bases: <code>dict[<span title="xdi._common._T_Key">_T_Key</span>, <span title="xdi._common._T_Val">_T_Val</span>]</code></p>
 
 
-      <p>An immutable and hashable <code>dict</code>.</p>
+      <p>A readonly <code>dict</code> subclass.</p>
+
+  <p><strong>Raises:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td>
+                <code>TypeError</code>
+          </td>
+          <td><p>on any attempted modification</p></td>
+        </tr>
+    </tbody>
+  </table>
 
 
 
@@ -1180,6 +1212,49 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="doc doc-object doc-class">
+
+
+
+<h3 id="xdi._common.FrozenDict" class="doc doc-heading">
+          <code>FrozenDict</code>
+
+
+
+<a href="#xdi._common.FrozenDict" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+        <p class="doc doc-class-bases">
+          Bases: <code><a class="autorefs autorefs-internal" title="xdi._common.ReadonlyDict" href="#xdi._common.ReadonlyDict">ReadonlyDict</a>[<span title="xdi._common._T_Key">_T_Key</span>, <span title="xdi._common._T_Val">_T_Val</span>]</code></p>
+
+
+      <p>An hashable <code>ReadonlyDict</code></p>
+
+
+
+
+
+  <div class="doc doc-children">
 
 
 

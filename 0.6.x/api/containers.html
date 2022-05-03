@@ -1164,7 +1164,7 @@
 
     <div class="doc doc-contents ">
         <p class="doc doc-class-bases">
-          Bases: <code><span title="xdi.markers._PredicateOpsMixin">_PredicateOpsMixin</span></code>, <code><a class="autorefs autorefs-internal" title="xdi.providers.AbstractProviderRegistry" href="providers/registry.html#xdi.providers.AbstractProviderRegistry">AbstractProviderRegistry</a></code>, <code><a class="autorefs autorefs-internal" title="xdi._common.FrozenDict" href="_common.html#xdi._common.FrozenDict">FrozenDict</a>[<a class="autorefs autorefs-internal" title="xdi.core.Injectable" href="core.html#xdi.core.Injectable">Injectable</a>, <a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="providers/provider.html#xdi.providers.Provider">Provider</a>]</code></p>
+          Bases: <code><span title="xdi.markers._PredicateOpsMixin">_PredicateOpsMixin</span></code>, <code><a class="autorefs autorefs-internal" title="xdi.providers.AbstractProviderRegistry" href="providers/registry.html#xdi.providers.AbstractProviderRegistry">AbstractProviderRegistry</a></code>, <code><a class="autorefs autorefs-internal" title="xdi._common.ReadonlyDict" href="_common.html#xdi._common.ReadonlyDict">ReadonlyDict</a>[<a class="autorefs autorefs-internal" title="xdi.core.Injectable" href="core.html#xdi.core.Injectable">Injectable</a>, <a class="autorefs autorefs-internal" title="xdi.providers.Provider" href="providers/provider.html#xdi.providers.Provider">Provider</a>]</code></p>
 
 
       <p>A mapping of dependencies to their providers. We use them to bind 
@@ -1296,7 +1296,7 @@ to assign providers</p></td>
 
 
 <h4 id="xdi.containers.Container.pro" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">pro</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Self</span><span class="p">]</span></code>
+<code class="highlight language-python"><span class="n">pro</span><span class="p">()</span></code>
 
   <span class="doc doc-properties">
       <small class="doc doc-label doc-label-property"><code>property</code></small>
@@ -1322,7 +1322,7 @@ to assign providers</p></td>
     <tbody>
         <tr>
 <td><code>pro</code></td>          <td>
-                <code>tuple[<a class="autorefs autorefs-internal" title="xdi.containers.Container" href="#xdi.containers.Container">Container</a>]</code>
+                <code><a class="autorefs autorefs-internal" title="xdi._common.FrozenDict" href="_common.html#xdi._common.FrozenDict">FrozenDict</a>[<a class="autorefs autorefs-internal" title="xdi.containers.Container" href="#xdi.containers.Container">Container</a>, int]</code>
           </td>
           <td></td>
         </tr>
@@ -1582,6 +1582,7 @@ to assign providers</p></td>
     </div>
 
   </div>
+
 
 
 

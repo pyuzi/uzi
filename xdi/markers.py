@@ -521,8 +521,8 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
 
     _ident: T_Injected
 
-    default: T_Default = Missing
     predicate: ProPredicate = _noop_pred
+    default: T_Default = Missing
 
     has_default: bool = False
     injects_default: bool = False
@@ -555,7 +555,7 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
         return f"{self.__class__.__name__}({self.abstract!s})"
 
     def __init_subclass__(cls, *args, **kwargs):
-        if not cls.__module__.startswith(__package__):
+        if not cls.__module__.startswith(__package__): # pragma: no cover
             raise TypeError(f"Cannot subclass {cls.__module__}.{cls.__qualname__}")
     
     def _as_dict(self):
@@ -587,25 +587,29 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
     def __hash__(self) -> int:
         return hash(self._ident)
 
-    def __and__(self, x):
+    def __and__(self, x) -> Self:
         if isinstance(x, ProPredicate):
             return self.replace(predicate=self.predicate & x)
         return NotImplemented
     
-    def __rand__(self, x):
+    def __rand__(self, x) -> Self:
         if isinstance(x, ProPredicate):
             return self.replace(predicate=x & self.predicate)
         return NotImplemented
     
-    def __or__(self, x):
+    def __or__(self, x) -> Self:
         if isinstance(x, ProPredicate):
             return self.replace(predicate=self.predicate | x)
         return NotImplemented
 
-    def __ror__(self, x):
+    def __ror__(self, x) -> Self:
         if isinstance(x, ProPredicate):
             return self.replace(predicate=x | self.predicate)
         return NotImplemented
+
+    def __invert__(self) -> Self:
+        return self.replace(predicate=ProInvertPredicate(self.predicate))
+        
 
 
 
@@ -662,6 +666,9 @@ class Dep(PureDep):
     def injects_default(self):
         return isinstance(self.default, DependencyMarker)
 
+    def __reduce__(self):
+        return self.__class__, self._ident
+
     def __hash__(self):
         try:
             return self._ash
@@ -690,8 +697,7 @@ class Lookup(DependencyMarker, BaseLookup):
     __offset__ = 1
 
     @t.overload
-    def __new__(cls: type[Self], abstract: type[T_Injected]) -> Self:
-        ...
+    def __new__(cls: type[Self], abstract: type[T_Injected]) -> Self: ...
 
     __new__ = BaseLookup.__new__
 
@@ -700,7 +706,6 @@ class Lookup(DependencyMarker, BaseLookup):
         return self.__expr__[0]
 
     @property
-    def __origin__(self):
-        return self.__class__
+    def __origin__(self): return self.__class__
 
 

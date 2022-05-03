@@ -20,7 +20,6 @@ parametrize = pytest.mark.parametrize
 
 class Tests(FunctionalTestCase):
 
-    # @skip
     def test(self):
         container = Container()
         container.provide(Foo, Bar, Baz, Service)

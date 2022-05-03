@@ -24,40 +24,7 @@ logger = getLogger(__name__)
 
 
 _T_Pro = tuple[Container]
-_T_ProPath = tuple['Scope', Container, ProPredicate]
-_T_DepKey = t.Union[DepKey, Injectable]
-
-
-# class _CanonicalProPaths(FrozenDict[_T_ProMapKey, _T_Binding]):
-#     __slots__ = 'aliases',
-
-#     aliases: FrozenDict[_T_ProMapKey, _T_ProKey]
-
-#     __setdefault = dict.setdefault
-
-#     def __init__(self, *pro: abc.Iterable[Container]):
-#         static = pro[0]
-#         canonized_root = static, (),
-#         aliases = dict.fromkeys([
-#             (), 
-#             None,
-#             (None,),
-#             (None, ()),
-#             (None, None),
-#             *(k for c in pro for k in [c, (c,), (c, None), (c,())])
-#         ], canonized_root)
-#         aliases[canonized_root] = canonized_root
-#         self.__setattr(aliases=FrozenDict(aliases))
-#         assert all(k != v for k, v in self.aliases.values())
-
-#     def __missing__(self, key: _T_Binding):
-#         aliases, ke, i = self.aliases, key, 0
-#         while ke in aliases:
-#             i += 1
-#             if ke == (ke := aliases[ke]):
-#                 break
-#         return self.__setdefault(key, ke) if i else ke
-
+_T_Dep = t.Union[DepKey, Injectable]
 
 
 @private_setattr
@@ -85,10 +52,11 @@ class _ProResolver(ReadonlyDict[DepSrc, _T_Pro]):
         src.scope.extends(scope)
         pro = src.predicate.pro_entries(pro, scope, src)
         return self.__setdefault(src, tuple(pro))
-
+    
 
 @private_setattr
 class ResolutionStack(abc.Sequence):
+
     __slots__ = '__var',
 
     class StackItem(t.NamedTuple):
@@ -106,8 +74,7 @@ class ResolutionStack(abc.Sequence):
     @property
     def top(self):
         return self[0]
-
-    @contextmanager
+     
     def push(self, provider: Provider, abstract: Injectable=None):
         top = self.top
         new = self.StackItem(
@@ -115,12 +82,17 @@ class ResolutionStack(abc.Sequence):
             abstract or provider.abstract or top.abstract,
             provider
         )
-        token = self.__var.set((new,) + self[:])
-        try:
-            yield provider
-        finally:
-            self.__var.reset(token)
-       
+        self.__var.set((new,) + self[:])
+        return self
+        
+    def pop(self):
+        var = self.__var
+        stack = var.get()
+        if len(stack) < 2:
+            raise ValueError(f'too many calls to pop()')
+        var.set(stack[1:])
+        return stack[0]
+    
     def index(self, val, start=0, stop=None):
         stack = self.__var.get()[start:stop:]
 
@@ -153,14 +125,23 @@ class ResolutionStack(abc.Sequence):
 
     def __iter__(self):
         return iter(self.__var.get())
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *e):
+        self.pop()
 
-
+    def __copy__(self, *a):
+        raise TypeError(f'cannot copy {self.__class__.__qualname__}')
+        
+    __deepcopy__ = __reduce__ = __copy__ 
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Scope(ReadonlyDict[_T_DepKey, _T_Binding]):
+class Scope(ReadonlyDict[_T_Dep, _T_Binding]):
     """An isolated dependency resolution `scope` for a given container. 
 
     Scopes assemble the dependency graphs of dependencies registered in their container.
@@ -251,7 +232,6 @@ class Scope(ReadonlyDict[_T_DepKey, _T_Binding]):
 
     def find_provider(self, dep: DepKey):
         rv = [p for c in self.pros[dep.src] for p in c._resolve(dep, self)]
-        
         if rv:
             if len(rv) > 1:
                 rv.sort(key=lambda p: int(not not p.is_default))
@@ -260,35 +240,31 @@ class Scope(ReadonlyDict[_T_DepKey, _T_Binding]):
                         raise FinalProviderOverrideError(dep, final, overrides)
             return rv[0]
     
-    def resolve_binding(self, dep_: _T_DepKey, *, recursive: bool=True):
+    def resolve_binding(self, dep_: _T_Dep, *, recursive: bool=True):
         if not (bind := self.get(dep_, Missing)) is Missing:
             if recursive or not bind or self is bind.scope:
                 return bind
-            return
-        
-        dep = self.make_key(dep_)
-        if dep_ != dep:
+        elif dep_ != (dep := self.make_key(dep_)):
             bind = self.resolve_binding(dep)
             if dep in self:
                 bind = self.__setdefault(dep_, bind)
             if recursive or not bind or self is bind.scope:
                 return bind
-            return
+        elif is_injectable(dep.abstract):
+            abstract = dep.abstract
 
-        abstract = dep.abstract
-        if is_injectable(abstract):
             if prov := self.find_provider(dep):
 
                 if prov.container and not prov.container is dep.container:
                     return self.__setdefault(dep, self[self.make_key(abstract, prov.container)])
                 
-                with self._resolvestack.push(prov):
+                with self._resolvestack.push(prov, abstract):
                     if bind := prov._resolve(abstract, self):
                         return self.__setdefault(dep, bind)
             elif origin := t.get_origin(abstract):
                 if is_dependency_marker(origin):
                     if prov := self.find_provider(dep.replace(abstract=t.get_origin(abstract))):
-                        with self._resolvestack.push(prov):
+                        with self._resolvestack.push(prov, abstract):
                             if bind := prov._resolve(abstract, self):
                                 return self.__setdefault(dep, bind)
                 elif bind := self.resolve_binding(dep.replace(abstract=origin), recursive=False):
@@ -297,7 +273,7 @@ class Scope(ReadonlyDict[_T_DepKey, _T_Binding]):
             if recursive and ((bind := self.parent[dep]) or dep in self.parent):
                 return self.__setdefault(dep, bind)
         else:
-            raise TypeError(f'expected an `Injectable` not `{abstract.__class__.__qualname__}`')
+            raise TypeError(f'expected an `Injectable` not `{dep.abstract.__class__.__qualname__}`')
 
     __missing__ = resolve_binding
 

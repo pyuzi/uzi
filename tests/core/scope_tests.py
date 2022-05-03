@@ -170,33 +170,25 @@ def test_find_provider(new: _T_FnNew, MockContainer: type[Container], MockProvid
     assert p0 is base.find_provider(key)
     
 
-# @xfail(raises=FinalProviderOverrideError, strict=True)
-# def test_overridden_final_find_provider(new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
-#     c0, c1, c2 = (MockContainer() for i in range(3))
+@xfail(raises=FinalProviderOverrideError, strict=True)
+def test_overridden_final_find_provider(new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
+    c0, c1, c2 = (MockContainer() for i in range(3))
     
-#     c0.pro = (c0, c1, c2)
+    c0.pro = (c0, c1, c2)
 
-#     sub = new(c0)
+    sub = new(c0)
 
-#     p0 = MockProvider(name='P0')
-#     p0.is_default = False
-#     # p1.is_final = True
+    p0 = MockProvider(name='P0', is_final=False, is_default=False)
+    p1 = MockProvider(name='P1', is_final=True, is_default=False)
+    p2 = MockProvider(name='P2', is_final=False, is_default=False)
 
-#     p1 = MockProvider(name='P1')
-#     p1.is_default = False
-#     # p1.is_final = True
+    key = sub.make_key(_T)
 
-#     p2 = MockProvider(name='P2')
-#     p2.is_default = False
-#     p2.is_final = True
+    c0._resolve.return_value = p0,
+    c1._resolve.return_value = p1,
+    c2._resolve.return_value = p2,
 
-#     key = sub.make_key(_T)
-
-#     c0._resolve.return_value = p0,
-#     c1._resolve.return_value = p1,
-#     c2._resolve.return_value = p2,
-
-#     sub.find_provider(key)
+    sub.find_provider(key)
 
 
 def test_getitem(new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):

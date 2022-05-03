@@ -1,21 +1,16 @@
-from inspect import ismethod
+from asyncio import gather, sleep
+from copy import copy, deepcopy
+import pickle
 import typing as t
 import attr
 import pytest
 
-from unittest.mock import  MagicMock, Mock
 
-from collections.abc import Callable, Iterator, Set, MutableSet, Mapping
-from xdi._common import FrozenDict, ReadonlyDict
+from collections import abc
 
 
-from xdi import is_injectable
-from xdi.containers import Container
-from xdi.exceptions import FinalProviderOverrideError, ProError
-from xdi.markers import DepKey
 from xdi.providers import Provider
-from xdi._bindings import Binding
-from xdi.scopes import NullScope, ResolutionStack, Scope
+from xdi.scopes import ResolutionStack, Scope
 
 
 
@@ -29,7 +24,7 @@ parametrize = pytest.mark.parametrize
 _T = t.TypeVar('_T')
 _T_Scp = t.TypeVar('_T_Scp', bound=Scope)
 
-_T_FnNew = Callable[..., ResolutionStack]
+_T_FnNew = abc.Callable[..., ResolutionStack]
 
    
    
@@ -48,7 +43,7 @@ def cls():
 
 
 
-def test_resolution_stack(new: _T_FnNew, mock_container, mock_provider: Provider, MockContainer):
+def test_basic(new: _T_FnNew, mock_container, mock_provider: Provider, MockContainer):
     sub = new()
 
     assert sub
@@ -76,9 +71,56 @@ def test_resolution_stack(new: _T_FnNew, mock_container, mock_provider: Provider
     assert len(sub) == 1
 
 
+async def test_multiple_contexts(new: _T_FnNew, mock_container, MockProvider: type[Provider], MockContainer):
+    sub = new()
+
+    cont1, cont2 = MockContainer(), MockContainer()
+    prov1, prov2 = MockProvider(container=cont1), MockProvider(container=cont2),
+    pushes = 0
+
+    async def test(prov: Provider, x):
+        nonlocal pushes
+        with sub.push(prov, _T):
+            pushes += 1
+            await sleep(.0001)
+            assert pushes == 2
+            assert len(sub) ==  2
+            assert sub.top.container is prov.container
+            assert sub.top.abstract is _T
+            assert sub.top.provider is prov
+            assert x not in sub
+
+    await gather(test(prov1, prov2), test(prov2, prov1))
+
 
 @xfail(raises=ValueError, strict=True)
-def test_resolution_stack_index_valueerror(new: _T_FnNew, mock_provider: Provider):
+def test_index_value_error(new: _T_FnNew, mock_provider: Provider):
     sub = new()
     assert mock_provider not in sub
     sub.index(mock_provider)
+
+
+
+@xfail(raises=TypeError, strict=True)
+def test_copy(new: _T_FnNew):
+    copy(new())
+
+
+@xfail(raises=TypeError, strict=True)
+def test_deepcopy(new: _T_FnNew):
+    deepcopy(new())
+
+
+@xfail(raises=TypeError, strict=True)
+def test_pickle(new: _T_FnNew):
+    pickle.dumps(new())
+
+
+@xfail(raises=ValueError, strict=True)
+def test_invalid_pop(new: _T_FnNew, mock_provider: Provider):
+    sub = new()
+    sub.push(mock_provider)
+    res = sub.pop()
+    assert res.provider is mock_provider
+    sub.pop()
+    

@@ -31,12 +31,13 @@ class NullScopeTests(BaseTestCase[NullScope]):
     def test_basic(self, new: _T_FnNew):
         sub = new()
         assert isinstance(sub, NullScope)
-        assert isinstance(sub, FrozenDict)
+        assert isinstance(sub, Scope)
         assert sub.parent is None
         assert sub.level == -1
         assert not sub
         assert not sub.container
         assert not sub.pros
+        assert not sub.extends(new())
         str(sub)
         
     def test_compare(self, new: _T_FnNew):

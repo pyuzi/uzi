@@ -14,11 +14,11 @@ from .exceptions import ProError
 
 from . import Injectable, signals
 from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, DepKey, _PredicateOpsMixin, DepSrc, ProPredicate
-from ._common import private_setattr, FrozenDict
+from ._common import ReadonlyDict, private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
 
 
-if t.TYPE_CHECKING:
+if t.TYPE_CHECKING: # pragma: no cover
     from .scopes import Scope
 
 
@@ -29,7 +29,7 @@ logger = getLogger(__name__)
 
 @ProPredicate.register
 @private_setattr(frozen='_frozen')
-class Container(_PredicateOpsMixin, AbstractProviderRegistry, FrozenDict[Injectable, Provider]):
+class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injectable, Provider]):
     """A mapping of dependencies to their providers. We use them to bind 
     dependencies to their providers. 
    
@@ -44,7 +44,7 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, FrozenDict[Injecta
     name: str
     bases: tuple[Self]
     default_access_level: AccessLevel 
-    _pro: tuple[Self]
+    _pro: FrozenDict[Self, int]
     
     __setitem = dict[Injectable,  Provider].__setitem__
     __contains = dict[Injectable,  Provider].__contains__
@@ -67,14 +67,14 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, FrozenDict[Injecta
         return not not self._pro
 
     @property
-    def pro(self) -> tuple[Self]:
+    def pro(self):
         """The container's provider resolution order.
         
         Like python's class `__mro__` the `pro` is computed using 
         [C3 linearization](https://en.wikipedia.org/wiki/C3_linearization)
 
         Returns:
-            pro (tuple[Container]): 
+            pro (FrozenDict[Container, int]): 
         """
         if pro := self._pro:
             return pro
@@ -82,23 +82,23 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, FrozenDict[Injecta
         return self._pro
 
     def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: DepSrc) -> abc.Iterable['Container']:
-        own = self.pro
-        return tuple(c for c in it if c in own)
+        pro = self.pro
+        return tuple(c for c in it if c in pro)
         
     def _evaluate_pro(self):
         bases = [*self.bases]
 
         if not bases:
-            return self,
+            return FrozenDict({ self : 0 })
 
-        res = {self: 0}
         ml = [*([*b.pro] for b in bases), [*bases]]
+        res = {self: 0}
         
         i, miss = 0, 0
         while ml:
             if i == len(ml):
                 if miss >= i:
-                    raise ProError(f'Cannot create a consistent provider resolution {miss=}, {ml=}')
+                    raise ProError(f'Cannot create a consistent provider resolution order {miss=}, {ml=}')
                 i = 0
             ls = ml[i]
             h = ls[0]
@@ -117,7 +117,7 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, FrozenDict[Injecta
             else:
                 ml.pop(i)
 
-        return *res,
+        return FrozenDict({c: i for i,c in enumerate(res)})
 
     def extend(self, *bases: Self) -> Self:
         """Adds containers to extended by this container.
@@ -206,3 +206,5 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, FrozenDict[Injecta
     def __hash__(self):
         return hash(id(self))
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.name!r})'

@@ -35,7 +35,6 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         sub = new()
         assert isinstance(sub, Injector)
         assert isinstance(sub, NullInjector)
-        assert isinstance(sub, FrozenDict)
         assert isinstance(sub.scope, Scope)
         assert sub.parent is None
         assert not sub

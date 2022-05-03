@@ -11,7 +11,7 @@ import attr
 from typing_extensions import Self
 from collections import abc
 
-from ._common import Missing, private_setattr, FrozenDict
+from ._common import Missing, ReadonlyDict, private_setattr, FrozenDict
 from .markers import AccessLevel, Dep, DepKey, DepSrc, ProNoopPredicate, ProPredicate, is_dependency_marker
 from .providers import Provider
 
@@ -61,7 +61,7 @@ _T_DepKey = t.Union[DepKey, Injectable]
 
 
 @private_setattr
-class _ProResolver(FrozenDict[DepSrc, _T_Pro]):
+class _ProResolver(ReadonlyDict[DepSrc, _T_Pro]):
     __slots__ = 'scope', 'pro',
 
     scope: 'Scope'
@@ -87,16 +87,19 @@ class _ProResolver(FrozenDict[DepSrc, _T_Pro]):
         return self.__setdefault(src, tuple(pro))
 
 
-
-
 @private_setattr
 class ResolutionStack(abc.Sequence):
     __slots__ = '__var',
 
-    __var: ContextVar[tuple[tuple[Provider, Container]]]
+    class StackItem(t.NamedTuple):
+        container: Container
+        abstract: Injectable = None
+        provider: Provider = None
+
+    __var: ContextVar[tuple[StackItem]]
 
     def __init__(self, default: Container):
-        stack=(None, default),
+        stack= self.StackItem(default),
         self.__var = ContextVar(f'{default.name}.{self.__class__.__name__}', default=stack)
         self.__var.set(stack)
 
@@ -104,18 +107,15 @@ class ResolutionStack(abc.Sequence):
     def top(self):
         return self[0]
 
-    @property
-    def top_container(self):
-        return self[0][1]
-
-    @property
-    def top_provider(self):
-        return self[0][0]
-
     @contextmanager
-    def push(self, provider: Provider):
-        top = provider, provider.container or self.top_container
-        token = self.__var.set((top,) + self[:])
+    def push(self, provider: Provider, abstract: Injectable=None):
+        top = self.top
+        new = self.StackItem(
+            provider.container or top.container, 
+            abstract or provider.abstract or top.abstract,
+            provider
+        )
+        token = self.__var.set((new,) + self[:])
         try:
             yield provider
         finally:
@@ -160,7 +160,7 @@ class ResolutionStack(abc.Sequence):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Scope(FrozenDict[_T_DepKey, _T_Binding]):
+class Scope(ReadonlyDict[_T_DepKey, _T_Binding]):
     """An isolated dependency resolution `scope` for a given container. 
 
     Scopes assemble the dependency graphs of dependencies registered in their container.
@@ -245,7 +245,7 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
         else:
             return self._key_class(
                 abstract,
-                container or (self._resolvestack.top_container),
+                container or (self._resolvestack.top.container),
                 predicate
             )
 
@@ -278,6 +278,7 @@ class Scope(FrozenDict[_T_DepKey, _T_Binding]):
         abstract = dep.abstract
         if is_injectable(abstract):
             if prov := self.find_provider(dep):
+
                 if prov.container and not prov.container is dep.container:
                     return self.__setdefault(dep, self[self.make_key(abstract, prov.container)])
                 

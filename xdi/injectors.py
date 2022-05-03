@@ -10,7 +10,7 @@ from typing_extensions import Self
 from . import providers
 from .core import Injectable, T_Injectable, T_Injected
 from .exceptions import InjectorLookupError
-from ._common import Missing, FrozenDict, private_setattr
+from ._common import Missing, FrozenDict, ReadonlyDict, private_setattr
 from ._bindings import Binding
 
 
@@ -30,7 +30,7 @@ TContextBinding = Callable[
 
 
 @private_setattr
-class Injector(FrozenDict[T_Injectable, Callable[[], T_Injected]]):
+class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     """An isolated dependency injection context for a given `Scope`. 
     
     Attributes:
@@ -103,7 +103,8 @@ class Injector(FrozenDict[T_Injectable, Callable[[], T_Injected]]):
     def __repr__(self) -> str:
         return f"<{self!s}, {self.parent!r}>"
     
-    __hash__ = FrozenDict.__hash__
+    def __hash__(self):
+        return hash(self.scope)
 
     def __eq__(self, x):
         if isinstance(x, Injector):
@@ -115,9 +116,7 @@ class Injector(FrozenDict[T_Injectable, Callable[[], T_Injected]]):
             return not x == self
         return NotImplemented
 
-    def _hash_items_(self):
-        return self.scope
-        
+
 
 
 from xdi.scopes import NullScope
@@ -139,8 +138,6 @@ class NullInjector(Injector):
 
     parent: t.Final = None
     scope: NullScope = NullScope()
-
-    __hash__ = FrozenDict.__hash__
 
     def __init__(self, *a, **kw) -> None: ...
     

@@ -6,12 +6,13 @@ import pytest
 from unittest.mock import  MagicMock, Mock
 
 from collections.abc import Callable, Iterator, Set, MutableSet, Mapping
-from xdi._common import FrozenDict
+from xdi._common import FrozenDict, ReadonlyDict
 
 
 from xdi import is_injectable
 from xdi.containers import Container
-from xdi.exceptions import ProError
+from xdi.exceptions import FinalProviderOverrideError, ProError
+from xdi.markers import DepKey
 from xdi.providers import Provider
 from xdi._bindings import Binding
 from xdi.scopes import NullScope, Scope
@@ -28,7 +29,7 @@ parametrize = pytest.mark.parametrize
 _T = t.TypeVar('_T')
 _T_Scp = t.TypeVar('_T_Scp', bound=Scope)
 
-_T_FnNew = Callable[..., _T_Scp]
+_T_FnNew = Callable[..., Scope]
 
    
    
@@ -54,7 +55,6 @@ def immutable_attrs(cls):
 def test_basic(new: _T_FnNew, MockDependency):
     sub = new()
     assert isinstance(sub, Scope)
-    assert isinstance(sub, FrozenDict)
     assert isinstance(sub.container, Container)
     assert isinstance(sub.parent, NullScope)
     assert isinstance(sub.pros, Mapping)
@@ -125,33 +125,9 @@ def test_parent_with_container(new: _T_FnNew, MockContainer: type[Container]):
     sub = new(c1)
     assert sub.container is c1
     new(c2, sub)
-
-def _test_maps(new: _T_FnNew, MockContainer: type[Container]):
-    c1, c2, c3, c4, c5 = (MockContainer() for i in range(5))
-    pro = c1, c2, c3, c5, c4, c3, c5
-    c1.pro = pro
-    sub = new(c1)
-    assert sub.container is c1
-    assert sub.maps & {*pro} == {*pro}
-    assert all(c in sub for c in {*pro})
-
-def _test_maps_with_parents(new: _T_FnNew, MockContainer: type[Container]):
-    ca, c2, c3, cb, c5, c6 = (MockContainer() for i in range(6))
-    pro_a = ca, c2, c3, c5,
-    pro_b = cb, c3, c5, c6,
-
-    ca.pro = pro_a
-    cb.pro = pro_b
-
-    sub_a = new(ca)
-    sub_b = new(cb, sub_a)
-    assert sub_a.maps & {*pro_a} == {*pro_a}
-    assert sub_b.maps & {cb, c6} == {cb, c6}
-    assert all(c in sub_a for c in {*pro_a})
-    assert all(c in sub_b for c in {*pro_a, *pro_b})
-    assert all(not c in sub_a for c in {*pro_b} - {*pro_a})
     
-def _test_resolve_providers(new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
+    
+def test_find_provider(new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
     c0, c1, c2, c3 = (MockContainer() for i in range(4))
     
     c1.pro = (c1, c2, c3)
@@ -171,26 +147,57 @@ def _test_resolve_providers(new: _T_FnNew, MockContainer: type[Container], MockP
     p3 = MockProvider(name='P3')
     p3.is_default = False
 
-    assert base.resolve_providers(_T) == sub.resolve_providers(_T) == []
+    key = sub.make_key(_T)
 
-    c0.__getitem__.return_value = p0
-    c1.__getitem__.return_value = p1
-    c2.__getitem__.return_value = p2
-    c3.__getitem__.return_value = p3
+    assert base.find_provider(key) == sub.find_provider(key) == None
 
-    assert [p0] == base.resolve_providers(_T)
-    assert [p1, p2, p3] == sub.resolve_providers(_T)
+    c0._resolve.return_value = p0,
+    c1._resolve.return_value = p1,
+    c2._resolve.return_value = p2,
+    c3._resolve.return_value = p3,
+
+    assert p0 is base.find_provider(key)
+    assert p1 is sub.find_provider(key)
 
     p1.is_default = True
-    assert [p2, p3, p1] == sub.resolve_providers(_T)
+    assert p2 is sub.find_provider(key)
 
     p2.is_default = True
-    assert [p3, p1, p2] == sub.resolve_providers(_T)
+    assert p3 is sub.find_provider(key)
     
     p3.is_default = True
-    assert [p1, p2, p3] == sub.resolve_providers(_T)
+    assert p1 is sub.find_provider(key)
+    assert p0 is base.find_provider(key)
+    
 
-    assert [p0] == base.resolve_providers(_T)
+# @xfail(raises=FinalProviderOverrideError, strict=True)
+# def test_overridden_final_find_provider(new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
+#     c0, c1, c2 = (MockContainer() for i in range(3))
+    
+#     c0.pro = (c0, c1, c2)
+
+#     sub = new(c0)
+
+#     p0 = MockProvider(name='P0')
+#     p0.is_default = False
+#     # p1.is_final = True
+
+#     p1 = MockProvider(name='P1')
+#     p1.is_default = False
+#     # p1.is_final = True
+
+#     p2 = MockProvider(name='P2')
+#     p2.is_default = False
+#     p2.is_final = True
+
+#     key = sub.make_key(_T)
+
+#     c0._resolve.return_value = p0,
+#     c1._resolve.return_value = p1,
+#     c2._resolve.return_value = p2,
+
+#     sub.find_provider(key)
+
 
 def test_getitem(new: _T_FnNew, MockContainer: type[Container], MockProvider: type[Provider]):
     ca, ca1, ca2, cb, cb1, cb2 = (MockContainer() for i in range(6))
@@ -223,12 +230,6 @@ def test_getitem(new: _T_FnNew, MockContainer: type[Container], MockProvider: ty
     ca2.__getitem__ = Mock(wraps=lambda k: pa1 if k is _Ta else None )
     cb1.__getitem__ = Mock(wraps=lambda k: pb0 if k is _Tb else None )
     cb2.__getitem__ = Mock(wraps=lambda k: pb1 if k is _Tb else None )
-    
-    # assert [pa1, pa0] == sub_a.resolve_providers(_Ta)
-    # assert [pb1, pb0] == sub_b.resolve_providers(_Tb)
-
-    # assert [] == sub_a.resolve_providers(_Tb)
-    # assert [] == sub_b.resolve_providers(_Ta)
 
     assert not(_Ta in sub_a or _Ta in sub_b)
     assert not(_Tb in sub_a or _Tb in sub_b)

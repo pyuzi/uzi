@@ -23,7 +23,10 @@ _T_New = abc.Callable[...,T_Pred]
 T_New = type[T_Pred]
 
 
-  
+@ProPredicate.register
+class TestPred: 
+    ...
+
 
 @pytest.fixture
 def immutable_attrs(cls):
@@ -78,6 +81,18 @@ def test_immutable(new_predicate: _T_New, immutable_attrs):
     assertions.is_immutable(new_predicate(), immutable_attrs)
 
 
+
+def test_simple_and(new_predicate: _T_New):
+    sub1, sub2 = new_predicate(), new_predicate()
+    assert sub1 == sub2 and sub1 == (sub1 & sub2)
+    res = sub1 & ~sub2
+    assert res != sub1 != ~sub2
+    assert isinstance(res, ProAndPredicate)
+
+def test_simple_rand(new_predicate: _T_New):
+    assert isinstance(TestPred() & new_predicate(), ProAndPredicate)
+
+
 def test_simple_invert(new_predicate: _T_New):
     sub = new_predicate()
     res = ~sub
@@ -93,30 +108,29 @@ def test_simple_or(new_predicate: _T_New):
     assert isinstance(res, ProOrPredicate)
 
 
+def test_simple_ror(new_predicate: _T_New):
+    assert isinstance(TestPred() | new_predicate(), ProOrPredicate)
+
+
 @xfail(raises=TypeError, strict=True)
 def test_invalid_or(new_predicate: _T_New):
-    sub = new_predicate()
-    sub | {1,2,3}
+    new_predicate() | {1,2,3}
     
 
 @xfail(raises=TypeError, strict=True)
 def test_invalid_and(new_predicate: _T_New):
-    sub = new_predicate()
-    sub & {1,2,3}
-    
+    new_predicate() & {1,2,3}
+  
+
 @xfail(raises=TypeError, strict=True)
-def test_invalid_compare(new_predicate: _T_New):
-    sub = new_predicate()
-    sub > (1,2,3)
+def test_invalid_rand(new_predicate: _T_New):
+    {1,2,3} & new_predicate()
     
 
-def test_simple_and(new_predicate: _T_New):
-    sub1, sub2 = new_predicate(), new_predicate()
-    assert sub1 == sub2 and sub1 == (sub1 & sub2)
-    res = sub1 & ~sub2
-    assert res != sub1 != ~sub2
-    assert isinstance(res, ProAndPredicate)
-
+@xfail(raises=TypeError, strict=True)
+def test_invalid_ror(new_predicate: _T_New):
+    {1,2,3} | new_predicate()
+    
 
 
 def test_pro_entries():

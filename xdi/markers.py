@@ -133,6 +133,16 @@ class _PredicateOpsMixin:
             return ProAndPredicate(self, x)
         return NotImplemented
    
+    def __ror__(self, x):    
+        if isinstance(x, ProPredicate):
+            return ProOrPredicate(x, self)
+        return NotImplemented
+
+    def __rand__(self, x):
+        if isinstance(x, ProPredicate):
+            return ProAndPredicate(x, self)
+        return NotImplemented
+   
     def __invert__(self):
         return ProInvertPredicate(self)
 
@@ -512,12 +522,10 @@ class PureDep(DependencyMarker, t.Generic[T_Injectable]):
     _ident: T_Injected
 
     default: T_Default = Missing
-    predicate: ProPredicate = ProNoopPredicate()
+    predicate: ProPredicate = _noop_pred
 
-    # scope: ScopePredicate = ScopePredicate.any
     has_default: bool = False
     injects_default: bool = False
-    # container: t.Union[_ProContext, 'ProSlice', 'Container'] = _ProContext.this
 
     def __new__(cls: type[Self], abstract: T_Injectable) -> Self:
         if abstract.__class__ is cls:

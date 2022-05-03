@@ -45,7 +45,6 @@ class InjectorTests(BaseTestCase[Injector]):
     def test_basic(self, new: _T_FnNew):
         sub = new()
         assert isinstance(sub, Injector)
-        assert isinstance(sub, FrozenDict)
         assert isinstance(sub.scope, Scope)
         assert isinstance(sub.parent, Injector)
         assert sub

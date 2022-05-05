@@ -55,8 +55,8 @@ def test_setup(new: _T_FnNew, cls: type[SafeScope], MockInjector):
         inj.close =MagicMock(wraps=load_fn)
         return inj
 
-    with patch.object(cls, 'new_injector'):
-        cls.new_injector = MagicMock(wraps=load_mock)
+    with patch.object(cls, '_new_injector'):
+        cls._new_injector = MagicMock(wraps=load_mock)
         sub = new()
 
         res = [None] * N
@@ -72,6 +72,7 @@ def test_setup(new: _T_FnNew, cls: type[SafeScope], MockInjector):
 
         seen = set()
         for i, (active, locked, val) in enumerate(res):
+            print(f'{i} -> {active=}, {locked=} {val=}')
             if i == 0:
                 assert not active
                 assert not locked
@@ -79,8 +80,7 @@ def test_setup(new: _T_FnNew, cls: type[SafeScope], MockInjector):
                 assert active or locked
                 assert val in seen
             seen.add(val)
-            print(f'{i} -> {active=}, {locked=} {val=}')
         
         sub.reset()
-        sub.new_injector.assert_called_once()
+        sub._new_injector.assert_called_once()
 

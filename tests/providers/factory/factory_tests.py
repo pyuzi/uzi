@@ -1,5 +1,7 @@
 import asyncio
 from collections import abc
+from functools import partial
+from inspect import Signature
 import pytest
 
 import typing as t
@@ -31,3 +33,9 @@ class FactoryProviderTests(ProviderTestCase[Provider]):
         subject.asynchronous()
         assert subject.is_async
     
+
+    def test_get_signature(self, new: _T_NewPro):
+        subject = new()
+        subject.use(partial(subject.concrete))
+        sig = subject.get_signature()
+        assert isinstance(sig, Signature)

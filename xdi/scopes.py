@@ -44,7 +44,6 @@ class Scope(t.Generic[_T_Injector]):
         "current",
         "initial",
         "parent",
-        "lock",
     )
 
     graph: DepGraph
@@ -111,26 +110,35 @@ class Scope(t.Generic[_T_Injector]):
         elif setup:
             return self.setup()
         else:
-            return self.new_injector()
+            return self._new_injector()
 
-    def new_injector(self):
+    def _new_injector(self):
         return self._injector_class(self.graph, self.parent.injector())
 
     def setup(self):
         if self.is_active:
-            raise InjectorError(f"injector already running: {self}")
-        return self._set_current_injector(self.new_injector())
+           raise InjectorError(f"injector already running: {self}")
+        return self._do_setup()
+
+    def _do_setup(self):
+        if self.is_active:
+            return self.current
+        inj = self._new_injector()
+        self._set_current_injector(inj)
+        return inj
 
     def reset(self):
         if not self.is_active:
             raise InjectorError(f"injector not running: {self}")
+        return self._do_teardown()
 
-        self.current.close()
-        self._set_current_injector(self.initial)
+    def _do_teardown(self):
+        if self.is_active:
+            self.current.close()
+            self._set_current_injector(self.initial)
 
     def _set_current_injector(self, injector: _T_Injector):
         self.__setattr('current', injector, injector is self.initial)
-        return injector
 
     def __eq__(self, o) -> bool:
         if isinstance(o, Scope):
@@ -150,6 +158,13 @@ class Scope(t.Generic[_T_Injector]):
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.name!r}, parent="{self.parent!s}")'
+
+    def __enter__(self):
+        return self.injector()
+    
+    def __exit__(self, *err):
+        self.reset()
+        return err and err[0] != None or False
 
 
 
@@ -172,20 +187,14 @@ class SafeScope(Scope[_T_Injector]):
             raise InjectorError(f"injector already running: {self}")
         
         with self.lock:
-            if self.is_active:
-                return self.current
-            return self._set_current_injector(self.new_injector())
+            return self._do_setup()
 
     def reset(self):
-        if not self.is_active:
-            raise InjectorError(f"injector not running: {self}")
-
-        with self.lock:
-            if self.is_active:
-                current = self.current
-                self._set_current_injector(self.initial)
-                current.close()
-        
+        if self.is_active:
+            with self.lock:
+                return self._do_teardown()
+            
+        raise InjectorError(f"injector not running: {self}")
 
 
 
@@ -224,12 +233,17 @@ class ContextScope(Scope[_T_Injector]):
 
 
 
+
+
 class _Local(local, t.Generic[_T_Injector]):
 
     injector: _T_Injector
 
     def __init__(self, injector=_null_injector) -> None:
         self.injector = injector
+
+
+
 
 class ThreadScope(Scope[_T_Injector]):
     """A scope that uses `threading.local` to manage injectors

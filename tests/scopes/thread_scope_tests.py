@@ -58,8 +58,8 @@ def test_setup(new: _T_FnNew, cls: type[ThreadScope], MockInjector):
         res[n] = sub.is_active, sub.injector()
 
 
-    with patch.object(cls, 'new_injector'):
-        cls.new_injector = MagicMock(wraps=load_mock)
+    with patch.object(cls, '_new_injector'):
+        cls._new_injector = MagicMock(wraps=load_mock)
         sub = new()
 
         res = [None] * N
@@ -82,5 +82,5 @@ def test_setup(new: _T_FnNew, cls: type[ThreadScope], MockInjector):
             seen.add(val)
 
         assert len(seen) == N
-        assert sub.new_injector.call_count == N + 1
+        assert sub._new_injector.call_count == N + 1
 

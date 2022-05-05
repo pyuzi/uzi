@@ -45,3 +45,4 @@ class Tests(FunctionalTestCase):
         assert injector.make(entry)
 
 
+        

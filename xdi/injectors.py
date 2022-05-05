@@ -15,7 +15,7 @@ from ._bindings import Binding
 
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .scopes import Scope
+    from .scopes import Scope, NullScope
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,9 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     __contains = dict.__contains__
     __ior = dict.__ior__
 
+    def close(self):
+        ...
+
     def copy(self):
         return self.__class__(self.scope, self.parent).__ior(self)
 
@@ -119,7 +122,6 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
 
 
 
-from xdi.scopes import NullScope
 
 
 
@@ -137,7 +139,16 @@ class NullInjector(Injector):
     __slots__ = ()
 
     parent: t.Final = None
-    scope: NullScope = NullScope()
+    _scope: 'NullScope' = None
+
+    @property
+    def scope(self):
+        if not (scp := self._scope) is None:
+            return scp
+        else:
+            from xdi.scopes import NullScope
+            scp = self.__class__._scope = NullScope()
+            return scp
 
     def __init__(self, *a, **kw) -> None: ...
     
@@ -155,6 +166,14 @@ class NullInjector(Injector):
         return False
 
     __contains__ = __bool__
+    
+    def __eq__(self, o) -> bool:
+        return o.__class__ is self.__class__ 
+
+    def __ne__(self, o) -> bool:
+        return not o.__class__ is self.__class__ 
+
+    __hash__ = classmethod(hash)
    
    
     

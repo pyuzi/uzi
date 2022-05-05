@@ -23,7 +23,7 @@ _T_Scp = t.TypeVar('_T_Scp', bound=Scope)
 _T_FnNew = Callable[..., _T_Scp]
 
 
-
+@pytest.mark.skip
 class NullScopeTests(BaseTestCase[NullScope]):
 
     type_: t.ClassVar[type[_T_Scp]] = NullScope

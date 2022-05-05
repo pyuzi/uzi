@@ -10,7 +10,7 @@ from collections import abc
 
 
 from xdi.providers import Provider
-from xdi.scopes import ResolutionStack, Scope
+from xdi.containers import ResolutionStack
 
 
 
@@ -22,15 +22,10 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Scope)
 
 _T_FnNew = abc.Callable[..., ResolutionStack]
 
    
-   
-# class ScopeTest(BaseTestCase[_T_Scp]):
-
-# type_: t.ClassVar[type[_T_Scp]] = Scope
 
 @pytest.fixture
 def new_args(mock_container):

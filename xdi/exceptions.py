@@ -41,6 +41,12 @@ class ProError(TypeError, XdiException):
 
 
 
+class InjectorError(TypeError, XdiException):
+    ...
+
+
+
+
 from .providers import Provider
 from .core import Injectable
 from .scopes import Scope

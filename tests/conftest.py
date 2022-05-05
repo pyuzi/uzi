@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
 from xdi import is_injectable
-from xdi.containers import Container
+from xdi.containers import BindingResolver, Container
 from xdi.core import Injectable
 from xdi.injectors import Injector
 from xdi.markers import DepKey, DepSrc, ProPredicate
@@ -142,8 +142,8 @@ def MockScope(MockContainer, MockDependency):
     def make(spec=Scope, *, parent=True, **kw):
         mi = NonCallableMagicMock(spec, **kw)
         mi.container = cm = MockContainer()
-        mi.maps = dict.fromkeys((cm, MockContainer())).keys()
-        mi.__contains__ = MagicMock(operator.__contains__, wraps=lambda k: deps.get(k) or is_injectable(k)) 
+        # mi.maps = dict.fromkeys((cm, MockContainer())).keys()
+        # mi.__contains__ = MagicMock(operator.__contains__, wraps=lambda k: deps.get(k) or is_injectable(k)) 
         
         deps = {}
 
@@ -162,18 +162,55 @@ def MockScope(MockContainer, MockDependency):
             # else:
             #     return deps.setdefault(k, getitem((k,cm)))
 
-        mi.__getitem__ = mi.find_local = Mock(wraps=getitem)
-        mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))
+        mi.__getitem__ = Mock(wraps=getitem)
+        # mi.__setitem__ = Mock(wraps=lambda k, v: deps.__setitem__(k, v))
 
         if parent:
             mi.parent = make(parent=parent-1) if parent is True else parent
-            mi.find_remote = mi.parent.__getitem__
 
         for k,v in kw.items():
             setattr(mi, k, v)
 
         return mi
     return MagicMock(type[Container], wraps=make)
+
+
+
+@pytest.fixture
+def MockBindingResolver(MockContainer, MockScope: type[Scope], MockDependency):
+    def make(spec=BindingResolver, *, parent=True, **kw):
+        mi: BindingResolver = NonCallableMagicMock(spec)
+        
+        deps = {}
+
+        def getitem(k):
+            if k in deps:
+                return deps[k]
+            elif not isinstance(k, DepKey):
+                return deps.setdefault(k, getitem(DepKey(k, mi.container)))
+                
+            return deps.setdefault(k, MockDependency(abstract=k, scope=mi))
+
+        if parent:
+            kw['parent'] = parent = make(parent=parent-1) if parent is True else parent
+
+        if not 'container' in kw:
+            kw['container'] = MockContainer()
+
+        if not 'scope' in kw:
+            kw['scope'] = MockScope(bindings=mi, parent=parent and parent.scope or None)
+        
+        if not '__contains__' in kw:
+            kw['__contains__'] = MagicMock(operator.__contains__, wraps=lambda k: deps.get(k) or is_injectable(k)) 
+        
+        if not '__getitem__' in kw:
+            kw['__getitem__'] = MagicMock(operator.getitem, wraps=getitem) 
+        
+        for k,v in kw.items():
+            setattr(mi, k, v)
+
+        return mi
+    return MagicMock(type[BindingResolver], wraps=make)
 
 
 @pytest.fixture

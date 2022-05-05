@@ -23,7 +23,7 @@ if t.TYPE_CHECKING:  # pragma: no cover
     from ._bindings import Binding
     from .containers import Container
     from .injectors import Injector
-    from .scopes import Scope
+    from .graph import DepGraph
 
 
 logger = getLogger(__name__)
@@ -193,7 +193,7 @@ class BoundParams:
     def bind(
         cls,
         sig: Signature,
-        scope: "Scope" = None,
+        scope: "DepGraph" = None,
         container: "Container" = None,
         args: tuple = (),
         kwargs: dict = FrozenDict(),
@@ -204,7 +204,7 @@ class BoundParams:
     def _iter_bind(
         cls,
         sig: Signature,
-        scope: "Scope" = None,
+        scope: "DepGraph" = None,
         container: "Container" = None,
         args=(),
         kwargs=FrozenDict(),

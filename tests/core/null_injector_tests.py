@@ -12,7 +12,7 @@ from xdi._bindings import SimpleBinding
 from xdi.injectors import Injector, NullInjector
 
 
-from xdi.scopes import NullScope, Scope
+from xdi.graph import NullGraph, DepGraph
 
 
 
@@ -35,7 +35,7 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         sub = new()
         assert isinstance(sub, Injector)
         assert isinstance(sub, NullInjector)
-        assert isinstance(sub.scope, Scope)
+        assert isinstance(sub.scope, DepGraph)
         assert sub.parent is None
         assert not sub
         assert not sub.scope
@@ -58,7 +58,7 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         self.assert_immutable(new(), immutable_attrs)
 
     @xfail(raises=InjectorLookupError, strict=True)
-    @parametrize('key', [_T, SimpleBinding(_T, NullScope(), concrete=MagicMock())])
+    @parametrize('key', [_T, SimpleBinding(_T, NullGraph(), concrete=MagicMock())])
     def test_lookup_error(self, new: _T_FnNew, key):
         new()[key]
    

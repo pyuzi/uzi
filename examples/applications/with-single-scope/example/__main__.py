@@ -2,7 +2,7 @@
 
 import sys
 
-from xdi import Injector, Scope
+from xdi import Injector, DepGraph
 
 from .services import UserService, AuthService, PhotoService
 from .di import ioc
@@ -22,7 +22,7 @@ def main(
     photo_service.upload_photo(user, photo)
 
 
-scope = Scope(ioc)
+scope = DepGraph(ioc)
 
 if __name__ == "__main__":
     Injector(scope).make(main, *sys.argv[1:])

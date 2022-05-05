@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi._common import FrozenDict
 
 
-from xdi.scopes import NullScope, Scope
+from xdi.graph import NullGraph, DepGraph
 
 
 
@@ -18,20 +18,20 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Scope)
+_T_Scp = t.TypeVar('_T_Scp', bound=DepGraph)
 
 _T_FnNew = Callable[..., _T_Scp]
 
 
 @pytest.mark.skip
-class NullScopeTests(BaseTestCase[NullScope]):
+class NullScopeTests(BaseTestCase[NullGraph]):
 
-    type_: t.ClassVar[type[_T_Scp]] = NullScope
+    type_: t.ClassVar[type[_T_Scp]] = NullGraph
 
     def test_basic(self, new: _T_FnNew):
         sub = new()
-        assert isinstance(sub, NullScope)
-        assert isinstance(sub, Scope)
+        assert isinstance(sub, NullGraph)
+        assert isinstance(sub, DepGraph)
         assert sub.parent is None
         assert sub.level == -1
         assert not sub
@@ -42,10 +42,10 @@ class NullScopeTests(BaseTestCase[NullScope]):
         
     def test_compare(self, new: _T_FnNew):
         sub = new()
-        assert sub == NullScope()
-        assert not sub != NullScope()
-        assert not sub is NullScope()
-        assert hash(sub) == hash(NullScope())
+        assert sub == NullGraph()
+        assert not sub != NullGraph()
+        assert not sub is NullGraph()
+        assert hash(sub) == hash(NullGraph())
 
     def test_is_blank(self, new: _T_FnNew):
         sub = new()

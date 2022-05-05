@@ -12,7 +12,7 @@ from xdi.containers import Container
 from xdi.exceptions import ProError
 from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, DepKey, ProNoopPredicate, ProPredicate
 from xdi.providers import Provider, AbstractProviderRegistry
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 
 from ..abc import BaseTestCase
@@ -148,7 +148,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert isinstance(c1 | pred, ProPredicate)
         assert isinstance(pred | c1, ProPredicate)
 
-    def test__resolve(self, new: _T_FnNew, mock_scope: Scope, MockDepKey: type[DepKey], MockProvider: type[Provider]):
+    def test__resolve(self, new: _T_FnNew, mock_scope: DepGraph, MockDepKey: type[DepKey], MockProvider: type[Provider]):
         T1, T2, T3, T4 = t.TypeVar('T1'), t.TypeVar('T2'), t.TypeVar('T3'), t.TypeVar('T4'),
         c1, c2, c3 = new('child'), new('subject'), new('base')
         c1.extend(c2.extend(c3))

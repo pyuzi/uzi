@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 from xdi.markers import Dep
 from xdi.providers import DepMarkerProvider as Provider
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 from .abc import ProviderTestCase, _T_NewPro
 

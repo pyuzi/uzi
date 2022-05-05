@@ -18,7 +18,7 @@ from .exceptions import InjectorLookupError
 
 if t.TYPE_CHECKING: # pragma: no cover
     from .providers import Provider
-    from .scopes import Scope
+    from .graph import DepGraph
     from .injectors import Injector
     from .containers import Container
 
@@ -40,7 +40,7 @@ class Binding(ABC, t.Generic[_T_Concrete]):
         raise NotImplementedError(f'{self.__class__.__name__}.bind()')  # pragma: no cover
 
     abstract: T_Injectable = attr.ib()
-    scope: "Scope" = attr.ib()
+    scope: "DepGraph" = attr.ib()
     provider: "Provider" = attr.ib(default=None, repr=lambda p: str(p and id(p)))
 
     concrete: _T_Concrete = attr.ib(kw_only=True, default=Missing, repr=True)
@@ -103,12 +103,12 @@ class LookupErrorBinding:
 
     __slots__ = 'abstract', 'scope',
 
-    scope: 'Scope'
+    scope: 'DepGraph'
     container = None
     is_async: bool = False
     dependencies = frozenset[Self]()
 
-    def __new__(cls: type[Self], abstract=None, scope: 'Scope'=None, provider=None, concrete=None) -> Self:
+    def __new__(cls: type[Self], abstract=None, scope: 'DepGraph'=None, provider=None, concrete=None) -> Self:
         self = _object_new(cls)
         self.__setattr(abstract=abstract, scope=scope)
         return self

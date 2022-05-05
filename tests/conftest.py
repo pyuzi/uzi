@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
 from xdi import is_injectable
-from xdi.containers import BindingResolver, Container
+from xdi.containers import Container
 from xdi.core import Injectable
 from xdi.injectors import Injector
 from xdi.markers import DepKey, DepSrc, ProPredicate
 from xdi.providers import Provider
 
 from xdi._bindings import Binding
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 
 
@@ -139,8 +139,8 @@ def MockProvider(MockDependency):
 
 @pytest.fixture
 def MockScope(MockContainer, MockDependency):
-    def make(spec=Scope, *, parent=True, **kw):
-        mi = NonCallableMagicMock(spec, **kw)
+    def make(spec=DepGraph, *, parent=True, **kw):
+        mi: DepGraph = NonCallableMagicMock(spec, **kw)
         mi.container = cm = MockContainer()
         # mi.maps = dict.fromkeys((cm, MockContainer())).keys()
         # mi.__contains__ = MagicMock(operator.__contains__, wraps=lambda k: deps.get(k) or is_injectable(k)) 
@@ -177,9 +177,9 @@ def MockScope(MockContainer, MockDependency):
 
 
 @pytest.fixture
-def MockBindingResolver(MockContainer, MockScope: type[Scope], MockDependency):
-    def make(spec=BindingResolver, *, parent=True, **kw):
-        mi: BindingResolver = NonCallableMagicMock(spec)
+def MockBindingResolver(MockContainer, MockScope: type[DepGraph], MockDependency):
+    def make(spec=DepGraph, *, parent=True, **kw):
+        mi: DepGraph = NonCallableMagicMock(spec)
         
         deps = {}
 
@@ -210,7 +210,7 @@ def MockBindingResolver(MockContainer, MockScope: type[Scope], MockDependency):
             setattr(mi, k, v)
 
         return mi
-    return MagicMock(type[BindingResolver], wraps=make)
+    return MagicMock(type[DepGraph], wraps=make)
 
 
 @pytest.fixture
@@ -225,15 +225,26 @@ def MockProPredicate():
     return MagicMock(type[ProPredicate], wraps=make) 
 
 
+
+class _MockDepKey(NonCallableMagicMock):
+
+    def __init__(self, spec=DepKey, assign: dict=None, **kw) -> None:
+        super().__init__(spec, **kw)
+        if assign:
+            for k,v in assign.items():
+                setattr(self, k, v)
+
+
+
 @pytest.fixture
 def MockDepKey(MockDepSrc):
     def make(spec=DepKey, **kw):
-        mi = NonCallableMagicMock(spec)
+        mi: DepKey = NonCallableMagicMock(spec)
         mi.abstract = Mock(Injectable)
         mi.src = src = MockDepSrc()
         mi.container = src.container
         mi.predicate =  src.predicate
-        mi.scope =  src.scope
+        mi.graph =  src.scope
 
         for k,v in kw.items():
             setattr(mi, k, v)
@@ -243,9 +254,9 @@ def MockDepKey(MockDepSrc):
 @pytest.fixture
 def MockDepSrc(mock_scope, mock_pro_predicate):
     def make(spec=DepSrc, **kw):
-        mi = MagicMock(spec)
+        mi: DepSrc = MagicMock(spec)
         mi.container =  mock_scope.container
-        mi.scope =  mock_scope
+        mi.graph =  mock_scope
         mi.predicate = mock_pro_predicate
         
         for k,v in kw.items():

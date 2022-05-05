@@ -8,7 +8,7 @@ import typing as t
 
 from xdi.providers import Alias as Provider
 from xdi._bindings import Binding
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 
 from .abc import ProviderTestCase, AsyncProviderTestCase, _T_NewPro
@@ -29,7 +29,7 @@ class AliasProviderTests(ProviderTestCase[Provider]):
     def concrete(self):
         return _Ta
 
-    def test_resolve(self, cls, abstract, concrete, new: _T_NewPro, mock_scope: Scope):
+    def test_resolve(self, cls, abstract, concrete, new: _T_NewPro, mock_scope: DepGraph):
         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
         mock_scope.__getitem__.assert_called_once_with(concrete)
         

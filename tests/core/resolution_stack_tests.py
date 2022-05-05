@@ -10,7 +10,7 @@ from collections import abc
 
 
 from xdi.providers import Provider
-from xdi.containers import ResolutionStack
+from xdi.graph import ResolutionStack
 
 
 

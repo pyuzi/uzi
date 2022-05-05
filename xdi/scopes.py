@@ -1,4 +1,3 @@
-from abc import ABCMeta, abstractmethod
 from contextvars import ContextVar
 from logging import getLogger
 from threading import Lock, local
@@ -6,9 +5,7 @@ import typing as t
 
 import attr
 from typing_extensions import Self
-from collections import abc
 
-from contextlib import nullcontext
 
 from ._common import Missing, ReadonlyDict, private_setattr, FrozenDict
 from .markers import (
@@ -22,11 +19,9 @@ from .markers import (
 )
 from .providers import Provider
 
-from .core import Injectable, is_injectable
-from ._bindings import _T_Binding, LookupErrorBinding
-from .exceptions import FinalProviderOverrideError, InjectorError, ProError
-from .containers import Container, BindingResolver, NullBindings
-
+from .exceptions import InjectorError
+from .containers import Container
+from .graph import DepGraph, _null_graph
 from .injectors import Injector, NullInjector, _null_injector
 
 logger = getLogger(__name__)
@@ -36,6 +31,7 @@ _T_Injector = t.TypeVar("_T_Injector", bound=Injector, covariant=True)
 _T_Initial = t.Union[_T_Injector, t.Literal[_null_injector]] # type: ignore
 
 _object_new = object.__new__
+
 
 
 @private_setattr
@@ -55,14 +51,14 @@ class Scope(t.Generic[_T_Injector]):
     """
 
     __slots__ = (
-        "bindings",
+        "graph",
         "current",
         "initial",
         "parent",
         "_injector_class",
     )
 
-    bindings: BindingResolver
+    graph: DepGraph
     parent: Self
     current: _T_Injector
     initial: _T_Initial[_T_Injector]
@@ -73,18 +69,18 @@ class Scope(t.Generic[_T_Injector]):
         container: Container = None,
         parent: Self = None,
         *,
-        bindings: BindingResolver = None,
+        graph: DepGraph = None,
         injector_class: type[_T_Injector] = None,
         initial: _T_Initial[_T_Injector] = None,
         **kwargs,
     ) -> None:
-        if not bindings:
+        if not graph:
             if not container:
-                ValueError(f"one of arguments `container` or `bindings` is required.")
-            bindings = container.new_binding_resolver()
+                ValueError(f"one of arguments `container` or `graph` is required.")
+            graph = container.new_binding_resolver()
         elif container:
             raise ValueError(
-                f"arguments `container` and `bindings` are mutually exclusive."
+                f"arguments `container` and `graph` are mutually exclusive."
             )
 
         if initial is None:
@@ -92,19 +88,19 @@ class Scope(t.Generic[_T_Injector]):
 
         self.__setattr(
             **self._attrs_init(
-                parent=parent or NullScope(),
-                bindings=bindings,
+                parent=parent or NullGraph(),
+                graph=graph,
                 initial=initial,
                 _injector_class=injector_class or Injector,
                 **kwargs,
             )
         )
-        bindings.setup(self)
+        graph.setup(self)
         self._set_injector(initial)
 
     @property
     def container(self):
-        return self.bindings.container
+        return self.graph.container
 
     @property
     def name(self):
@@ -115,7 +111,7 @@ class Scope(t.Generic[_T_Injector]):
         return self.initial is self.current
 
     def __getitem__(self, key):
-        return self.bindings[key]
+        return self.graph[key]
 
     def _attrs_init(self, **kwds):
         return kwds
@@ -149,12 +145,12 @@ class Scope(t.Generic[_T_Injector]):
         return injector
 
     def __eq__(self, o) -> bool:
-        if isinstance(o, BindingResolver):
+        if isinstance(o, Scope):
             return o is self
         return NotImplemented
 
     def __ne__(self, o) -> bool:
-        if isinstance(o, BindingResolver):
+        if isinstance(o, Scope):
             return not o is self
         return NotImplemented
 
@@ -166,6 +162,8 @@ class Scope(t.Generic[_T_Injector]):
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.name!r}, parent="{self.parent!s}")'
+
+
 
 
 class SafeScope(Scope[_T_Injector]):
@@ -232,18 +230,18 @@ class ThreadScope(Scope[_T_Injector]):
         return injector
 
 
-class NullScope(Scope[NullInjector]):
+class NullGraph(Scope[NullInjector]):
     """A 'noop' `Scope` used as the parent of root scopes.
 
     Attributes:
         parent (None): The parent scope
-        bindings (NullBindings):
+        graph (NullGraph):
     """
 
     __slots__ = ()
     parent = None
     level = -1
-    bindings = NullBindings()
+    graph = _null_graph
     name = "<null>"
 
     def __init__(self) -> None:
@@ -262,3 +260,6 @@ class NullScope(Scope[NullInjector]):
 
     def injector(self, *, setup=True, create=True):
         return _null_injector
+
+
+

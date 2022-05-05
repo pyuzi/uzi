@@ -8,7 +8,7 @@ import typing as t
 
 from xdi.providers import UnionProvider as Provider
 
-from xdi import Scope, is_injectable
+from xdi import DepGraph, is_injectable
 
  
 
@@ -64,7 +64,7 @@ class UnionProviderTests(ProviderTestCase[Provider]):
         assert all(is_injectable(a) for a in result)
         return subject, result
         
-    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_scope: Scope):
+    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_scope: DepGraph):
         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
         expected = self.expected[abstract][1]
         calls = [mock.call(inj) for inj in  expected]

@@ -15,7 +15,7 @@ from ._bindings import Binding
 
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .scopes import Scope, NullScope
+    from .graph import DepGraph, NullGraph
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +44,10 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     """
     __slots__ = 'scope', 'parent',
 
-    scope: "Scope"
+    scope: "DepGraph"
     parent: Self
 
-    def __init__(self, scope: 'Scope', parent: Self=None):
+    def __init__(self, scope: 'DepGraph', parent: Self=None):
         self.__setattr(scope=scope, parent= parent or _null_injector)
 
     @property
@@ -139,15 +139,15 @@ class NullInjector(Injector):
     __slots__ = ()
 
     parent: t.Final = None
-    _scope: 'NullScope' = None
+    _scope: 'NullGraph' = None
 
     @property
     def scope(self):
         if not (scp := self._scope) is None:
             return scp
         else:
-            from xdi.scopes import NullScope
-            scp = self.__class__._scope = NullScope()
+            from xdi.graph import NullGraph
+            scp = self.__class__._scope = NullGraph()
             return scp
 
     def __init__(self, *a, **kw) -> None: ...

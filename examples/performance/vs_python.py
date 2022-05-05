@@ -1,7 +1,7 @@
 
 from functools import cache
 from typing import Union
-from xdi import Container, Scope
+from xdi import Container, DepGraph
 
 
 from _benchmarkutil import Benchmark, Timer
@@ -102,7 +102,7 @@ mkservice = lambda: Service(mkfoo(), mkbar(), mkbaz(), foobar=mkfoobar(), foobar
 _n = int(5e3)
 
 with Timer() as tm:
-    scp = Scope(ioc)
+    scp = DepGraph(ioc)
     inj = Injector(scp)
 
     bfoo = Benchmark('Foo.', _n).run(py=mkfoo, xdi=inj.bound(Foo))

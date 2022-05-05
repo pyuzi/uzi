@@ -16,7 +16,7 @@ for cls in ALL_DEPS:
         ioc.factory(cls)
 
 
-scope = xdi.Scope(ioc)
+scope = xdi.DepGraph(ioc)
 
 injector = xdi.Injector(scope)
 

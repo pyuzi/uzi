@@ -10,7 +10,7 @@ from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC
 
 from xdi.providers import Provider
 from xdi._bindings import Binding
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 
 from ..abc import BaseTestCase
@@ -195,7 +195,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         assert tuple(subject.when(replace=True).filters) == ()
         return subject
 
-    def test_apply_filters(self, abstract, new: _T_New_, mock_scope: Scope):
+    def test_apply_filters(self, abstract, new: _T_New_, mock_scope: DepGraph):
         subject = new()
         
         f0, f1, f2, f3, f4 = (Mock(Callable, return_value=True, name=f'filter[{i}]') for i in range(5))
@@ -218,7 +218,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         return subject
     
 
-    def test__can_resolve_calls__freeze(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: Scope):
+    def test__can_resolve_calls__freeze(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: DepGraph):
         with patch.object(cls, '_freeze'):
             subject = new()
             # subject._freeze.return_value = True
@@ -272,7 +272,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         
 
     @xfail(raises=NotImplementedError, strict=False)
-    def test__make_binding(self, cls: type[_T_Pro], abstract, mock_scope: Scope, new: _T_New_):
+    def test__make_binding(self, cls: type[_T_Pro], abstract, mock_scope: DepGraph, new: _T_New_):
         orig = cls._binding_kwargs
         with patch.object(cls, '_binding_kwargs', wraps=lambda *a, **kw: orig(subject, *a, **kw)):
             subject = new()
@@ -281,13 +281,13 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
             subject._binding_kwargs.assert_called_once()
             return subject, dep
 
-    def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: Scope):
+    def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: DepGraph):
         subject = new()
         res = subject._resolve(abstract, mock_scope)
         assert isinstance(res, Binding)
         return subject, res    
 
-    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: Scope, mock_injector):
+    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: DepGraph, mock_injector):
         subject = new()
         dep = subject._resolve(abstract, mock_scope)
 

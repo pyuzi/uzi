@@ -20,7 +20,7 @@ from ._common.lookups import Lookup as BaseLookup
 
 if t.TYPE_CHECKING: # pragma: no cover
     from .containers import Container
-    from .scopes import Scope
+    from .graph import DepGraph
 
 
 logger = getLogger(__name__)
@@ -103,7 +103,7 @@ class _PredicateBase:
         return self
 
     @abstractmethod
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:  # pragma: no cover
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:  # pragma: no cover
         raise NotImplementedError(f'{self.__class__.__qualname__}.pro_entries()')
 
     def __copy__(self):
@@ -235,7 +235,7 @@ class AccessLevel(ProEnumPredicate, Enum):
             return _access_lavel_rawvalues[val] 
         return super()._missing_(val)
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
         return tuple(c for c in it if self in c.access_level(src.container))
 
     def __contains__(self, obj) -> bool:
@@ -263,8 +263,8 @@ class ScopePredicate(ProEnumPredicate, Enum):
             return _scope_predicate_rawvalues[val] 
         return super()._missing_(val)
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
-        return it if (scope is src.scope) is self._rawvalue_ else ()
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
+        return it if (scope is src.graph) is self._rawvalue_ else ()
 
 
 _scope_predicate_rawvalues = {l._rawvalue_: l for l in ScopePredicate}
@@ -395,7 +395,7 @@ class ProSlice(ProPredicate, t.Generic[_T_Start, _T_Stop, _T_Step]):
     def step(self):
         return self.vars[2]
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
         it = tuple(it)
         start, stop, step = self.vars
         if isinstance(start, ProPredicate):
@@ -443,8 +443,8 @@ _noop_pred = ProNoopPredicate()
 
 
 class DepSrc(t.NamedTuple):
+    graph: 'DepGraph'
     container: 'Container'
-    scope: 'Scope' = None
     predicate: ProPredicate = _noop_pred
 
 
@@ -458,16 +458,16 @@ class DepKey:
     abstract: Injectable
     src: DepSrc
 
-    scope: 'Scope' = None
+    graph: 'DepGraph' = None
 
     def __init_subclass__(cls, scope=None) -> None:
-        cls.scope = scope
+        cls.graph = scope
         return super().__init_subclass__()
 
     def __new__(cls: type[Self], abstract: Injectable, container: 'Container'=None, predicate: ProPredicate=ProNoopPredicate()) -> Self:
         self, src = _object_new(cls), DepSrc(
+            cls.graph,
             container, 
-            cls.scope,
             predicate or _noop_pred
         )
         self.__setattr(abstract=abstract, src=src, _ash=hash((abstract, src)))

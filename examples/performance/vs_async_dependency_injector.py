@@ -76,7 +76,7 @@ async def main():
     c.wire([__name__])
     # c.init_resources()
 
-    scope = xdi.Scope(ioc)
+    scope = xdi.DepGraph(ioc)
 
     if inj := xdi.injectors.Injector(scope):
 

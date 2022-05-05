@@ -10,7 +10,6 @@ from collections.abc import Callable, Iterator, Mapping
 
 from xdi.containers import Container
 from xdi.exceptions import FinalProviderOverrideError, ProError
-from xdi.markers import DepKey
 from xdi.providers import Provider
 from xdi._bindings import Binding
 from xdi.graph import NullGraph, DepGraph
@@ -24,16 +23,11 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=DepGraph)
 
 _T_FnNew = Callable[..., DepGraph]
 
    
    
-pytest.skip('E', allow_module_level=True)
-# class ScopeTest(BaseTestCase[_T_Scp]):
-
-# type_: t.ClassVar[type[_T_Scp]] = Scope
 
 @pytest.fixture
 def new_args(MockContainer: type[Container]):
@@ -78,13 +72,13 @@ def test_compare(new: _T_FnNew, MockContainer: type[Container]):
     c1 = MockContainer()
     sub1, sub2 = new(c1), new(c1),
     assert sub1.container is c1 is sub2.container
-    assert sub1 == sub2 and not (sub1 != sub2)
+    assert sub1 != sub2 and not (sub1 == sub2)
     assert sub1 != c1 and not(sub1 == c1)
-    assert hash(sub1) == hash(sub2)
+    assert hash(sub1) != hash(sub2)
 
     c2 = MockContainer()
     sub11, sub22, sub3 = new(c2, sub1), new(c2, sub2), new(MockContainer(), sub2)
-    assert sub11 == sub22
+    assert sub11 != sub22
     assert sub11 != sub3 
     assert sub22 != sub3 
         

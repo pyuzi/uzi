@@ -306,6 +306,13 @@ class NullGraph(DepGraph):
         else:
             raise TypeError(f'Bindings keys must be `Injectable` not `{key.__class__.__qualname__}`')
         
+    def __eq__(self, o) -> bool:
+        return o.__class__ is self.__class__
+
+    def __ne__(self, o) -> bool:
+        return not o.__class__ is self.__class__
+
+    __hash__ = classmethod(hash)
 
 _null_graph = NullGraph()
 

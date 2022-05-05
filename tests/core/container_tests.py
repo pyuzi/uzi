@@ -11,7 +11,7 @@ from xdi._common import FrozenDict, ReadonlyDict
 from xdi.containers import Container
 from xdi.exceptions import ProError
 from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, ProNoopPredicate, ProPredicate
-from xdi.providers import Provider, AbstractProviderRegistry
+from xdi.providers import Provider, ProviderRegistry
 from xdi.graph import DepGraph, DepKey
 
 
@@ -38,7 +38,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         sub = new('test_ioc')
         str(sub)
         assert isinstance(sub, Container)
-        assert isinstance(sub, AbstractProviderRegistry)
+        assert isinstance(sub, ProviderRegistry)
         assert isinstance(sub.bases, tuple)
 
         assert sub

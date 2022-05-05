@@ -6,7 +6,7 @@ import pytest
 from collections.abc import Callable
 from xdi import providers
 from xdi.containers import Container
-from xdi.providers import AbstractProviderRegistry
+from xdi.providers import ProviderRegistry
 
 
 
@@ -19,7 +19,7 @@ parametrize = pytest.mark.parametrize
 
 ProviderRegistry = Container
 
-_T_Reg = t.TypeVar('_T_Reg', bound=AbstractProviderRegistry)
+_T_Reg = t.TypeVar('_T_Reg', bound=ProviderRegistry)
 
 _T_FnNew = Callable[..., _T_Reg]
 
@@ -42,7 +42,7 @@ class ProviderRegistryTests(BaseTestCase[ProviderRegistry]):
 
     def test_basic(self, new: _T_FnNew):
         sub = new()
-        assert isinstance(sub, AbstractProviderRegistry)
+        assert isinstance(sub, ProviderRegistry)
 
     def test_provide(self, new: _T_FnNew):
         sub = new()

@@ -9,7 +9,7 @@ from .exceptions import ProError
 from . import signals
 from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, _PredicateOpsMixin, Injectable, ProPredicate, is_injectable
 from ._common import ReadonlyDict, private_setattr, FrozenDict
-from .providers import Provider, AbstractProviderRegistry
+from .providers import Provider, ProviderRegistry
 
 
 if t.TYPE_CHECKING: # pragma: no cover
@@ -24,7 +24,7 @@ _dict_setdefault = dict['DepGraph', 'DepGraph'].setdefault
 
 @ProPredicate.register
 @private_setattr(frozen='_frozen')
-class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injectable, Provider]):
+class Container(_PredicateOpsMixin, ProviderRegistry, ReadonlyDict[Injectable, Provider]):
     """A mapping of dependencies to their providers. We use them to bind 
     dependencies to their providers. 
    

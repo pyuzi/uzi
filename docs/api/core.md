@@ -1,3 +1,0 @@
-# core
-
-::: xdi.core

@@ -36,13 +36,15 @@ class InjectorLookupError(KeyError, XdiException):
 
 
 class ProError(TypeError, XdiException):
-    ...
+    """Raised when there is an issue with provider resolution order (`pro`) 
+        consistency
+    """
 
 
 
 
 class InjectorError(TypeError, XdiException):
-    ...
+    """Raise by `Scope`s"""
 
 
 

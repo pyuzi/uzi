@@ -3,13 +3,13 @@ from ._common import Missing
 
 
 from .markers import (
-    Injectable, is_injectable, T_Injected, T_Injectable
+    Injectable, is_injectable, T_Injected, T_Injectable,
+    Dep, DependencyMarker, Lookup, PureDep
 )
 
 
 from .exceptions import InjectorLookupError, XdiException
 
-from .markers import Dep, DependencyMarker, Lookup, PureDep
 
 from . import injectors, providers
 from .containers import Container

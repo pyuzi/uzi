@@ -205,6 +205,9 @@ def MockGraph(MockContainer, MockBinding):
         if not '__getitem__' in kw:
             kw['__getitem__'] = MagicMock(operator.getitem, wraps=getitem) 
         
+        if not '__setitem__' in kw:
+            kw['__setitem__'] = MagicMock(operator.setitem, wraps=deps.__setitem__) 
+        
         for k,v in kw.items():
             setattr(mi, k, v)
 

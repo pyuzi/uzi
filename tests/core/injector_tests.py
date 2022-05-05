@@ -70,6 +70,4 @@ class InjectorTests(BaseTestCase[Injector]):
             sub[key]
         else:
             sub.make(key)
-
-   
-       
+            

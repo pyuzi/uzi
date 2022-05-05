@@ -45,8 +45,8 @@ class LookupMarkerProviderTests(ProviderTestCase[Provider]):
         return Lookup(Foo).bar.run(1, 2, 3, k1=1, k2=2).a["list"][2:-2]
 
     @pytest.fixture
-    def mock_injector(self, mock_scope, mock_injector):
-        mock_injector[mock_scope[Foo]] = MagicMock(type[Foo], wraps=Foo)
+    def mock_injector(self, mock_graph, mock_injector):
+        mock_injector[mock_graph[Foo]] = MagicMock(type[Foo], wraps=Foo)
         return mock_injector
 
     

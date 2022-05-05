@@ -8,7 +8,7 @@ import typing as t
 
 from xdi.providers import Alias as Provider
 from xdi._bindings import Binding
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 
 from .abc import ProviderTestCase, AsyncProviderTestCase, _T_NewPro
@@ -29,9 +29,9 @@ class AliasProviderTests(ProviderTestCase[Provider]):
     def concrete(self):
         return _Ta
 
-    def test_resolve(self, cls, abstract, concrete, new: _T_NewPro, mock_scope: Scope):
-        subject, res = super().test_resolve(cls, abstract, new, mock_scope)
-        mock_scope.__getitem__.assert_called_once_with(concrete)
+    def test_resolve(self, cls, abstract, concrete, new: _T_NewPro, mock_graph: DepGraph):
+        subject, res = super().test_resolve(cls, abstract, new, mock_graph)
+        mock_graph.__getitem__.assert_called_once_with(concrete)
         
 
 
@@ -41,9 +41,9 @@ class AliasProviderTests(ProviderTestCase[Provider]):
 # class AsyncAliasProviderTests(AliasProviderTests, AsyncProviderTestCase):
 
 #     @pytest.fixture
-#     def scope(self, scope, value_setter):
+#     def graph(self, graph, value_setter):
 #         fn = lambda inj: value_setter
 #         fn.is_async = True
-#         scope[_Ta] = fn
-#         return scope
+#         graph[_Ta] = fn
+#         return graph
 

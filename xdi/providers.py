@@ -16,8 +16,8 @@ from . import _bindings as bindings
 from ._bindings import _T_Binding, _T_Concrete, Binding
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
-from .core import Injectable, T_Injectable, T_Injected, is_injectable
-from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, Dep, DepKey, DependencyMarker, Lookup, PureDep
+from .markers import Injectable, T_Injectable, T_Injected, is_injectable
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, Dep, DependencyMarker, Lookup, PureDep
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
     _UnionType = type(t.Union[t.Any, None])
@@ -30,7 +30,7 @@ _AnnotatedType = type(t.Annotated[t.Any, 'ann'])
 
 if t.TYPE_CHECKING:  # pragma: no cover
     from .containers import Container
-    from .scopes import Injector, Scope
+    from .graph import DepKey, DepGraph
 
 
 
@@ -101,7 +101,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     
     is_async: bool = attr.ib(init=False, default=None)
     
-    filters: tuple[abc.Callable[['Scope', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
+    filters: tuple[abc.Callable[['DepGraph', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
     
     _binding_class: t.ClassVar[type[_T_Binding]] = None
     _default_binding_kwargs: t.ClassVar = {}
@@ -189,7 +189,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         self.__setattr(access_level=PUBLIC)
         return self
  
-    def _can_resolve(self, dep: DepKey, scope: "Scope") -> bool:
+    def _can_resolve(self, dep: 'DepKey', scope: "DepGraph") -> bool:
         """Check whether this provider is avaliable to the given dep.
 
         Unlike `_resolve`, this method will be called on all matching dependencies.
@@ -211,7 +211,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
                 return False
         return True
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope') -> _T_Binding:
+    def _resolve(self, abstract: T_Injectable, scope: 'DepGraph') -> _T_Binding:
         """Resolves the given dependency.
 
         Args:
@@ -311,7 +311,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     def _binding_kwargs(self, **kwds):
         return self._default_binding_kwargs | kwds
 
-    def _make_binding(self, abstract: T_Injectable, scope: 'Scope', **kwds):
+    def _make_binding(self, abstract: T_Injectable, scope: 'DepGraph', **kwds):
         if cls := self._binding_class:
             return cls(abstract, scope, self, **self._binding_kwargs(**kwds))
         raise NotImplementedError(f'{self.__class__.__name__}._make_dependency()') # pragma: no cover
@@ -333,7 +333,7 @@ class Alias(Provider[T_Injectable, bindings._T_Binding]):
         concrete (Injectable): The dependency to be proxied
     """
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
+    def _resolve(self, abstract: T_Injectable, scope: 'DepGraph'):
         return scope[self.concrete]
   
   
@@ -544,7 +544,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding
     def _is_async_factory(self) -> bool:
         return iscoroutinefunction(self.concrete)
 
-    def _bind_params(self, scope: "Scope", abstract: Injectable, *, sig=None, arguments=()):
+    def _bind_params(self, scope: "DepGraph", abstract: Injectable, *, sig=None, arguments=()):
         sig = sig or self.get_signature(abstract)
         args, kwargs = arguments or self.arguments
         return BoundParams.bind(sig, scope, self.container, args, kwargs)
@@ -553,7 +553,7 @@ class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding
         kwds.setdefault('concrete', self.concrete)
         return super()._binding_kwargs(**kwds)
 
-    def _make_binding(self, abstract: T_Injectable, scope: 'Scope', **kwds):
+    def _make_binding(self, abstract: T_Injectable, scope: 'DepGraph', **kwds):
         params = self._bind_params(scope, abstract)
         if params.is_async:
             if self.is_async:
@@ -685,7 +685,7 @@ class LookupMarkerProvider(Factory[lookups.look, bindings._T_FactoryBinding]):
     abstract = Lookup
     concrete = attr.ib(init=False, default=lookups.look)
 
-    def _bind_params(self, scope: "Scope", marker: Lookup, *, sig=None, arguments=()):
+    def _bind_params(self, scope: "DepGraph", marker: Lookup, *, sig=None, arguments=()):
         if not arguments:
             abstract = marker.__abstract__
             arguments = (lookups.Lookup(*marker),), FrozenDict(root=Dep(abstract))
@@ -707,7 +707,7 @@ class UnionProvider(Provider[_T_Concrete]):
     def get_injectable_args(self, abstract: Injectable):
         return filter(is_injectable, self.get_all_args(abstract))
 
-    def _resolve(self, abstract: T_Injectable, scope: 'Scope'):
+    def _resolve(self, abstract: T_Injectable, scope: 'DepGraph'):
         for arg in self.get_injectable_args(abstract):
             if rv := scope[arg]:
                 return rv
@@ -743,7 +743,7 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     concrete = attr.ib(init=False, default=Dep)
     _binding_class = bindings.Value
 
-    def _resolve(self, marker: Dep, scope: 'Scope') -> bindings.Binding:
+    def _resolve(self, marker: Dep, scope: 'DepGraph') -> bindings.Binding:
         dep = scope.make_key(marker.abstract, predicate=marker.predicate)
         if bind := scope[dep]:
             return bind

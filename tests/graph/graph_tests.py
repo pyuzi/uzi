@@ -1,41 +1,33 @@
-from inspect import ismethod
+from inspect import isfunction, ismethod
 import typing as t
 import attr
 import pytest
 
-from unittest.mock import  MagicMock, Mock
+from unittest.mock import  Mock
 
-from collections.abc import Callable, Iterator, Set, MutableSet, Mapping
-from xdi._common import FrozenDict, ReadonlyDict
+from collections.abc import Callable, Iterator, Mapping
 
 
-from xdi import is_injectable
 from xdi.containers import Container
 from xdi.exceptions import FinalProviderOverrideError, ProError
-from xdi.markers import DepKey
 from xdi.providers import Provider
 from xdi._bindings import Binding
-from xdi.scopes import NullScope, Scope
+from xdi.graph import NullGraph, DepGraph
 
 
-
-from ..abc import BaseTestCase
-from .. import assertions
+from .. import checks
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
+
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Scope)
 
-_T_FnNew = Callable[..., Scope]
+_T_FnNew = Callable[..., DepGraph]
 
    
    
-# class ScopeTest(BaseTestCase[_T_Scp]):
-
-# type_: t.ClassVar[type[_T_Scp]] = Scope
 
 @pytest.fixture
 def new_args(MockContainer: type[Container]):
@@ -43,20 +35,20 @@ def new_args(MockContainer: type[Container]):
 
 @pytest.fixture
 def cls():
-    return Scope
+    return DepGraph
 
 
 
 @pytest.fixture
 def immutable_attrs(cls):
-    return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or ismethod(getattr(cls, a)))]
+    return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or isfunction(getattr(cls, a)))]
 
 
-def test_basic(new: _T_FnNew, MockDependency):
+def test_basic(new: _T_FnNew, MockBinding):
     sub = new()
-    assert isinstance(sub, Scope)
+    assert isinstance(sub, DepGraph)
     assert isinstance(sub.container, Container)
-    assert isinstance(sub.parent, NullScope)
+    assert isinstance(sub.parent, NullGraph)
     assert isinstance(sub.pros, Mapping)
     assert sub.container in sub.pros
     assert sub
@@ -73,27 +65,26 @@ def test_container(new: _T_FnNew, MockContainer: type[Container]):
     assert sub.container is container
     assert sub.name == container.name
 
-def test_immutable(new: _T_FnNew, immutable_attrs):
-    assertions.is_immutable(new(), immutable_attrs)
+test_immutable = checks.is_immutable
     
 def test_compare(new: _T_FnNew, MockContainer: type[Container]):
     c1 = MockContainer()
     sub1, sub2 = new(c1), new(c1),
     assert sub1.container is c1 is sub2.container
-    assert sub1 == sub2 and not (sub1 != sub2)
+    assert sub1 != sub2 and not (sub1 == sub2)
     assert sub1 != c1 and not(sub1 == c1)
-    assert hash(sub1) == hash(sub2)
+    assert hash(sub1) != hash(sub2)
 
     c2 = MockContainer()
     sub11, sub22, sub3 = new(c2, sub1), new(c2, sub2), new(MockContainer(), sub2)
-    assert sub11 == sub22
+    assert sub11 != sub22
     assert sub11 != sub3 
     assert sub22 != sub3 
         
 def test_parent(new: _T_FnNew, MockContainer: type[Container]):
     sub = new(MockContainer(), None)
     assert not sub.parent
-    assert isinstance(sub.parent, NullScope)
+    assert isinstance(sub.parent, NullGraph)
     assert sub.level == 0
     sub2 = new(MockContainer(), sub)
     assert sub2.parent is sub
@@ -251,29 +242,29 @@ def test_getitem(new: _T_FnNew, MockContainer: type[Container], MockProvider: ty
 def test_fail_invalid_getitem(new: _T_FnNew):
     new()[2345.6789]
     
-def _test_find_local(new: _T_FnNew, mock_scope: Scope):
-    mock_scope.__contains__.return_value = False
-    sub = new(parent=mock_scope)
-    dep = mock_scope[_T]
+def _test_find_local(new: _T_FnNew, mock_graph: DepGraph):
+    mock_graph.__contains__.return_value = False
+    sub = new(parent=mock_graph)
+    dep = mock_graph[_T]
     assert isinstance(dep, Binding)
     assert sub.find_local(_T) is None
     assert sub[_T] is dep
     assert sub.find_local(_T) is None 
 
-def _test_find_local_existing(new: _T_FnNew, mock_scope: Scope, mock_provider: Provider):
-    mock_scope.__contains__.return_value = False
-    sub = new(parent=mock_scope)
+def _test_find_local_existing(new: _T_FnNew, mock_graph: DepGraph, mock_provider: Provider):
+    mock_graph.__contains__.return_value = False
+    sub = new(parent=mock_graph)
     sub.container.__getitem__.return_value = mock_provider
     dep = mock_provider._resolve(_T, sub)
     assert isinstance(dep, Binding)
     assert sub.find_local(_T) is dep
     assert sub[_T] is dep
     
-def _test_find_remote(new: _T_FnNew, mock_scope: Scope, mock_provider: Provider):
-    mock_scope.__contains__.return_value = False
-    sub = new(parent=mock_scope)
+def _test_find_remote(new: _T_FnNew, mock_graph: DepGraph, mock_provider: Provider):
+    mock_graph.__contains__.return_value = False
+    sub = new(parent=mock_graph)
     sub.container.__getitem__.return_value = mock_provider
-    rdep = mock_scope[_T]
+    rdep = mock_graph[_T]
 
     assert isinstance(rdep, Binding)
     assert sub.find_remote(_T) is rdep

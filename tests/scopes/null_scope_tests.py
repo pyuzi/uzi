@@ -1,10 +1,11 @@
 import typing as t
-import attr
 import pytest
 
 
-from collections.abc import Callable, Iterator, Set, MutableSet
-from xdi._common import FrozenDict
+from collections.abc import Callable
+from xdi.graph import NullGraph
+from xdi.injectors import NullInjector
+
 
 
 from xdi.scopes import NullScope, Scope
@@ -18,15 +19,13 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Scope)
 
-_T_FnNew = Callable[..., _T_Scp]
-
+_T_FnNew = Callable[..., NullScope]
 
 
 class NullScopeTests(BaseTestCase[NullScope]):
 
-    type_: t.ClassVar[type[_T_Scp]] = NullScope
+    type_ = NullScope
 
     def test_basic(self, new: _T_FnNew):
         sub = new()
@@ -34,24 +33,17 @@ class NullScopeTests(BaseTestCase[NullScope]):
         assert isinstance(sub, Scope)
         assert sub.parent is None
         assert sub.level == -1
+        assert isinstance(sub.graph, NullGraph)
         assert not sub
         assert not sub.container
-        assert not sub.pros
-        assert not sub.extends(new())
         str(sub)
         
     def test_compare(self, new: _T_FnNew):
         sub = new()
-        assert sub == NullScope()
-        assert not sub != NullScope()
-        assert not sub is NullScope()
-        assert hash(sub) == hash(NullScope())
-
-    def test_is_blank(self, new: _T_FnNew):
-        sub = new()
-        assert len(sub) == 0
-        assert not sub[_T]
-        assert not _T in sub
+        assert sub == new()
+        assert not sub != new()
+        assert not sub is new()
+        assert hash(sub) == hash(new())
 
     @xfail(raises=TypeError, strict=True)
     def test_fail_invalid_getitem(self, new: _T_FnNew):
@@ -59,3 +51,8 @@ class NullScopeTests(BaseTestCase[NullScope]):
              
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)
+ 
+    def test_injector(self, new: _T_FnNew):
+        sub = new()
+        assert sub.injector() is sub.injector()
+        assert isinstance(sub.injector(), NullInjector)

@@ -51,9 +51,9 @@ class LookupErrorDependencyTests(BaseTestCase[Dependency]):
         assert cp == subject
         return subject, cp
 
-    def test_compare(self, new: _T_NewDep, abstract, mock_scope):
+    def test_compare(self, new: _T_NewDep, abstract, mock_graph):
         subject, subject_2 = new(), new()
-        simp = SimpleBinding(abstract, mock_scope)
+        simp = SimpleBinding(abstract, mock_graph)
         assert subject.__class__ is subject_2.__class__
         assert subject == subject_2 == abstract
         assert subject != object()

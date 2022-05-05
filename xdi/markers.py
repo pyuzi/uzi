@@ -1,29 +1,124 @@
 from functools import reduce, wraps
 from inspect import Parameter, signature
-from itertools import chain
 from logging import getLogger
 import operator
-from types import GenericAlias, new_class
+from types import FunctionType, GenericAlias, MethodType
 import typing as t
 from abc import ABC, ABCMeta, abstractmethod
-from collections import abc, namedtuple
-from enum import Enum, IntEnum, IntFlag, auto
+from collections import abc
+from enum import Enum
 
 from typing_extensions import Self
-from weakref import WeakKeyDictionary, ref
 
 
-from .core import Injectable, T_Default, T_Injectable, T_Injected
 from ._common import Missing, private_setattr
 from ._common.lookups import Lookup as BaseLookup
 
 
 if t.TYPE_CHECKING: # pragma: no cover
     from .containers import Container
-    from .scopes import Scope
+    from .graph import DepGraph, DepSrc
 
+
+
+
+_object_new = object.__new__
+
+
+
+T_Injected = t.TypeVar("T_Injected", covariant=True)
+"""The injected type.
+"""
+
+T_Default = t.TypeVar("T_Default")
+"""Default value type.
+"""
+
+T_Injectable = t.TypeVar("T_Injectable", bound="Injectable", covariant=True)
+"""An `Injectable` type.
+"""
 
 logger = getLogger(__name__)
+
+_NoneType = type(None)
+
+
+_BLACKLIST = frozenset(
+    {
+        None,
+        _NoneType,
+        t.Any,
+        type(t.Literal[1]),
+        str,
+        bytes,
+        bytearray,
+        tuple,
+        int,
+        float,
+        frozenset,
+        set,
+        dict,
+        list,
+        Parameter.empty,
+        Missing,
+    }
+)
+
+
+def is_injectable(obj):
+    """Returns `True` if the given type annotation is injectable.
+    
+    Params: 
+        typ (type): The type annotation to check.
+    Returns:
+        (bool): `True` if `typ` can be injected or `False` if otherwise.
+    """
+    return isinstance(obj, Injectable) and not (
+        obj in _BLACKLIST or isinstance(obj, NonInjectable)
+    )
+
+
+def is_injectable_annotation(typ):
+    """Returns `True` if the given type annotation is injectable.
+    
+    Params: 
+        typ (type): The type annotation to check.
+    Returns:
+        (bool): `True` if `typ` can be injected or `False` if otherwise.
+    """
+    return is_injectable(typ)
+
+
+
+class Injectable(metaclass=ABCMeta):
+    """Abstract base class for injectable types.
+
+    An injectable is an object that can be used to represent a dependency.
+    
+    Builtin injectable types:- `type`, `TypeVar`, `FunctionType`, `MethodType`, 
+    `GenericAlias`
+    """
+    __slots__ = ()
+
+
+Injectable.register(type)
+Injectable.register(t.TypeVar)
+Injectable.register(FunctionType)
+Injectable.register(MethodType)
+Injectable.register(GenericAlias)
+Injectable.register(type(t.Generic[T_Injected]))
+Injectable.register(type(t.Union))
+
+
+class NonInjectable(metaclass=ABCMeta):
+    """Abstract base class for non-injectable types."""
+    __slots__ = ()
+
+
+NonInjectable.register(_NoneType)
+NonInjectable.register(type(t.Literal[1]))
+
+
 
 __static_makers = {
     t.Union,
@@ -65,17 +160,7 @@ class DependencyMarker(Injectable, t.Generic[T_Injectable], metaclass=Dependency
     def __origin__(self): ...
 
 
-class InjectionDescriptor(Injectable, t.Generic[T_Injectable]):
 
-    __slots__ = ()
-
-    @property
-    @abstractmethod
-    def __abstract__(self) -> T_Injectable: ...
-
-
-
-_object_new = object.__new__
 
 
 _3_nones = None, None, None
@@ -103,7 +188,7 @@ class _PredicateBase:
         return self
 
     @abstractmethod
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:  # pragma: no cover
+    def pro_entries(self, it: abc.Iterable['Container'], graph: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:  # pragma: no cover
         raise NotImplementedError(f'{self.__class__.__qualname__}.pro_entries()')
 
     def __copy__(self):
@@ -235,7 +320,7 @@ class AccessLevel(ProEnumPredicate, Enum):
             return _access_lavel_rawvalues[val] 
         return super()._missing_(val)
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
         return tuple(c for c in it if self in c.access_level(src.container))
 
     def __contains__(self, obj) -> bool:
@@ -263,8 +348,8 @@ class ScopePredicate(ProEnumPredicate, Enum):
             return _scope_predicate_rawvalues[val] 
         return super()._missing_(val)
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
-        return it if (scope is src.scope) is self._rawvalue_ else ()
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
+        return it if (scope is src.graph) is self._rawvalue_ else ()
 
 
 _scope_predicate_rawvalues = {l._rawvalue_: l for l in ScopePredicate}
@@ -395,7 +480,7 @@ class ProSlice(ProPredicate, t.Generic[_T_Start, _T_Stop, _T_Step]):
     def step(self):
         return self.vars[2]
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: 'DepSrc') -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], scope: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
         it = tuple(it)
         start, stop, step = self.vars
         if isinstance(start, ProPredicate):
@@ -441,67 +526,6 @@ class ProFilter(ProPredicate):
 
 _noop_pred = ProNoopPredicate()
 
-
-class DepSrc(t.NamedTuple):
-    container: 'Container'
-    scope: 'Scope' = None
-    predicate: ProPredicate = _noop_pred
-
-
-
-
-@private_setattr
-class DepKey:
-
-    __slots__ = 'abstract', 'src', '_ash',
-
-    abstract: Injectable
-    src: DepSrc
-
-    scope: 'Scope' = None
-
-    def __init_subclass__(cls, scope=None) -> None:
-        cls.scope = scope
-        return super().__init_subclass__()
-
-    def __new__(cls: type[Self], abstract: Injectable, container: 'Container'=None, predicate: ProPredicate=ProNoopPredicate()) -> Self:
-        self, src = _object_new(cls), DepSrc(
-            container, 
-            cls.scope,
-            predicate or _noop_pred
-        )
-        self.__setattr(abstract=abstract, src=src, _ash=hash((abstract, src)))
-        return self
-
-    @property
-    def container(self):
-        return self.src.container
-
-    @property
-    def predicate(self):
-        return self.src.predicate
-
-    def replace(self, *, abstract: Injectable=None, container: 'Container'=None, predicate: ProPredicate=None):
-        return self.__class__(
-            abstract or self.abstract,
-            container or self.container,
-            predicate or self.predicate,
-        )
-
-    def __eq__(self, o) -> bool:
-        if isinstance(o, DepKey):
-            return o.abstract == self.abstract and o.src == self.src
-        return NotImplemented
-        
-    def __ne__(self, o) -> bool:
-        if isinstance(o, DepKey):
-            return o.abstract != self.abstract or o.src != self.src
-        return NotImplemented
-    
-    def __hash__(self) -> int:
-        return self._ash
-       
-       
 
 
 
@@ -682,7 +706,6 @@ class Dep(PureDep):
 
 
 
-@InjectionDescriptor.register
 class Lookup(DependencyMarker, BaseLookup):
     """Represents a lazy lookup of a given dependency.
 

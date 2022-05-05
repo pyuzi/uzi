@@ -1,4 +1,6 @@
-from copy import copy
+from collections import abc
+from copy import copy, deepcopy
+import pickle
 import typing as t
 from unittest.mock import MagicMock
 import attr
@@ -8,11 +10,11 @@ import pytest
 from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi.exceptions import InjectorLookupError
 from xdi._common import FrozenDict
-from xdi.injectors import Injector, NullInjector
+from xdi.injectors import Injector, NullInjector, _null_injector
 from xdi._bindings import SimpleBinding, Binding, LookupErrorBinding
 
 
-from xdi.scopes import NullScope, Scope
+from xdi.graph import NullGraph, DepGraph
 
 
 
@@ -23,9 +25,8 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Inj = t.TypeVar('_T_Inj', bound=Injector)
 
-_T_FnNew = Callable[..., _T_Inj]
+_T_FnNew = Callable[..., Injector]
 
 _T_Miss =  t.TypeVar('_T_Miss')
 
@@ -34,37 +35,46 @@ _T_Miss =  t.TypeVar('_T_Miss')
 class InjectorTests(BaseTestCase[Injector]):
 
     @pytest.fixture
-    def mock_scope(self, mock_scope):
-        mock_scope[_T_Miss] = LookupErrorBinding(_T_Miss, mock_scope)
-        return mock_scope
+    def mock_graph(self, mock_graph):
+        mock_graph[_T_Miss] = LookupErrorBinding(_T_Miss, mock_graph)
+        return mock_graph
 
     @pytest.fixture
-    def new_args(self, mock_scope):
-        return (mock_scope,)
+    def new_args(self, mock_graph):
+        return mock_graph, _null_injector,
 
     def test_basic(self, new: _T_FnNew):
         sub = new()
         assert isinstance(sub, Injector)
-        assert isinstance(sub.scope, Scope)
+        assert isinstance(sub.graph, DepGraph)
         assert isinstance(sub.parent, Injector)
+        assert isinstance(sub.bound(_T), abc.Callable)
         assert sub
-        str(sub)
+        str(sub), hash(sub)
         
     def test_compare(self, new: _T_FnNew):
         sub = new()
-        assert sub == new() == copy(sub)
-        assert not sub != new()
+        assert sub is copy(sub)
         assert not sub == object()
         assert sub != object()
-        assert hash(sub) == hash(new())
     
+    @xfail(raises=TypeError, strict=True)
+    def test_deepcopy(self, new: _T_FnNew):
+        sub = new()
+        deepcopy(sub)
+
+    @xfail(raises=TypeError, strict=True)
+    def test_pickle(self, new: _T_FnNew):
+        sub = new()
+        pickle.dumps(sub)
+
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)
 
     @xfail(raises=(InjectorLookupError, TypeError), strict=True)
     @parametrize('key', [
         _T_Miss, 
-        SimpleBinding(_T_Miss, NullScope(), concrete=MagicMock(_T_Miss))
+        SimpleBinding(_T_Miss, NullGraph(), concrete=MagicMock(_T_Miss))
     ])
     def test_lookup_error(self, new: _T_FnNew, key):
         sub = new()
@@ -73,6 +83,4 @@ class InjectorTests(BaseTestCase[Injector]):
             sub[key]
         else:
             sub.make(key)
-
-   
-       
+            

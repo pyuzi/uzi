@@ -13,7 +13,7 @@ from xdi._common import FrozenDict
 
 
 from xdi._functools import BoundParams, BoundParam
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 
 
@@ -24,7 +24,7 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Scope)
+_T_Scp = t.TypeVar('_T_Scp', bound=DepGraph)
 
 _T_FnNew = Callable[..., _T_Scp]
 
@@ -56,30 +56,30 @@ class BoundParamsTests(BaseTestCase[BoundParams]):
 
 
 
-    def test__iter_bind(self, cls: type[BoundParams], mock_scope: Scope):
+    def test__iter_bind(self, cls: type[BoundParams], mock_graph: DepGraph):
         def func(foo: Foo, /, *args, bar: Bar, baz: Baz=None, **kwds):
             pass
         
-        it = cls._iter_bind(signature(func), mock_scope, args=(Dep(Foo), 'arg_1'), kwargs=dict(kwarg='keyword'))
+        it = cls._iter_bind(signature(func), mock_graph, args=(Dep(Foo), 'arg_1'), kwargs=dict(kwarg='keyword'))
         assert isinstance(it, Iterator)
         ls = [*it]
         assert all(isinstance(p, BoundParam) for p in ls)
         for i,n in enumerate(['foo', 'args', 'bar', 'baz', 'kwds']):
             assert ls[i].name == n
       
-    def test_bind(self, cls: type[BoundParams], mock_scope: Scope):
+    def test_bind(self, cls: type[BoundParams], mock_graph: DepGraph):
         def func(foo: Foo, /, *args, bar: Bar, baz: Baz=None, **kwds):
             pass
         
-        sub = cls.bind(signature(func), mock_scope, args=(Dep(Foo), 'arg_1'), kwargs=dict(kwarg='keyword'))
+        sub = cls.bind(signature(func), mock_graph, args=(Dep(Foo), 'arg_1'), kwargs=dict(kwarg='keyword'))
         assert isinstance(sub, cls)
         
         
-    def test_make(self, cls: type[BoundParams], mock_scope: Scope):
+    def test_make(self, cls: type[BoundParams], mock_graph: DepGraph):
         def func(foo: Foo, x=None, /, *args, bar: Bar, baz: Baz=None, foobar=Dep(FooBar), **kwds):
             pass
         
-        it = cls._iter_bind(signature(func), mock_scope, args=(Dep(Foo), 'arg_1'), kwargs=dict(kwarg='keyword'))
+        it = cls._iter_bind(signature(func), mock_graph, args=(Dep(Foo), 'arg_1'), kwargs=dict(kwarg='keyword'))
         sub = cls.make(it)
         assert isinstance(sub, cls)
         

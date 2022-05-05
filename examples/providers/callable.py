@@ -2,7 +2,7 @@
 
 import passlib.hash
 
-from xdi import Scope, Container, Injector
+from xdi import DepGraph, Container, Injector
 
 
 hash_password = passlib.hash.sha256_crypt.hash
@@ -13,7 +13,7 @@ ioc = Container()
 ioc.callable(verify_password)
 ioc.callable(hash_password, salt_size=16, rounds=10000)
 
-scope = Scope(ioc)
+scope = DepGraph(ioc)
 
 if __name__ == '__main__':
     inj = Injector(scope)

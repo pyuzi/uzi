@@ -51,8 +51,8 @@ class ResourceProviderTests(ProviderTestCase[Provider]):
     def cm_class(self):
         return self.ContextManager
 
-    # def test_exit(self, cm: ContextManager, provider: Provider, scope, injector, ctx_manager):
-    #     bound = provider.resolve(scope, self.provides)
+    # def test_exit(self, cm: ContextManager, provider: Provider, graph, injector, ctx_manager):
+    #     bound = provider.resolve(graph, self.provides)
     #     with ctx_manager:
     #         fn = bound.resolver(injector)
     #         assert cm.enters == 0 == cm.exits

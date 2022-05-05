@@ -29,7 +29,7 @@ class InjectorLookupError(KeyError, XdiException):
     """
 
     abstract: "Injectable" = attr.ib(default=None)
-    scope: "Scope" = attr.ib(default=None)
+    scope: "DepGraph" = attr.ib(default=None)
 
 
 
@@ -41,6 +41,12 @@ class ProError(TypeError, XdiException):
 
 
 
+class InjectorError(TypeError, XdiException):
+    ...
+
+
+
+
 from .providers import Provider
-from .core import Injectable
-from .scopes import Scope
+from .markers import Injectable
+from .graph import DepGraph

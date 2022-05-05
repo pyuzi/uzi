@@ -6,7 +6,7 @@ import attr
 import pytest
 from xdi import Dep, DependencyMarker, is_injectable
 from xdi.providers import AnnotationProvider as Provider
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 from .abc import ProviderTestCase, _T_NewPro
 
@@ -74,11 +74,11 @@ class AnnotationProviderTests(ProviderTestCase[Provider]):
         assert all(is_injectable(a) for a in result)
         return subject, result
         
-    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_scope: Scope):
-        subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_graph: DepGraph):
+        subject, res = super().test_resolve(cls, abstract, new, mock_graph)
         expected = self.expected[abstract][1]
         calls = [mock.call(inj) for inj in  expected]
-        mock_scope.__getitem__.mock_calls == calls
+        mock_graph.__getitem__.mock_calls == calls
         return subject, res
 
 
@@ -88,9 +88,9 @@ class AnnotationProviderTests(ProviderTestCase[Provider]):
 
     
 #     @pytest.fixture
-#     def scope(self, scope, value_setter):
+#     def graph(self, graph, value_setter):
 #         fn = lambda inj: value_setter
 #         fn.is_async = True
-#         scope[_Ta] = fn
-#         return scope
+#         graph[_Ta] = fn
+#         return graph
 

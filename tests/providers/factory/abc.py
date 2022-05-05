@@ -79,13 +79,13 @@ class ProviderTestCase(ProviderTestCase[_T_Pro]):
 # class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
 
 #     @pytest.fixture
-#     def scope(self, scope):
+#     def graph(self, graph):
 #         tval = object()
-#         scope[_T] = lambda c: lambda: tval
+#         graph[_T] = lambda c: lambda: tval
 #         afn = lambda c: lambda: asyncio.sleep(0, tval)
 #         afn.is_async = True
-#         scope[_T_Async] = afn
-#         return scope
+#         graph[_T_Async] = afn
+#         return graph
 
 #     @pytest.fixture
 #     def factory(self, value_setter):

@@ -16,14 +16,14 @@ from typing_extensions import Self
 from xdi._common import FrozenDict
 
 from ._common import Missing
-from .core import Injectable, is_injectable_annotation
+from .markers import Injectable, is_injectable_annotation
 from .markers import DependencyMarker
 
 if t.TYPE_CHECKING:  # pragma: no cover
     from ._bindings import Binding
     from .containers import Container
     from .injectors import Injector
-    from .scopes import Scope
+    from .graph import DepGraph
 
 
 logger = getLogger(__name__)
@@ -193,7 +193,7 @@ class BoundParams:
     def bind(
         cls,
         sig: Signature,
-        scope: "Scope" = None,
+        scope: "DepGraph" = None,
         container: "Container" = None,
         args: tuple = (),
         kwargs: dict = FrozenDict(),
@@ -204,7 +204,7 @@ class BoundParams:
     def _iter_bind(
         cls,
         sig: Signature,
-        scope: "Scope" = None,
+        scope: "DepGraph" = None,
         container: "Container" = None,
         args=(),
         kwargs=FrozenDict(),
@@ -242,21 +242,17 @@ class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
 
     __raw_new__ = classmethod(tuple.__new__)
 
-    def __reduce__(self):
-        return tuple, (tuple(self),)
+    # def __reduce__(self): return tuple, (tuple(self),)
 
-    def copy(self):
-        return self[:]
+    def copy(self): return self[:]
 
     __copy__ = copy
 
     @t.overload
-    def __getitem__(self, index: int) -> tuple[_T, bool]:
-        ...
+    def __getitem__(self, index: int) -> tuple[_T, bool]: ...
 
     @t.overload
-    def __getitem__(self, slice: slice) -> Self:
-        ...
+    def __getitem__(self, slice: slice) -> Self: ...
 
     def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
         v, fn = self.get_raw(index)

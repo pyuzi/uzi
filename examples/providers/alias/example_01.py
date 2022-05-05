@@ -17,6 +17,6 @@ obj = object()
 container.value(_Ta, obj) 
 
 if __name__ == '__main__':
-    injector = xdi.Injector(xdi.Scope(container))
+    injector = xdi.Injector(xdi.DepGraph(container))
 
     assert obj is injector.make(_Ta) is injector.make(_Tb)

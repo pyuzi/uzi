@@ -8,14 +8,16 @@ from typing_extensions import Self
 
 
 from . import providers
-from .core import Injectable, T_Injectable, T_Injected
+from .markers import Injectable, T_Injectable, T_Injected
 from .exceptions import InjectorLookupError
 from ._common import Missing, FrozenDict, ReadonlyDict, private_setattr
 from ._bindings import Binding
 
 
 if t.TYPE_CHECKING: # pragma: no cover
+    from .graph import DepGraph, NullGraph
     from .scopes import Scope
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,68 +36,70 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     """An isolated dependency injection context for a given `Scope`. 
     
     Attributes:
-        scope (Scope): the scope for this injector
+        graph (DepGraph): the dependency graph for this injector
         parent (Injector): a parent injector to provide missing dependencies.
 
     Params:
-        scope (Scope): the scope for this injector
+        graph (DepGraph): the dependency graph for this injector
         parent (Injector): a parent injector to provide missing dependencies.
 
     """
-    __slots__ = 'scope', 'parent',
+    __slots__ = 'graph', 'parent', '__weakref__',
 
-    scope: "Scope"
+    graph: "DepGraph"
     parent: Self
 
-    def __init__(self, scope: 'Scope', parent: Self=None):
-        self.__setattr(scope=scope, parent= parent or _null_injector)
+    def __init__(self, graph: 'DepGraph', parent: Self):
+        self.__setattr(graph=graph, parent= parent)
 
     @property
     def name(self) -> str:
         """The name of the scope. Usually returns the injector's `scope.name` 
         """
-        return self.scope.name
+        return self.graph.name
 
     def bound(self, abstract: T_Injectable) -> T_Injected:
-        return self[self.scope[abstract]]
+        return self[self.graph[abstract]]
 
     def make(self, abstract: T_Injectable, /, *args, **kwds) -> T_Injected:
-        scope = self.scope
-        if dep := scope[abstract]:
+        graph = self.graph
+        if dep := graph[abstract]:
             return self[dep](*args, **kwds)
         elif callable(abstract):
             if prov := getattr(abstract, '__xdi_provider__', None):
-                if dep := scope[prov]:
+                if dep := graph[prov]:
                     return self[dep](*args, **kwds)
-                return 
-            prov = providers.Partial(abstract)
-            setattr(abstract, '__xdi_provider__', prov)
-            return self[scope[prov]](*args, **kwds)
+            else:
+                prov = providers.Partial(abstract)
+                setattr(abstract, '__xdi_provider__', prov)
+                return self[graph[prov]](*args, **kwds)
         else:
             return self[abstract](*args, **kwds)
 
     def __bool__(self):
-        return True
+        return not not self.graph
         
     def __contains__(self, x) -> bool:
         return self.__contains(x) or x in self.parent
 
     def __missing__(self, dep: Binding):
         try:
-            return self.__setdefault(dep, (dep.scope is self.scope and dep.bind(self)) or self.parent[dep])   
+            return self.__setdefault(dep, (dep.graph is self.graph and dep.bind(self)) or self.parent[dep])   
         except AttributeError as e:
             raise TypeError(f'Injector key must be a `Dependency` not `{dep.__class__.__qualname__}`')
         
     __setdefault = dict.setdefault
     __contains = dict.__contains__
-    __ior = dict.__ior__
+
+    def close(self): ...            
 
     def copy(self):
-        return self.__class__(self.scope, self.parent).__ior(self)
+        return self
 
     __copy__ = copy
 
-    def __reduce__(self): return self.__class__, (self.scope, self.parent)
+    def __reduce__(self): 
+        raise TypeError(f'cannot copy `{self.__class__.__name__}`')
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.name!r})"
@@ -104,22 +108,17 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
         return f"<{self!s}, {self.parent!r}>"
     
     def __hash__(self):
-        return hash(self.scope)
+        return id(self)
 
     def __eq__(self, x):
-        if isinstance(x, Injector):
-            return x.scope == self.scope and x.parent == self.parent
-        return NotImplemented
+        return x is self if isinstance(x, Injector) else NotImplemented
 
     def __ne__(self, x):
-        if isinstance(x, Injector):
-            return not x == self
-        return NotImplemented
+        return not x is self if isinstance(x, Injector) else NotImplemented
 
 
 
 
-from xdi.scopes import NullScope
 
 
 
@@ -137,7 +136,20 @@ class NullInjector(Injector):
     __slots__ = ()
 
     parent: t.Final = None
-    scope: NullScope = NullScope()
+    _scope: 'NullGraph' = None
+
+    @property
+    def scope(self):
+        if not (scp := self._scope) is None:
+            return scp
+        else:
+            from xdi.scopes import _null_scope
+            scp = self.__class__._scope = _null_scope
+            return scp
+
+    @property
+    def graph(self):
+        return self.scope.graph
 
     def __init__(self, *a, **kw) -> None: ...
     
@@ -155,6 +167,14 @@ class NullInjector(Injector):
         return False
 
     __contains__ = __bool__
+    
+    def __eq__(self, o) -> bool:
+        return o.__class__ is self.__class__ 
+
+    def __ne__(self, o) -> bool:
+        return not o.__class__ is self.__class__ 
+
+    __hash__ = classmethod(hash)
    
    
     

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 from xdi.markers import Dep
 from xdi.providers import DepMarkerProvider as Provider
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 from .abc import ProviderTestCase, _T_NewPro
 
@@ -34,11 +34,11 @@ class DepMarkerTests(ProviderTestCase[Provider]):
         Dep(_Tx),
         Dep(_Tx, default='[DEFAULT]'),
         Dep(_Tx, default=Dep(_Ta)),
-        # Dep(_Tx, scope=Dep.ONLY_SELF, default='[DEFAULT]'),
-        # Dep(_Tx, scope=Dep.ONLY_SELF, default=Dep(_Ta)),
-        # Dep(_Tx, scope=Dep.SKIP_SELF),
-        # Dep(_Tx, scope=Dep.SKIP_SELF, default='[DEFAULT]'),
-        # Dep(_Tx, scope=Dep.SKIP_SELF, default=Dep(_Ta)),
+        # Dep(_Tx, graph=Dep.ONLY_SELF, default='[DEFAULT]'),
+        # Dep(_Tx, graph=Dep.ONLY_SELF, default=Dep(_Ta)),
+        # Dep(_Tx, graph=Dep.SKIP_SELF),
+        # Dep(_Tx, graph=Dep.SKIP_SELF, default='[DEFAULT]'),
+        # Dep(_Tx, graph=Dep.SKIP_SELF, default=Dep(_Ta)),
     ]
 
     @pytest.fixture(params=expected)
@@ -49,25 +49,25 @@ class DepMarkerTests(ProviderTestCase[Provider]):
     def new_args(self):
         return ()
 
-    # def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
-    #     if abstract.has_default and   abstract.scope != Dep.SKIP_SELF:
-    #         mock_scope[abstract.abstract] = None
+    # def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_graph: Scope):
+    #     if abstract.has_default and   abstract.graph != Dep.SKIP_SELF:
+    #         mock_graph[abstract.abstract] = None
 
-    #     subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+    #     subject, res = super().test_resolve(cls, abstract, new, mock_graph)
 
-    #     if abstract.scope == Dep.SKIP_SELF:
-    #         assert res is mock_scope.parent[abstract.abstract]
-    #         assert not res is mock_scope[abstract.abstract]
+    #     if abstract.graph == Dep.SKIP_SELF:
+    #         assert res is mock_graph.parent[abstract.abstract]
+    #         assert not res is mock_graph[abstract.abstract]
     #     elif abstract.has_default:
     #         if abstract.injects_default:
-    #             assert res is mock_scope[abstract.default]
+    #             assert res is mock_graph[abstract.default]
     #         else:
-    #             assert not res is mock_scope[abstract.abstract]
+    #             assert not res is mock_graph[abstract.abstract]
     #             assert isinstance(res, cls._binding_class) 
 
         # expected.injects =
-        # assert res is mock_scope[abstract.__default__]
-        # assert not res is mock_scope[abstract.__injects__]
+        # assert res is mock_graph[abstract.__default__]
+        # assert not res is mock_graph[abstract.__injects__]
 
 
 
@@ -84,22 +84,22 @@ class DepMarkerTests(ProviderTestCase[Provider]):
 #         Dep(_Tx, default=Dep(_Ta)): SimpleNamespace(
             
 #         ),
-#         Dep(_Tx, scope=Dep.ONLY_SELF): SimpleNamespace(
+#         Dep(_Tx, graph=Dep.ONLY_SELF): SimpleNamespace(
             
 #         ),
-#         Dep(_Tx, scope=Dep.ONLY_SELF, default='[DEFAULT]'): SimpleNamespace(
+#         Dep(_Tx, graph=Dep.ONLY_SELF, default='[DEFAULT]'): SimpleNamespace(
             
 #         ),
-#         Dep(_Tx, scope=Dep.ONLY_SELF, default=Dep(_Ta)): SimpleNamespace(
+#         Dep(_Tx, graph=Dep.ONLY_SELF, default=Dep(_Ta)): SimpleNamespace(
             
 #         ),
-#         Dep(_Tx, scope=Dep.SKIP_SELF): SimpleNamespace(
+#         Dep(_Tx, graph=Dep.SKIP_SELF): SimpleNamespace(
 
 #         ),
-#         Dep(_Tx, scope=Dep.SKIP_SELF, default='[DEFAULT]'): SimpleNamespace(
+#         Dep(_Tx, graph=Dep.SKIP_SELF, default='[DEFAULT]'): SimpleNamespace(
             
 #         ),
-#         Dep(_Tx, scope=Dep.SKIP_SELF, default=Dep(_Ta)): SimpleNamespace(
+#         Dep(_Tx, graph=Dep.SKIP_SELF, default=Dep(_Ta)): SimpleNamespace(
             
 #         ),
 #     }
@@ -108,12 +108,12 @@ class DepMarkerTests(ProviderTestCase[Provider]):
 #     def abstract(self, request):
 #         return request.param
 
-#     def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
-#         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
+#     def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_graph: Scope):
+#         subject, res = super().test_resolve(cls, abstract, new, mock_graph)
 #         expected = self.expected[abstract]
 #         # expected.injects =
-#         # assert res is mock_scope[abstract.__default__]
-#         # assert not res is mock_scope[abstract.__injects__]
+#         # assert res is mock_graph[abstract.__default__]
+#         # assert not res is mock_graph[abstract.__injects__]
 
 
 
@@ -121,12 +121,12 @@ class DepMarkerTests(ProviderTestCase[Provider]):
 
 #     @pytest.fixture
 #     def abstract(self):
-#         return Dep(_Tx, scope=Dep.SKIP_SELF)
+#         return Dep(_Tx, graph=Dep.SKIP_SELF)
 
-#     def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_scope: Scope):
-#         subject, res = super().test_resolve(cls, abstract, new, mock_scope)
-#         assert res is mock_scope.parent[abstract.__injects__]
-#         assert not res is mock_scope[abstract.__default__]
+#     def test_resolve(self, cls: type[Provider], abstract: Dep, new: _T_NewPro, mock_graph: Scope):
+#         subject, res = super().test_resolve(cls, abstract, new, mock_graph)
+#         assert res is mock_graph.parent[abstract.__injects__]
+#         assert not res is mock_graph[abstract.__default__]
 
 
 

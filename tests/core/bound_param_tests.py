@@ -13,7 +13,7 @@ from xdi._common import FrozenDict
 
 
 from xdi._functools import BoundParam
-from xdi.scopes import Scope
+from xdi.graph import DepGraph
 
 
 
@@ -24,7 +24,7 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Scope)
+_T_Scp = t.TypeVar('_T_Scp', bound=DepGraph)
 
 _T_FnNew = Callable[..., _T_Scp]
 

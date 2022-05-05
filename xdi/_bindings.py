@@ -13,12 +13,12 @@ from collections.abc import Callable
 from ._common import Missing, private_setattr
 from ._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
 
-from .core import T_Injectable, T_Injected
+from .markers import T_Injectable, T_Injected
 from .exceptions import InjectorLookupError
 
 if t.TYPE_CHECKING: # pragma: no cover
     from .providers import Provider
-    from .scopes import Scope
+    from .graph import DepGraph
     from .injectors import Injector
     from .containers import Container
 
@@ -40,7 +40,7 @@ class Binding(ABC, t.Generic[_T_Concrete]):
         raise NotImplementedError(f'{self.__class__.__name__}.bind()')  # pragma: no cover
 
     abstract: T_Injectable = attr.ib()
-    scope: "Scope" = attr.ib()
+    graph: "DepGraph" = attr.ib()
     provider: "Provider" = attr.ib(default=None, repr=lambda p: str(p and id(p)))
 
     concrete: _T_Concrete = attr.ib(kw_only=True, default=Missing, repr=True)
@@ -51,8 +51,7 @@ class Binding(ABC, t.Generic[_T_Concrete]):
     _v_ident: tuple = attr.ib(init=False, repr=False)
     @_v_ident.default
     def _init_v_ident(self):
-        return self.abstract, self.scope, self.container
-        # return self.scope, self.provider or self.abstract
+        return self.abstract, self.graph, self.container
 
     _ash: tuple = attr.ib(init=False, repr=False)
     @_ash.default
@@ -61,7 +60,7 @@ class Binding(ABC, t.Generic[_T_Concrete]):
 
     @property
     def container(self):
-        if pro := self.provider or self.scope:
+        if pro := self.provider or self.graph:
             return pro.container
 
     def __eq__(self, o: Self) -> bool:
@@ -81,16 +80,8 @@ class Binding(ABC, t.Generic[_T_Concrete]):
     def __hash__(self) -> int:
         return self._ash
 
-    def __getitem__(self, params):
-        abstract = self.abstract
-        if (params or abstract) == abstract:
-            return self
-        elif isinstance(params, tuple):
-            if len(params) == 1 and params[0] == abstract:
-                return self
 
-        return self    
-        
+
 
 _T_Binding = t.TypeVar('_T_Binding', bound=Binding, covariant=True)
 """Dependency `TypeVar`"""
@@ -101,23 +92,23 @@ _T_Binding = t.TypeVar('_T_Binding', bound=Binding, covariant=True)
 @private_setattr
 class LookupErrorBinding:
 
-    __slots__ = 'abstract', 'scope',
+    __slots__ = 'abstract', 'graph',
 
-    scope: 'Scope'
+    graph: 'DepGraph'
     container = None
     is_async: bool = False
     dependencies = frozenset[Self]()
 
-    def __new__(cls: type[Self], abstract=None, scope: 'Scope'=None, provider=None, concrete=None) -> Self:
+    def __new__(cls: type[Self], abstract=None, graph: 'DepGraph'=None, provider=None, concrete=None) -> Self:
         self = _object_new(cls)
-        self.__setattr(abstract=abstract, scope=scope)
+        self.__setattr(abstract=abstract, graph=graph)
         return self
 
     def __bool__(self): 
         return False
 
     def __reduce__(self): 
-        return self.__class__, (self.abstract, self.scope)
+        return self.__class__, (self.abstract, self.graph)
 
     def __eq__(self, o):
         return self.abstract == o
@@ -129,7 +120,7 @@ class LookupErrorBinding:
         return hash(self.abstract)
 
     def bind(self, injector: 'Injector'):
-        raise InjectorLookupError(self.abstract, self.scope or injector.scope)
+        raise InjectorLookupError(self.abstract, self.graph or injector.graph)
 
 
 

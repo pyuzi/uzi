@@ -34,8 +34,8 @@ _Ty = t.TypeVar('_Ty')
 _Tz = t.TypeVar('_Tz')
 
 @pytest.fixture
-def bound_params(value_setter, mock_scope):
-    return BoundParams.bind(signature(value_setter), mock_scope)
+def bound_params(value_setter, mock_graph):
+    return BoundParams.bind(signature(value_setter), mock_graph)
 
 
 @pytest.fixture
@@ -48,10 +48,10 @@ class SingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture
-    def value_setter(self, mock_scope, mock_injector: Injector):
+    def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
         def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_scope, mock_injector)
+            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
             val = self.value = object()
             return val
 
@@ -73,10 +73,10 @@ class AsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture
-    def value_setter(self, mock_scope, mock_injector: Injector):
+    def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
         async def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_scope, mock_injector)
+            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
         return fn
@@ -99,11 +99,11 @@ class AwaitParamsSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture
-    def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
+    def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
         dep_z = Dep(_Tz, default=object())
-        mock_scope[_Tb].is_async = mock_scope[_Ty].is_async = True
+        mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
         def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_scope, mock_injector)
+            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
             val = self.value = object()
             return val
         return fn
@@ -127,11 +127,11 @@ class AwaitParamsAsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
     @pytest.fixture
-    def value_setter(self, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
+    def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
         dep_z = Dep(_Tz, default=object())
-        mock_scope[_Tb].is_async = mock_scope[_Ty].is_async = True
+        mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
         async def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_scope, mock_injector)
+            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
         return fn

@@ -3,7 +3,7 @@ import os
 
 from after import ApiClient, Service
 
-from xdi import Scope, Container, Injector
+from xdi import DepGraph, Container, Injector
 
 
 
@@ -18,7 +18,7 @@ ioc = Container()
 ioc.factory(Service)
 ioc.singleton(ApiClient, ApiClient, os.getenv("API_URL"), os.getenv('API_KEY'))
 
-scope = Scope(ioc)
+scope = DepGraph(ioc)
 
 if __name__ == "__main__":
     Injector(scope).make(main)

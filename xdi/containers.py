@@ -1,29 +1,24 @@
-from email.policy import default
-import operator
-from threading import Lock
 import typing as t
 from logging import getLogger
 from collections import abc
 from typing_extensions import Self
 
-import attr
-
-from .core import is_injectable
 from .exceptions import ProError
 
 
-from . import Injectable, signals
-from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, DepKey, _PredicateOpsMixin, DepSrc, ProPredicate
+from . import signals
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, _PredicateOpsMixin, Injectable, ProPredicate, is_injectable
 from ._common import ReadonlyDict, private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
 
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .scopes import Scope
+    from .graph import DepGraph, DepKey, DepSrc
 
 
 logger = getLogger(__name__)
 
+_dict_setdefault = dict['DepGraph', 'DepGraph'].setdefault
 
 
 
@@ -39,11 +34,12 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
         default_access_level (AccessLevel): The default `access_level` to assign 
         to providers registered in this container
     """
-    __slots__ = 'name', 'bases', 'default_access_level', '_pro',
+    __slots__ = 'name', 'bases', 'default_access_level', 'g', '_pro',
 
     name: str
     bases: tuple[Self]
     default_access_level: AccessLevel 
+    g: ReadonlyDict['DepGraph', 'DepGraph']
     _pro: FrozenDict[Self, int]
     
     __setitem = dict[Injectable,  Provider].__setitem__
@@ -58,7 +54,13 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
             access_level (AccessLevel, optional): The default `access_level`
                 to assign providers
         """
-        self.__setattr(_pro=None, bases=(), name=name, default_access_level=AccessLevel(access_level))
+        self.__setattr(
+            _pro=None, 
+            bases=(),
+            name=name, 
+            g=ReadonlyDict(),
+            default_access_level=AccessLevel(access_level)
+        )
         bases and self.extend(*bases)
         signals.on_container_create.send(self.__class__, container=self)
 
@@ -81,7 +83,7 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
         self.__setattr(_pro=self._evaluate_pro())
         return self._pro
 
-    def pro_entries(self, it: abc.Iterable['Container'], scope: 'Scope', src: DepSrc) -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], bindings: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
         pro = self.pro
         return tuple(c for c in it if c in pro)
         
@@ -162,6 +164,17 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
     def _on_register(self, abstract: Injectable, provider: Provider):
         pass
 
+    def get_graph(self, base: 'DepGraph'):
+        try:
+            return self.g[base]
+        except KeyError:
+            # if parent.container.extends(self):
+            #     raise ProError(f'given parent extends self: {parent=}, {self=}')
+            return _dict_setdefault(self.g, base, self.create_graph(base))
+
+    def create_graph(self, base: 'DepGraph'):
+        return DepGraph(self, base)
+
     def __contains__(self, x):
         return self.__contains(x) or any(x in b for b in self.bases)
 
@@ -186,11 +199,11 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
         if isinstance(key, Provider) and (key.container or self) is self:
             return key
             
-    def _resolve(self, key: DepKey, scope: 'Scope'):
+    def _resolve(self, key: 'DepKey', bindings: 'DepGraph'):
         if prov := self[key.abstract]:
             access = prov.access_level or self.default_access_level
             if access in self.access_level(key.container):
-                if prov._can_resolve(key, scope):
+                if prov._can_resolve(key, bindings):
                     return prov,
         return ()
 
@@ -208,3 +221,13 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.name!r})'
+
+
+
+
+
+
+
+
+
+from .graph import DepGraph, _null_graph

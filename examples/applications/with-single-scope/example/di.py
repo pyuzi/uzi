@@ -9,7 +9,7 @@ import boto3
 
 from mypy_boto3_s3 import S3Client
 
-from xdi import Scope, Dep
+from xdi import DepGraph, Dep
 from xdi.containers import Container
 
 from . import services

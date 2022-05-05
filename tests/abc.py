@@ -1,4 +1,4 @@
-from inspect import ismethod
+from inspect import isfunction, ismethod
 from types import GenericAlias, new_class
 import typing as t
 import pytest
@@ -47,7 +47,7 @@ class BaseTestCase(t.Generic[_T_Sub]):
 
     @pytest.fixture
     def immutable_attrs(self, cls):
-        return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or ismethod(getattr(cls, a)))]
+        return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or isfunction(getattr(cls, a)))]
 
     def assert_immutable(self, sub: _T_Sub, immutable_attrs):
         it = iter(immutable_attrs)

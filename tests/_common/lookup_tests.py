@@ -7,12 +7,26 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-from xdi._common.lookups import Lookup, AttributeEvaluationError, KeyEvaluationError, IndexEvaluationError, CallEvaluationError
+from xdi._common.lookups import Lookup, EvaluationError, AttributeEvaluationError, KeyEvaluationError, IndexEvaluationError, CallEvaluationError
+
+class SomeKeyError(KeyError):
+
+    ...
 
 
 
 _T_New = type[Lookup]
 
+
+def test_evaluationerror_wrap():
+    exc = EvaluationError.wrap(SomeKeyError('err!'))
+    assert isinstance(exc, EvaluationError)
+    assert isinstance(exc, KeyEvaluationError)
+    exc = KeyEvaluationError.wrap(SomeKeyError('err!'))
+    assert isinstance(exc, KeyEvaluationError)
+
+
+    
 
 class LookupTests:
 

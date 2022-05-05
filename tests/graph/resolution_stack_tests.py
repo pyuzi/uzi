@@ -14,9 +14,6 @@ from xdi.graph import ResolutionStack
 
 
 
-from ..abc import BaseTestCase
-from .. import assertions
-
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 

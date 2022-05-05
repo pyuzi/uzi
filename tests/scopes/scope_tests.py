@@ -3,9 +3,8 @@ import typing as t
 import attr
 import pytest
 
-from unittest.mock import  Mock
 
-from collections.abc import Callable, Iterator, Set, MutableSet, Mapping
+from collections import abc
 
 
 from xdi.containers import Container
@@ -20,7 +19,7 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_FnNew = Callable[..., DepGraph]
+_T_FnNew = abc.Callable[..., DepGraph]
 
    
 

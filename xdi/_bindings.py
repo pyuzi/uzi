@@ -80,16 +80,8 @@ class Binding(ABC, t.Generic[_T_Concrete]):
     def __hash__(self) -> int:
         return self._ash
 
-    def __getitem__(self, params):
-        abstract = self.abstract
-        if (params or abstract) == abstract:
-            return self
-        elif isinstance(params, tuple):
-            if len(params) == 1 and params[0] == abstract:
-                return self
 
-        return self    
-        
+
 
 _T_Binding = t.TypeVar('_T_Binding', bound=Binding, covariant=True)
 """Dependency `TypeVar`"""

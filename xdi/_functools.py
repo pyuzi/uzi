@@ -242,21 +242,17 @@ class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
 
     __raw_new__ = classmethod(tuple.__new__)
 
-    def __reduce__(self):
-        return tuple, (tuple(self),)
+    # def __reduce__(self): return tuple, (tuple(self),)
 
-    def copy(self):
-        return self[:]
+    def copy(self): return self[:]
 
     __copy__ = copy
 
     @t.overload
-    def __getitem__(self, index: int) -> tuple[_T, bool]:
-        ...
+    def __getitem__(self, index: int) -> tuple[_T, bool]: ...
 
     @t.overload
-    def __getitem__(self, slice: slice) -> Self:
-        ...
+    def __getitem__(self, slice: slice) -> Self: ...
 
     def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
         v, fn = self.get_raw(index)

@@ -1,4 +1,6 @@
-from copy import copy
+from collections import abc
+from copy import copy, deepcopy
+import pickle
 import typing as t
 from unittest.mock import MagicMock
 import attr
@@ -46,15 +48,26 @@ class InjectorTests(BaseTestCase[Injector]):
         assert isinstance(sub, Injector)
         assert isinstance(sub.graph, DepGraph)
         assert isinstance(sub.parent, Injector)
+        assert isinstance(sub.bound(_T), abc.Callable)
         assert sub
-        str(sub),
+        str(sub), hash(sub)
         
     def test_compare(self, new: _T_FnNew):
         sub = new()
-        assert sub == copy(sub)
+        assert sub is copy(sub)
         assert not sub == object()
         assert sub != object()
     
+    @xfail(raises=TypeError, strict=True)
+    def test_deepcopy(self, new: _T_FnNew):
+        sub = new()
+        deepcopy(sub)
+
+    @xfail(raises=TypeError, strict=True)
+    def test_pickle(self, new: _T_FnNew):
+        sub = new()
+        pickle.dumps(sub)
+
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)
 

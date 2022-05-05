@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
 from xdi import is_injectable
-from xdi.containers import Container, _GraphMap
+from xdi.containers import Container
 from xdi.markers import Injectable
 from xdi.injectors import Injector
 from xdi.markers import ProPredicate
@@ -66,7 +66,6 @@ def MockContainer():
         mi.__getitem__.return_value = None
         mi._resolve = MagicMock(wraps=lambda k,s: tuple(filter(None, [mi[getattr(k, 'abstract', k)]]))) # mi.__getitem__
 
-        mi.graphs = MagicMock(_GraphMap)
         G = {}
         def mock_graph(k):
             if k in G:
@@ -76,7 +75,7 @@ def MockContainer():
             mg.parent = k
             return G.setdefault(k, mg)
 
-        mi.graphs.__getitem__ = MagicMock(wraps=mock_graph)
+        mi.get_graph = MagicMock(wraps=mock_graph)
 
         for k,v in kw.items():
             setattr(mi, k, v)

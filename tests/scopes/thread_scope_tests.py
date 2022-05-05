@@ -1,7 +1,4 @@
 from threading import Lock, Thread
-from queue import Queue
-import time
-from types import SimpleNamespace
 import typing as t
 from unittest.mock import MagicMock, Mock, patch
 import attr
@@ -11,10 +8,7 @@ import pytest
 from collections import abc
 
 
-from xdi.containers import Container, _GraphMap
-from xdi.exceptions import InjectorError
-from xdi.graph import DepGraph, _null_graph
-from xdi.injectors import Injector
+from xdi.graph import DepGraph
 from xdi.scopes import ThreadScope, Scope
 
 from .. import checks

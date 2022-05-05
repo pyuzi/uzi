@@ -21,8 +21,8 @@ class Tests(FunctionalTestCase):
 
     def test(self):
         container = Container()
-        container.provide(Foo, Bar, Baz, Service)
-        # container.singleton(FooBar)
+        container.provide(Foo, Bar, Baz)
+        container.factory(Service).args(12345)
         # container.singleton(FooBarBaz)
         container.alias(T_Foo, Foo)
         container.alias(T_Baz, Baz)
@@ -41,7 +41,7 @@ class Tests(FunctionalTestCase):
         assert isinstance(injector.make(FooBar), FooBar)
         assert isinstance(injector.make(FooBarBaz), FooBarBaz)
         assert isinstance(injector.make(Service), Service)
-
+        assert injector.make(entry)
         assert injector.make(entry)
 
 

@@ -65,12 +65,12 @@ class Scope(t.Generic[_T_Injector]):
         parent=parent or _null_scope
 
         if isinstance(graph, Container):
-            graph = graph.graphs[parent.graph]
+            graph = graph.get_graph(parent.graph)
         elif isinstance(graph, DepGraph):
-            if graph.parent != parent.graph:
+            if not graph.parent is parent.graph:
                 raise ValueError(f'graph mismatch')
         else:
-            raise TypeError(f'argument `graph` must be a `Container`, `DepGraph` not `{graph.__class__.__name__}` ')
+            raise TypeError(f'first argument must be a `Container`, `DepGraph` not `{graph.__class__.__name__}` ')
           
         if initial is None:
             initial = _null_injector
@@ -156,6 +156,8 @@ class Scope(t.Generic[_T_Injector]):
 
 
 class SafeScope(Scope[_T_Injector]):
+    """A thread safe `Scope` implementation
+    """
 
     __slots__ = "lock", 
 
@@ -196,6 +198,8 @@ _null_context_var = _NullContextVar()
 
 
 class ContextScope(Scope[_T_Injector]):
+    """A scope that uses `contextvars.ContextVar` to manage injectors
+    """
 
     __slots__ = "__var",
 
@@ -228,8 +232,10 @@ class _Local(local, t.Generic[_T_Injector]):
         self.injector = injector
 
 class ThreadScope(Scope[_T_Injector]):
+    """A scope that uses `threading.local` to manage injectors
+    """
 
-    __slots__ = ("__local",)
+    __slots__ = "__local",
 
     __local: _Local[_T_Injector]
 

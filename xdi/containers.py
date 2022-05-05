@@ -18,20 +18,7 @@ if t.TYPE_CHECKING: # pragma: no cover
 
 logger = getLogger(__name__)
 
-
-@private_setattr
-class _GraphMap(ReadonlyDict['DepGraph', 'DepGraph']):
-    __slots__ = 'container',
-    container: 'Container'
-    __setdefault = dict['DepGraph', 'DepGraph'].setdefault
-
-    def __init__(self, container: 'Container'):
-        self.__setattr(container=container)
-
-    def __missing__(self, base):
-        if not base is None:
-           return self.__setdefault(base, self.container.new_dep_graph(base))
-        return self.__setdefault(base, self[_null_graph])
+_dict_setdefault = dict['DepGraph', 'DepGraph'].setdefault
 
 
 
@@ -47,13 +34,13 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
         default_access_level (AccessLevel): The default `access_level` to assign 
         to providers registered in this container
     """
-    __slots__ = 'name', 'bases', 'default_access_level', 'graphs', '_pro',
+    __slots__ = 'name', 'bases', 'default_access_level', 'g', '_pro',
 
     name: str
     bases: tuple[Self]
     default_access_level: AccessLevel 
+    g: ReadonlyDict['DepGraph', 'DepGraph']
     _pro: FrozenDict[Self, int]
-    graphs: ReadonlyDict['DepGraph', 'DepGraph']
     
     __setitem = dict[Injectable,  Provider].__setitem__
     __contains = dict[Injectable,  Provider].__contains__
@@ -71,7 +58,7 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
             _pro=None, 
             bases=(),
             name=name, 
-            graphs=_GraphMap(self),
+            g=ReadonlyDict(),
             default_access_level=AccessLevel(access_level)
         )
         bases and self.extend(*bases)
@@ -177,8 +164,16 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
     def _on_register(self, abstract: Injectable, provider: Provider):
         pass
 
-    def new_dep_graph(self, parent: 'DepGraph'=None):
-        return DepGraph(self, parent)
+    def get_graph(self, base: 'DepGraph'):
+        try:
+            return self.g[base]
+        except KeyError:
+            # if parent.container.extends(self):
+            #     raise ProError(f'given parent extends self: {parent=}, {self=}')
+            return _dict_setdefault(self.g, base, self.create_graph(base))
+
+    def create_graph(self, base: 'DepGraph'):
+        return DepGraph(self, base)
 
     def __contains__(self, x):
         return self.__contains(x) or any(x in b for b in self.bases)

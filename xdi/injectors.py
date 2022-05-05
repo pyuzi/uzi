@@ -69,15 +69,15 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
             if prov := getattr(abstract, '__xdi_provider__', None):
                 if dep := graph[prov]:
                     return self[dep](*args, **kwds)
-                return 
-            prov = providers.Partial(abstract)
-            setattr(abstract, '__xdi_provider__', prov)
-            return self[graph[prov]](*args, **kwds)
+            else:
+                prov = providers.Partial(abstract)
+                setattr(abstract, '__xdi_provider__', prov)
+                return self[graph[prov]](*args, **kwds)
         else:
             return self[abstract](*args, **kwds)
 
     def __bool__(self):
-        return True
+        return not not self.graph
         
     def __contains__(self, x) -> bool:
         return self.__contains(x) or x in self.parent
@@ -91,8 +91,7 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     __setdefault = dict.setdefault
     __contains = dict.__contains__
 
-    def close(self):
-        ...
+    def close(self): ...            
 
     def copy(self):
         return self
@@ -109,13 +108,13 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
         return f"<{self!s}, {self.parent!r}>"
     
     def __hash__(self):
-        return hash(self.scope)
+        return id(self)
 
     def __eq__(self, x):
-        return x is self
+        return x is self if isinstance(x, Injector) else NotImplemented
 
     def __ne__(self, x):
-        return not x is self
+        return not x is self if isinstance(x, Injector) else NotImplemented
 
 
 

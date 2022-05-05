@@ -1,7 +1,7 @@
 
 
 from copy import copy, deepcopy
-from inspect import ismethod
+from inspect import isfunction, ismethod
 import typing as t
 import pytest
 
@@ -11,7 +11,7 @@ from xdi.markers import ProAndPredicate, _PredicateBase, ProInvertPredicate, Pro
 
 
 
-from .. import assertions
+from .. import checks
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
@@ -30,7 +30,7 @@ class TestPred:
 
 @pytest.fixture
 def immutable_attrs(cls):
-    return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or ismethod(getattr(cls, a)))]
+    return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or isfunction(getattr(cls, a)))]
 
 
 @pytest.fixture
@@ -78,8 +78,7 @@ def test_deepcopy(new_predicate: _T_New):
     
 
 def test_immutable(new_predicate: _T_New, immutable_attrs):
-    assertions.is_immutable(new_predicate(), immutable_attrs)
-
+    checks.is_immutable(new_predicate, immutable_attrs)
 
 
 def test_simple_and(new_predicate: _T_New):

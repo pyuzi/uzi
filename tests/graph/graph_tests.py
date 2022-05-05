@@ -1,4 +1,4 @@
-from inspect import ismethod
+from inspect import isfunction, ismethod
 import typing as t
 import attr
 import pytest
@@ -15,7 +15,7 @@ from xdi._bindings import Binding
 from xdi.graph import NullGraph, DepGraph
 
 
-from .. import assertions
+from .. import checks
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
@@ -41,7 +41,7 @@ def cls():
 
 @pytest.fixture
 def immutable_attrs(cls):
-    return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or ismethod(getattr(cls, a)))]
+    return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or isfunction(getattr(cls, a)))]
 
 
 def test_basic(new: _T_FnNew, MockBinding):
@@ -65,8 +65,7 @@ def test_container(new: _T_FnNew, MockContainer: type[Container]):
     assert sub.container is container
     assert sub.name == container.name
 
-def test_immutable(new: _T_FnNew, immutable_attrs):
-    assertions.is_immutable(new(), immutable_attrs)
+test_immutable = checks.is_immutable
     
 def test_compare(new: _T_FnNew, MockContainer: type[Container]):
     c1 = MockContainer()

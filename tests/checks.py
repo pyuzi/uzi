@@ -1,7 +1,8 @@
 
 
 
-def is_immutable(sub, immutable_attrs):
+def is_immutable(new, immutable_attrs):
+    sub = new()
     it = iter(immutable_attrs)
     for atr in it:
         try:

@@ -1,10 +1,11 @@
 import asyncio
+from inspect import isfunction
 import operator
 from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
 from xdi import is_injectable
-from xdi.containers import Container
+from xdi.containers import Container, _GraphMap
 from xdi.markers import Injectable
 from xdi.injectors import Injector
 from xdi.markers import ProPredicate
@@ -33,9 +34,16 @@ def new(cls, new_args, new_kwargs):
     return lambda *a, **kw: cls(*a, *new_args[len(a):], **{**new_kwargs, **kw})
 
 
+# @pytest.fixture
+# def immutable_attrs(cls):
+#     return ()
+
+
+
 @pytest.fixture
 def immutable_attrs(cls):
-    return ()
+    return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or isfunction(getattr(cls, a)))]
+
 
 
 @pytest.fixture
@@ -57,6 +65,18 @@ def MockContainer():
         mi.__hash__.return_value = id(mi)
         mi.__getitem__.return_value = None
         mi._resolve = MagicMock(wraps=lambda k,s: tuple(filter(None, [mi[getattr(k, 'abstract', k)]]))) # mi.__getitem__
+
+        mi.graphs = MagicMock(_GraphMap)
+        G = {}
+        def mock_graph(k):
+            if k in G:
+                return G[k]
+            mg = MagicMock(DepGraph)
+            mg.container = mi
+            mg.parent = k
+            return G.setdefault(k, mg)
+
+        mi.graphs.__getitem__ = MagicMock(wraps=mock_graph)
 
         for k,v in kw.items():
             setattr(mi, k, v)
@@ -89,9 +109,9 @@ def MockBinding():
 
 
 @pytest.fixture
-def Mockinjector(MockGraph):
+def MockInjector(MockGraph):
     def make(spec=Injector, *, graph=None, parent=True, **kw):
-        mi: Injector = NonCallableMagicMock(spec, **kw)
+        mi: Injector = MagicMock(spec, **kw)
         mi.__bool__.return_value = True
         mi.graph = graph or MockGraph()
         def mock_dep(k):
@@ -117,7 +137,7 @@ def Mockinjector(MockGraph):
 @pytest.fixture
 def MockProvider(MockBinding):
     def make(spec=Provider, **kw):
-        mi: Provider = NonCallableMagicMock(spec, **kw)
+        mi: Provider = MagicMock(spec, **kw)
         deps = {}
         def mock_dep(a, s):
             if not (a, s) in deps:
@@ -257,9 +277,9 @@ def mock_provider(MockProvider):
 
 
 @pytest.fixture
-def mock_injector(Mockinjector, MockScope):
+def mock_injector(MockInjector, MockScope):
     scope = MockScope()
-    return Mockinjector(scope=scope, graph=scope.graph)
+    return MockInjector(scope=scope, graph=scope.graph)
 
 
 

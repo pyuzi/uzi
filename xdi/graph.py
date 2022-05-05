@@ -18,11 +18,11 @@ from .markers import _noop_pred, ProNoopPredicate, ProPredicate, is_injectable, 
 from ._common import ReadonlyDict, private_setattr, FrozenDict, Missing
 from .providers import Provider, AbstractProviderRegistry
 
-from .containers import Container
 
 
 if t.TYPE_CHECKING: # pragma: no cover
     from .scopes import Scope
+    from .containers import Container
 
 
 logger = getLogger(__name__)
@@ -103,7 +103,7 @@ class ProMap(ReadonlyDict[DepSrc, _T_Pro]):
     __slots__ = 'graph', 'pro',
 
     graph: 'DepGraph'
-    pro: FrozenDict[Container, int]
+    pro: FrozenDict['Container', int]
 
     __contains = dict.__contains__
     __setdefault = dict.setdefault
@@ -153,7 +153,7 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
     __contains = dict.__contains__
     __setdefault = dict.setdefault
 
-    def __init__(self, container: Container, parent: 'DepGraph'=None):
+    def __init__(self, container: 'Container', parent: 'DepGraph'=None):
         self.__setattr(
             container=container,
             parent=_null_graph if parent is None else parent,
@@ -325,13 +325,13 @@ class ResolutionStack(abc.Sequence):
     __slots__ = '__var',
 
     class StackItem(t.NamedTuple):
-        container: Container
+        container: 'Container'
         abstract: Injectable = None
         provider: Provider = None
 
     __var: ContextVar[tuple[StackItem]]
 
-    def __init__(self, default: Container):
+    def __init__(self, default: 'Container'):
         stack= self.StackItem(default),
         self.__var = ContextVar(f'{default.name}.{self.__class__.__name__}', default=stack)
         self.__var.set(stack)

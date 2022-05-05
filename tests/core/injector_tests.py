@@ -23,9 +23,8 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Inj = t.TypeVar('_T_Inj', bound=Injector)
 
-_T_FnNew = Callable[..., _T_Inj]
+_T_FnNew = Callable[..., Injector]
 
 _T_Miss =  t.TypeVar('_T_Miss')
 

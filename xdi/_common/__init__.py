@@ -19,23 +19,26 @@ def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn
 
     def decorator(cls_):
 
-        def _setfunc(self: Self, force=False):
-            if not force and frozen and getattr(self, frozen, False):
-                return _setattr
-            else:
-                return setattr_fn
+        # def _setfunc(self: Self, force=False):
+        #     if not force and frozen and getattr(self, frozen, False):
+        #         return _setattr
+        #     else:
+        #         return setattr_fn
 
         def setter(self: Self, name=None, value=None, force=False, /, **kw):
-            setter_ = _setfunc(self, force)
+            if not force and frozen and getattr(self, frozen, False):
+                setter_ = _setattr
+            else:
+                setter_ = setattr_fn
             
-            name and kw.setdefault(name. value)
+            name and kw.setdefault(name, value)
             for k,v in kw.items():
                 setter_(self, k, v)
         
         def __setattr__(self: Self, name: str, value):
             if self._privateattr_regex.search(name):
-                if not frozen or getattr(self, frozen, False):
-                    return setattr_fn(self, name, value)
+                # if not (frozen or getattr(self, frozen, False)):
+                return setattr_fn(self, name, value)
             getattr(self, name)
             raise AttributeError(f"`cannot set {name!r} on frozen {self.__class__.__qualname__!r}.")
 

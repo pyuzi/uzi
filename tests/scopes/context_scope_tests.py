@@ -147,7 +147,6 @@ def _test_in_multithread_setup(new: _T_FnNew, cls: type[ContextScope], MockInjec
         sub._new_injector.assert_called_once()
 
 
-@pytest.mark.skip
 @xfail(raises=InjectorError, strict=True)
 def test__set_current_injector_multiple_times(new: _T_FnNew, MockInjector):
     sub = new()

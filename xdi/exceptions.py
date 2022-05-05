@@ -48,5 +48,5 @@ class InjectorError(TypeError, XdiException):
 
 
 from .providers import Provider
-from .core import Injectable
+from .markers import Injectable
 from .graph import DepGraph

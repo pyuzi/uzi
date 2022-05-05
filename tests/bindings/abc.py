@@ -46,9 +46,9 @@ class BindingsTestCase(BaseTestCase[_T_Binding]):
     def bound(self, subject: _T_Binding, mock_injector: Injector):
         return subject.bind(mock_injector)
 
-    def check_deps(self, deps: dict, mock_scope, mock_injector: t.Union[Injector, dict[t.Any, AsyncMock]]):
+    def check_deps(self, deps: dict, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, AsyncMock]]):
         for _t, _v in deps.items():
-            d = mock_scope[_t]
+            d = mock_graph[_t]
             _x = mock_injector[d]
             _x.assert_called()
             if getattr(d, 'is_async', False):
@@ -72,9 +72,9 @@ class BindingsTestCase(BaseTestCase[_T_Binding]):
         assert cp == subject
         return subject, cp
 
-    def test_compare(self, new: _T_NewBinding, abstract, mock_scope):
+    def test_compare(self, new: _T_NewBinding, abstract, mock_graph):
         subject, subject_2 = new(), new()
-        mock = mock_scope[abstract]
+        mock = mock_graph[abstract]
         assert subject.__class__ is subject_2.__class__
         assert subject == subject_2
         assert subject != mock

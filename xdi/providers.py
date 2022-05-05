@@ -16,8 +16,8 @@ from . import _bindings as bindings
 from ._bindings import _T_Binding, _T_Concrete, Binding
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
-from .core import Injectable, T_Injectable, T_Injected, is_injectable
-from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, Dep, DepKey, DependencyMarker, Lookup, PureDep
+from .markers import Injectable, T_Injectable, T_Injected, is_injectable
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, Dep, DependencyMarker, Lookup, PureDep
 
 if sys.version_info < (3, 10):  # pragma: py-gt-39
     _UnionType = type(t.Union[t.Any, None])
@@ -30,7 +30,7 @@ _AnnotatedType = type(t.Annotated[t.Any, 'ann'])
 
 if t.TYPE_CHECKING:  # pragma: no cover
     from .containers import Container
-    from .graph import Injector, DepGraph
+    from .graph import DepKey, DepGraph
 
 
 
@@ -189,7 +189,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         self.__setattr(access_level=PUBLIC)
         return self
  
-    def _can_resolve(self, dep: DepKey, scope: "DepGraph") -> bool:
+    def _can_resolve(self, dep: 'DepKey', scope: "DepGraph") -> bool:
         """Check whether this provider is avaliable to the given dep.
 
         Unlike `_resolve`, this method will be called on all matching dependencies.

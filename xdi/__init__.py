@@ -2,7 +2,7 @@
 from ._common import Missing
 
 
-from .core import (
+from .markers import (
     Injectable, is_injectable, T_Injected, T_Injectable
 )
 

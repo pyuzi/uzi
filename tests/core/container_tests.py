@@ -10,9 +10,9 @@ from xdi._common import FrozenDict, ReadonlyDict
 
 from xdi.containers import Container
 from xdi.exceptions import ProError
-from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, DepKey, ProNoopPredicate, ProPredicate
+from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, ProNoopPredicate, ProPredicate
 from xdi.providers import Provider, AbstractProviderRegistry
-from xdi.graph import DepGraph
+from xdi.graph import DepGraph, DepKey
 
 
 from ..abc import BaseTestCase
@@ -148,45 +148,45 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert isinstance(c1 | pred, ProPredicate)
         assert isinstance(pred | c1, ProPredicate)
 
-    def test__resolve(self, new: _T_FnNew, mock_scope: DepGraph, MockDepKey: type[DepKey], MockProvider: type[Provider]):
+    def test__resolve(self, new: _T_FnNew, mock_graph: DepGraph, MockDepKey: type[DepKey], MockProvider: type[Provider]):
         T1, T2, T3, T4 = t.TypeVar('T1'), t.TypeVar('T2'), t.TypeVar('T3'), t.TypeVar('T4'),
         c1, c2, c3 = new('child'), new('subject'), new('base')
         c1.extend(c2.extend(c3))
         c2[T1] = MockProvider(access_level=PRIVATE)
         kt1 = MockDepKey(abstract=T1, container=c1)
 
-        assert tuple(c2._resolve(kt1, mock_scope)) == ()
+        assert tuple(c2._resolve(kt1, mock_graph)) == ()
 
         c2[T1].access_level = GUARDED
-        assert tuple(c2._resolve(kt1, mock_scope)) == ()
+        assert tuple(c2._resolve(kt1, mock_graph)) == ()
 
         c2[T1].access_level = PROTECTED
-        assert tuple(c2._resolve(kt1, mock_scope)) == (c2[T1],)
+        assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
         c2[T1].access_level = PUBLIC
-        assert tuple(c2._resolve(kt1, mock_scope)) == (c2[T1],)
+        assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
-        c2[T1]._can_resolve.assert_called_with(kt1, mock_scope)
+        c2[T1]._can_resolve.assert_called_with(kt1, mock_graph)
 
         c2[T1].access_level = PRIVATE
         kt1.container = c3
 
-        assert tuple(c2._resolve(kt1, mock_scope)) == ()
+        assert tuple(c2._resolve(kt1, mock_graph)) == ()
         
         c2[T1].access_level = GUARDED
-        assert tuple(c2._resolve(kt1, mock_scope)) == (c2[T1],)
+        assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
         c2[T1].access_level = PROTECTED
-        assert tuple(c2._resolve(kt1, mock_scope)) == (c2[T1],)
+        assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
         c2[T1].access_level = PUBLIC
-        assert tuple(c2._resolve(kt1, mock_scope)) == (c2[T1],)
+        assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
-        c2[T1]._can_resolve.assert_called_with(kt1, mock_scope)
+        c2[T1]._can_resolve.assert_called_with(kt1, mock_graph)
 
         c2[T1].access_level = PRIVATE
         kt1.container = c2
 
-        assert tuple(c2._resolve(kt1, mock_scope)) == (c2[T1],)
+        assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
         
         

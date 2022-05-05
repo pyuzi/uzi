@@ -16,7 +16,7 @@ from typing_extensions import Self
 from xdi._common import FrozenDict
 
 from ._common import Missing
-from .core import Injectable, is_injectable_annotation
+from .markers import Injectable, is_injectable_annotation
 from .markers import DependencyMarker
 
 if t.TYPE_CHECKING:  # pragma: no cover

@@ -35,10 +35,10 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         sub = new()
         assert isinstance(sub, Injector)
         assert isinstance(sub, NullInjector)
-        assert isinstance(sub.scope, DepGraph)
+        assert isinstance(sub.graph, DepGraph)
         assert sub.parent is None
         assert not sub
-        assert not sub.scope
+        assert not sub.graph
         str(sub)
         
     def test_compare(self, new: _T_FnNew):

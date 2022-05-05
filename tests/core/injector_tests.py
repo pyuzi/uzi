@@ -8,7 +8,7 @@ import pytest
 from collections.abc import Callable, Iterator, Set, MutableSet
 from xdi.exceptions import InjectorLookupError
 from xdi._common import FrozenDict
-from xdi.injectors import Injector, NullInjector
+from xdi.injectors import Injector, NullInjector, _null_injector
 from xdi._bindings import SimpleBinding, Binding, LookupErrorBinding
 
 
@@ -34,29 +34,27 @@ _T_Miss =  t.TypeVar('_T_Miss')
 class InjectorTests(BaseTestCase[Injector]):
 
     @pytest.fixture
-    def mock_scope(self, mock_scope):
-        mock_scope[_T_Miss] = LookupErrorBinding(_T_Miss, mock_scope)
-        return mock_scope
+    def mock_graph(self, mock_graph):
+        mock_graph[_T_Miss] = LookupErrorBinding(_T_Miss, mock_graph)
+        return mock_graph
 
     @pytest.fixture
-    def new_args(self, mock_scope):
-        return (mock_scope,)
+    def new_args(self, mock_graph):
+        return mock_graph, _null_injector,
 
     def test_basic(self, new: _T_FnNew):
         sub = new()
         assert isinstance(sub, Injector)
-        assert isinstance(sub.scope, DepGraph)
+        assert isinstance(sub.graph, DepGraph)
         assert isinstance(sub.parent, Injector)
         assert sub
-        str(sub)
+        str(sub),
         
     def test_compare(self, new: _T_FnNew):
         sub = new()
-        assert sub == new() == copy(sub)
-        assert not sub != new()
+        assert sub == copy(sub)
         assert not sub == object()
         assert sub != object()
-        assert hash(sub) == hash(new())
     
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)

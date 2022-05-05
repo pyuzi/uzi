@@ -195,42 +195,42 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         assert tuple(subject.when(replace=True).filters) == ()
         return subject
 
-    def test_apply_filters(self, abstract, new: _T_New_, mock_scope: DepGraph):
+    def test_apply_filters(self, abstract, new: _T_New_, mock_graph: DepGraph):
         subject = new()
         
         f0, f1, f2, f3, f4 = (Mock(Callable, return_value=True, name=f'filter[{i}]') for i in range(5))
 
         subject.when(f0, f1, f2, f3, f4)
         assert tuple(subject.filters) == (f0, f1, f2, f3, f4)
-        assert subject._can_resolve(abstract, mock_scope) is True
+        assert subject._can_resolve(abstract, mock_graph) is True
         for f in (f0, f1, f2, f3, f4):
-            f.assert_called_once_with(subject, abstract, mock_scope)
+            f.assert_called_once_with(subject, abstract, mock_graph)
             f.reset_mock()
         
         f2.return_value = False
-        assert subject._can_resolve(abstract, mock_scope) is False
+        assert subject._can_resolve(abstract, mock_graph) is False
         
         for f in (f0, f1, f2,):
-            f.assert_called_once_with(subject, abstract, mock_scope)
+            f.assert_called_once_with(subject, abstract, mock_graph)
 
         for f in (f3, f4):
             f.assert_not_called()
         return subject
     
 
-    def test__can_resolve_calls__freeze(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: DepGraph):
+    def test__can_resolve_calls__freeze(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: DepGraph):
         with patch.object(cls, '_freeze'):
             subject = new()
             # subject._freeze.return_value = True
-            res = subject._can_resolve(abstract, mock_scope)
+            res = subject._can_resolve(abstract, mock_graph)
             subject._freeze.assert_called_once()        
 
         subject = new()
-        res = subject._can_resolve(abstract, mock_scope)
+        res = subject._can_resolve(abstract, mock_graph)
         assert subject._frozen
         return subject, res    
 
-    # def _test_can_resolve(self, abstract, cls: type[_T_Pro], new: _T_New_, mock_scope: Scope, mock_container: Container):
+    # def _test_can_resolve(self, abstract, cls: type[_T_Pro], new: _T_New_, mock_graph: Scope, mock_container: Container):
     #     with patch.object(cls, '_can_resolve'):
     #         subject = new()
     #         subject._can_resolve.return_value = True
@@ -238,28 +238,28 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
 
     #         subject.when(f).set_container(mock_container)
             
-    #         assert subject.can_resolve(abstract, mock_scope) is True
-    #         f.assert_called_once_with(subject, abstract, mock_scope)
-    #         assert subject.can_resolve(abstract, mock_scope) is True
-    #         mock_scope.__contains__.assert_called_with(mock_container)
+    #         assert subject.can_resolve(abstract, mock_graph) is True
+    #         f.assert_called_once_with(subject, abstract, mock_graph)
+    #         assert subject.can_resolve(abstract, mock_graph) is True
+    #         mock_graph.__contains__.assert_called_with(mock_container)
 
     #         f.reset_mock()
     #         f.return_value = False
-    #         assert subject.can_resolve(abstract, mock_scope) is False
-    #         f.assert_called_once_with(subject, abstract, mock_scope)
-    #         assert subject.can_resolve(abstract, mock_scope) is False
+    #         assert subject.can_resolve(abstract, mock_graph) is False
+    #         f.assert_called_once_with(subject, abstract, mock_graph)
+    #         assert subject.can_resolve(abstract, mock_graph) is False
 
     #         f.reset_mock()
-    #         mock_scope.__contains__.return_value = False
-    #         assert subject.can_resolve(abstract, mock_scope) is False
-    #         # subject._can_resolve.assert_called_with(abstract, mock_scope)
+    #         mock_graph.__contains__.return_value = False
+    #         assert subject.can_resolve(abstract, mock_graph) is False
+    #         # subject._can_resolve.assert_called_with(abstract, mock_graph)
 
     #         return subject
 
-    # def _test__can_resolve(self, abstract, new: _T_New_, mock_scope: Scope):
+    # def _test__can_resolve(self, abstract, new: _T_New_, mock_graph: Scope):
     #     subject = new()
-    #     res = subject._can_resolve(abstract, mock_scope)
-    #     assert res == subject.can_resolve(abstract, mock_scope)
+    #     res = subject._can_resolve(abstract, mock_graph)
+    #     assert res == subject.can_resolve(abstract, mock_graph)
     #     return subject, res
 
     def test__binding_kwargs(self, new: _T_New_):
@@ -272,24 +272,24 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         
 
     @xfail(raises=NotImplementedError, strict=False)
-    def test__make_binding(self, cls: type[_T_Pro], abstract, mock_scope: DepGraph, new: _T_New_):
+    def test__make_binding(self, cls: type[_T_Pro], abstract, mock_graph: DepGraph, new: _T_New_):
         orig = cls._binding_kwargs
         with patch.object(cls, '_binding_kwargs', wraps=lambda *a, **kw: orig(subject, *a, **kw)):
             subject = new()
-            dep = subject._make_binding(abstract, mock_scope)
+            dep = subject._make_binding(abstract, mock_graph)
             assert isinstance(dep, Binding)
             subject._binding_kwargs.assert_called_once()
             return subject, dep
 
-    def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: DepGraph):
+    def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: DepGraph):
         subject = new()
-        res = subject._resolve(abstract, mock_scope)
+        res = subject._resolve(abstract, mock_graph)
         assert isinstance(res, Binding)
         return subject, res    
 
-    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_scope: DepGraph, mock_injector):
+    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: DepGraph, mock_injector):
         subject = new()
-        dep = subject._resolve(abstract, mock_scope)
+        dep = subject._resolve(abstract, mock_graph)
 
         assert isinstance(dep, Binding)
         func = dep.bind(mock_injector)

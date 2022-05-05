@@ -1,33 +1,22 @@
-from contextvars import ContextVar
-from email.policy import default
-import operator
-from threading import Lock
 import typing as t
 from logging import getLogger
 from collections import abc
 from typing_extensions import Self
 
-import attr
-
-from .core import is_injectable
-from .exceptions import FinalProviderOverrideError, ProError
+from .exceptions import ProError
 
 
-from . import Injectable, signals
-from ._bindings import _T_Binding, LookupErrorBinding
-from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, DepKey, _PredicateOpsMixin, DepSrc, ProNoopPredicate, ProPredicate
+from . import signals
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, _PredicateOpsMixin, Injectable, ProPredicate, is_injectable
 from ._common import ReadonlyDict, private_setattr, FrozenDict
 from .providers import Provider, AbstractProviderRegistry
 
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .graph import DepGraph
+    from .graph import DepGraph, DepKey, DepSrc
 
 
 logger = getLogger(__name__)
-
-_T_Pro = tuple['Container']
-_T_BindKey = t.Union[DepKey, Injectable]
 
 
 
@@ -86,7 +75,7 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
         self.__setattr(_pro=self._evaluate_pro())
         return self._pro
 
-    def pro_entries(self, it: abc.Iterable['Container'], bindings: 'DepGraph', src: DepSrc) -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], bindings: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
         pro = self.pro
         return tuple(c for c in it if c in pro)
         
@@ -191,7 +180,7 @@ class Container(_PredicateOpsMixin, AbstractProviderRegistry, ReadonlyDict[Injec
         if isinstance(key, Provider) and (key.container or self) is self:
             return key
             
-    def _resolve(self, key: DepKey, bindings: 'DepGraph'):
+    def _resolve(self, key: 'DepKey', bindings: 'DepGraph'):
         if prov := self[key.abstract]:
             access = prov.access_level or self.default_access_level
             if access in self.access_level(key.container):

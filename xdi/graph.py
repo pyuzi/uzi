@@ -9,13 +9,12 @@ from typing_extensions import Self
 
 import attr
 
-from .core import is_injectable
 from .exceptions import FinalProviderOverrideError, ProError
 
 
 from . import Injectable, signals
 from ._bindings import _T_Binding, LookupErrorBinding
-from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, DepKey, _PredicateOpsMixin, DepSrc, ProNoopPredicate, ProPredicate
+from .markers import _noop_pred, ProNoopPredicate, ProPredicate, is_injectable, is_dependency_marker
 from ._common import ReadonlyDict, private_setattr, FrozenDict, Missing
 from .providers import Provider, AbstractProviderRegistry
 
@@ -29,9 +28,72 @@ if t.TYPE_CHECKING: # pragma: no cover
 logger = getLogger(__name__)
 
 _T_Pro = tuple['Container']
-_T_BindKey = t.Union[DepKey, Injectable]
+_T_BindKey = t.Union['DepKey', Injectable]
+
+_object_new = object.__new__
 
 
+
+class DepSrc(t.NamedTuple):
+    graph: 'DepGraph'
+    container: 'Container'
+    predicate: ProPredicate = _noop_pred
+
+
+
+
+@private_setattr
+class DepKey:
+
+    __slots__ = 'abstract', 'src', '_ash',
+
+    abstract: Injectable
+    src: DepSrc
+
+    graph: 'DepGraph' = None
+
+    def __init_subclass__(cls, scope=None) -> None:
+        cls.graph = scope
+        return super().__init_subclass__()
+
+    def __new__(cls: type[Self], abstract: Injectable, container: 'Container'=None, predicate: ProPredicate=ProNoopPredicate()) -> Self:
+        self, src = _object_new(cls), DepSrc(
+            cls.graph,
+            container, 
+            predicate or _noop_pred
+        )
+        self.__setattr(abstract=abstract, src=src, _ash=hash((abstract, src)))
+        return self
+
+    @property
+    def container(self):
+        return self.src.container
+
+    @property
+    def predicate(self):
+        return self.src.predicate
+
+    def replace(self, *, abstract: Injectable=None, container: 'Container'=None, predicate: ProPredicate=None):
+        return self.__class__(
+            abstract or self.abstract,
+            container or self.container,
+            predicate or self.predicate,
+        )
+
+    def __eq__(self, o) -> bool:
+        if isinstance(o, DepKey):
+            return o.abstract == self.abstract and o.src == self.src
+        return NotImplemented
+        
+    def __ne__(self, o) -> bool:
+        if isinstance(o, DepKey):
+            return o.abstract != self.abstract or o.src != self.src
+        return NotImplemented
+    
+    def __hash__(self) -> int:
+        return self._ash
+       
+       
 
 
 
@@ -95,7 +157,7 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
         self.__setattr(
             container=container,
             parent=_null_graph if parent is None else parent,
-            keyclass=type(f'BindKey', (DepKey,), {'scope': self}),
+            keyclass=type(f'BindKey', (DepKey,), {'graph': self}),
         )
         self.__setattr(
             pros=ProMap(self),
@@ -105,6 +167,10 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
     @property
     def level(self) -> int:
         return self.parent.level + 1
+
+    @property
+    def name(self):
+        return self.container.name
 
     def parents(self):
         """Returns a generetor that iterates over the graph's ancestor starting 

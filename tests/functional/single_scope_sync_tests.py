@@ -5,8 +5,7 @@ import typing as t
 
 
 from xdi.containers import Container
-from xdi.injectors import Injector
-from xdi.graph import DepGraph
+from xdi.scopes import Scope
 
 
 from .abc import *
@@ -32,8 +31,9 @@ class Tests(FunctionalTestCase):
         container2.singleton(FooBar)
         container2.singleton(FooBarBaz)
 
-        scope = DepGraph(container2)
-        injector = Injector(scope)
+        scope = Scope(container2)
+
+        injector = scope.injector()
 
         assert isinstance(injector.make(Foo), Foo)
         assert isinstance(injector.make(Bar), Bar)

@@ -1,4 +1,5 @@
 
+from functools import partial
 import inspect
 import re
 import typing as t
@@ -79,7 +80,10 @@ def typed_signature(
         )
 
     if globalns is None:
-        globalns = getattr(callable, "__globals__", None) or getattr(
+        if not (globalns := getattr(callable, "__globals__", None)): 
+            if isinstance(callable, partial):
+                callable = callable.func
+            getattr(
             import_module(callable.__module__), "__dict__", None
         )
 

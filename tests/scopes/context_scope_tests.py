@@ -42,6 +42,12 @@ def test_basic(new: _T_FnNew):
     
 
 
+@xfail(raises=InjectorError, strict=True)
+def test__set_current_injector_multiple_times(new: _T_FnNew, MockInjector):
+    sub = new()
+    sub._set_current_injector(MockInjector())
+    sub._set_current_injector(MockInjector())
+
 
 async def test_setup_multiple_async(new: _T_FnNew, cls: type[ContextScope], MockInjector):
 
@@ -105,21 +111,12 @@ async def test_parent_context_setup(new: _T_FnNew, cls: type[ContextScope], Mock
 
 
 
-def _test_in_multithread_setup(new: _T_FnNew, cls: type[ContextScope], MockInjector):
+def test_in_multithread_setup(new: _T_FnNew, cls: type[ContextScope], MockInjector):
 
     N, L = 4, int(1e4)
 
-    def load_fn(s: int=L):
-        load = [*range(int(s))]
-
-    def load_mock():
-        load_fn()
-        inj = MockInjector()
-        inj.close =MagicMock(wraps=load_fn)
-        return inj
-
     with patch.object(cls, '_new_injector'):
-        cls._new_injector = MagicMock(wraps=load_mock)
+        cls._new_injector = MagicMock(wraps=MockInjector)
         sub = new()
 
         res = [None] * N
@@ -127,28 +124,21 @@ def _test_in_multithread_setup(new: _T_FnNew, cls: type[ContextScope], MockInjec
         def func(n):
             res[n] = sub.is_active, sub.injector()
 
-        threads = [Thread(target=func, args=(i,)) for i in range(N)]
-        
-        *(t.start() for t in threads), 
-        *(t.join() for t in threads),
-        
+        with sub as inj:
 
-        seen = set()
-        for i, (active, val) in enumerate(res):
-            print(f'{i} -> {active=}, {val=}')
-            # if i == 0:
-            #     assert not active
-            # else:
-            #     assert active or locked
-            #     assert val in seen
-            seen.add(val)
-        
-        sub.reset()
-        sub._new_injector.assert_called_once()
+            threads = [Thread(target=func, args=(i,)) for i in range(N)]
+            
+            *(t.start() for t in threads), 
+            *(t.join() for t in threads),
 
+            seen = {inj}
+            for i, (active, val) in enumerate(res):
+                print(f'{i} -> {active=}, {val=}')
+                assert not active
+                assert not val in seen
+                seen.add(val)
+            
 
-@xfail(raises=InjectorError, strict=True)
-def test__set_current_injector_multiple_times(new: _T_FnNew, MockInjector):
-    sub = new()
-    sub._set_current_injector(MockInjector())
-    sub._set_current_injector(MockInjector())
+        assert not sub.is_active
+        assert sub._new_injector.call_count == N + 1
+

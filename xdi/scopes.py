@@ -217,7 +217,7 @@ class ContextScope(Scope[_T_Injector]):
     def __init_attrs__(self, kwds):
         self.__var = _null_context_var
         super().__init_attrs__(kwds)
-        self.__var = ContextVar(f"{self.name}.injector")
+        self.__var = ContextVar(f"{self.name}.injector", default=self.initial)
 
     @property
     def current(self):
@@ -225,11 +225,11 @@ class ContextScope(Scope[_T_Injector]):
 
     def _set_current_injector(self, injector: _T_Injector) -> _T_Injector:
         init, prev = self.initial, self.__var.set(injector)
-        if init in (injector, prev.old_value):
+        if prev.old_value is prev.MISSING or init in (injector, prev.old_value):
             return injector
         
         self.__var.reset(prev)
-        raise InjectorError(f"injector already running: {self}")
+        raise InjectorError(f"injector already running: {prev.old_value=} {self}")
 
 
 

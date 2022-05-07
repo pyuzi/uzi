@@ -8,7 +8,8 @@ import typing as t
 
 from xdi.providers import UnionProvider as Provider
 
-from xdi import DepGraph, is_injectable
+from xdi import is_injectable
+from xdi.graph import DepGraph
 
  
 

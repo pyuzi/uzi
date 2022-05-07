@@ -16,9 +16,9 @@ for cls in ALL_DEPS:
         ioc.factory(cls)
 
 
-scope = xdi.DepGraph(ioc)
+scope = xdi.Scope(ioc)
 
-injector = xdi.Injector(scope)
+injector = scope.injector()
 
 
 def get_runner(cls):

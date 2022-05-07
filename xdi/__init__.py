@@ -15,7 +15,7 @@ from . import injectors, providers
 from .containers import Container
 from .injectors import Injector
 from .providers import Provider
-from .graph import DepGraph
+from .scopes import Scope, SafeScope, ThreadScope, ContextScope
 
 
 from . import _receivers

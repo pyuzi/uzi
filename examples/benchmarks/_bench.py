@@ -16,7 +16,7 @@ class Foo:
     
 class Bar:
     
-    def __init__(self, foo: Foo) -> None:
+    def __init__(self, foo: Foo, /) -> None:
         assert isinstance(foo, Foo)
 
     @staticmethod
@@ -25,7 +25,7 @@ class Bar:
 
      
 class Baz:   
-    def __init__(self, bar: Bar) -> None:
+    def __init__(self, bar: Bar, /) -> None:
         assert isinstance(bar, Bar)
 
     @staticmethod
@@ -65,7 +65,7 @@ class FooBarBaz:
 
 class Service:
     
-    def __init__(self, foo: Foo, bar: Bar, baz: Baz, foobar: FooBar, foobarbaz: FooBarBaz) -> None:
+    def __init__(self, foo: Foo, bar: Bar, baz: Baz, foobar: FooBar, foobarbaz: FooBarBaz, /) -> None:
         assert isinstance(foo, Foo)
         assert isinstance(bar, Bar)
         assert isinstance(baz, Baz)

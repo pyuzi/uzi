@@ -17,7 +17,7 @@ from .injectors import Injector, NullInjector, _null_injector
 logger = getLogger(__name__)
 
 
-_T_Injector = t.TypeVar("_T_Injector", bound=Injector, covariant=True)
+_T_Injector = t.TypeVar("_T_Injector", bound=Injector)
 _T_Initial = t.Union[_T_Injector, t.Literal[_null_injector]] # type: ignore
 
 
@@ -104,7 +104,7 @@ class Scope(t.Generic[_T_Injector]):
     def __default_attrs__(self):
         return {}
 
-    def injector(self, *, setup=True):
+    def injector(self, *, setup=True) -> _T_Injector:
         if inj := self.current:
             return inj
         elif setup:

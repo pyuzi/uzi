@@ -16,7 +16,7 @@ for cls in ALL_DEPS:
         ioc.factory(cls)
 
 
-scope = xdi.Scope(ioc)
+scope = xdi.Scope[xdi.Injector](ioc)
 
 injector = scope.injector()
 

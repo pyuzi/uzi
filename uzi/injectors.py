@@ -66,12 +66,12 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
         if dep := graph[abstract]:
             return self[dep](*args, **kwds)
         elif callable(abstract):
-            if prov := getattr(abstract, '__xdi_provider__', None):
+            if prov := getattr(abstract, '__uzi_provider__', None):
                 if dep := graph[prov]:
                     return self[dep](*args, **kwds)
             else:
                 prov = providers.Partial(abstract)
-                setattr(abstract, '__xdi_provider__', prov)
+                setattr(abstract, '__uzi_provider__', prov)
                 return self[graph[prov]](*args, **kwds)
         else:
             return self[abstract](*args, **kwds)
@@ -143,7 +143,7 @@ class NullInjector(Injector):
         if not (scp := self._scope) is None:
             return scp
         else:
-            from xdi.scopes import _null_scope
+            from uzi.scopes import _null_scope
             scp = self.__class__._scope = _null_scope
             return scp
 

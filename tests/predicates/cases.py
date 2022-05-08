@@ -7,7 +7,7 @@ import pytest
 
 
 from collections import abc
-from xdi.markers import ProAndPredicate, _PredicateBase, ProInvertPredicate, ProOrPredicate, ProPredicate
+from uzi.markers import ProAndPredicate, _PredicateBase, ProInvertPredicate, ProOrPredicate, ProPredicate
 
 
 

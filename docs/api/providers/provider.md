@@ -1,3 +1,3 @@
 # Provider
 
-::: xdi.providers.Provider
+::: uzi.providers.Provider

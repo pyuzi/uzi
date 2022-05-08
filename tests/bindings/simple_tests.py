@@ -5,7 +5,7 @@ import typing as t
 from collections.abc import Callable
 
 
-from xdi._bindings import SimpleBinding as Dependency
+from uzi._bindings import SimpleBinding as Dependency
 
 
 Dependency = Dependency

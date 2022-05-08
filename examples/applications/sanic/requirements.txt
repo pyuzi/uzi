@@ -1,4 +1,4 @@
-xdi
+uzi
 sanic
 aiohttp
 pyyaml

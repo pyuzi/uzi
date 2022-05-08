@@ -1,6 +1,6 @@
 import pytest
 
-from xdi.markers import ProInvertPredicate as Predicate
+from uzi.markers import ProInvertPredicate as Predicate
 
 
 

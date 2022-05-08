@@ -8,12 +8,12 @@ import pytest
 from unittest.mock import  MagicMock, Mock
 
 from collections.abc import Callable, Iterator, Set, MutableSet
-from xdi import Dep
-from xdi._common import FrozenDict
+from uzi import Dep
+from uzi._common import FrozenDict
 
 
-from xdi._functools import BoundParams, BoundParam
-from xdi.graph import DepGraph
+from uzi._functools import BoundParams, BoundParam
+from uzi.graph import DepGraph
 
 
 

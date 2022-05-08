@@ -2,7 +2,7 @@
 
 import passlib.hash
 
-from xdi import DepGraph, Container, Injector
+from uzi import DepGraph, Container, Injector
 
 
 hash_password = passlib.hash.sha256_crypt.hash

@@ -9,9 +9,9 @@ import pytest
 from collections import abc
 
 
-from xdi.exceptions import InjectorError
-from xdi.graph import DepGraph
-from xdi.scopes import ContextScope
+from uzi.exceptions import InjectorError
+from uzi.graph import DepGraph
+from uzi.scopes import ContextScope
 
 from .. import checks
 

@@ -1,13 +1,13 @@
 
-import xdi
+import uzi
 
 
 from _bench import ALL_DEPS, SINGLETON_DEPS
 
-LABEL = 'xdi'
+LABEL = 'uzi'
 
 
-ioc = xdi.Container() 
+ioc = uzi.Container() 
 
 for cls in ALL_DEPS:
     if cls in SINGLETON_DEPS:
@@ -16,7 +16,7 @@ for cls in ALL_DEPS:
         ioc.factory(cls)
 
 
-scope = xdi.Scope[xdi.Injector](ioc)
+scope = uzi.Scope[uzi.Injector](ioc)
 
 injector = scope.injector()
 

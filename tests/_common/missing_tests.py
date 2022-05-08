@@ -3,7 +3,7 @@ import pickle
 import pytest
 
 
-from xdi._common import Missing, MissingType
+from uzi._common import Missing, MissingType
 
 
 

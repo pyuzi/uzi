@@ -2,8 +2,8 @@
 
 from collections.abc import Callable
 from functools import partial, update_wrapper, wraps
-from xdi import Container, providers
-from xdi.adapters.sanic import inject
+from uzi import Container, providers
+from uzi.adapters.sanic import inject
 from sanic import Request
 
 from .services import search, giphy

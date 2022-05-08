@@ -4,8 +4,8 @@ import typing as t
 
 
 
-from xdi.containers import Container
-from xdi.scopes import Scope
+from uzi.containers import Container
+from uzi.scopes import Scope
 
 
 from .abc import *

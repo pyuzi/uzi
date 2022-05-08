@@ -1,13 +1,13 @@
 # Key Concepts
 
-Before we start, it would be good to introduce some core concepts used in `xdi` and  
+Before we start, it would be good to introduce some core concepts used in `uzi` and  
 across this documentation.
 
 
 ### Dependencies 
 
 A dependency is an object which other objects require (depend on).  
-In `xdi` a dependency is identified by it's `type`, a `TypeVar` or a `DependencyMarker`.
+In `uzi` a dependency is identified by it's `type`, a `TypeVar` or a `DependencyMarker`.
 
 ### Providers
 

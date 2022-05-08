@@ -107,12 +107,12 @@ Duplicating the assembly code with make it harder to change in the future.
 
 
 
-### With XDI.
+### With Uzi.
 
-Simple DI using `xdi`'s low level API.
+Simple DI using `uzi`'s low level API.
 
 ```python
-from xdi import Injector, Scope, Container
+from uzi import Injector, Scope, Container
 
 container = Container()
 

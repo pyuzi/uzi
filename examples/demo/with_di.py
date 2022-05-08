@@ -3,7 +3,7 @@ import os
 
 from after import ApiClient, Service
 
-from xdi import DepGraph, Container, Injector
+from uzi import DepGraph, Container, Injector
 
 
 

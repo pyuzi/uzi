@@ -1,4 +1,4 @@
-site_name: XDI
+site_name: Uzi
 theme:
   name: material
   custom_dir: docs/override
@@ -12,8 +12,8 @@ theme:
     # - navigation.sections
 
 
-repo_name: pyxdi/xdi
-repo_url: https://github.com/pyxdi/xdi
+repo_name: pyuzi/uzi
+repo_url: https://github.com/pyuzi/uzi
 edit_uri: "blob/master/docs/"
 
 use_directory_urls: false
@@ -36,13 +36,13 @@ nav:
     - 'frameworks/django.md'
     - 'frameworks/sanic.md'
   - 'API Reference': 
-    - 'xdi': 'api/index.md'
-    - 'xdi.containers': 'api/containers.md'
-    - 'xdi.exceptions': 'api/exceptions.md'
-    - 'xdi.graph': 'api/graph.md'
-    - 'xdi.injectors': 'api/injectors.md'
-    - 'xdi.markers': 'api/markers.md'
-    - 'xdi.providers':
+    - 'uzi': 'api/index.md'
+    - 'uzi.containers': 'api/containers.md'
+    - 'uzi.exceptions': 'api/exceptions.md'
+    - 'uzi.graph': 'api/graph.md'
+    - 'uzi.injectors': 'api/injectors.md'
+    - 'uzi.markers': 'api/markers.md'
+    - 'uzi.providers':
       - 'api/providers/provider.md'
       - 'api/providers/alias.md'
       - 'api/providers/annotation.md'
@@ -56,10 +56,10 @@ nav:
       - 'api/providers/singleton.md'
       - 'api/providers/union.md'
       - 'api/providers/value.md'
-    - 'xdi.scopes': 'api/scopes.md'
-    - 'xdi._bindings': 'api/_bindings.md'
-    - 'xdi._common': 'api/_common.md'
-    - 'xdi._functools': 'api/_functools.md'
+    - 'uzi.scopes': 'api/scopes.md'
+    - 'uzi._bindings': 'api/_bindings.md'
+    - 'uzi._common': 'api/_common.md'
+    - 'uzi._functools': 'api/_functools.md'
     
   - 'Contributing': 'contributing.md'
 
@@ -116,4 +116,4 @@ plugins:
             docstring_section_style: table
       custom_templates: templates
       watch:
-        - xdi
+        - uzi

@@ -3,14 +3,14 @@ from inspect import isawaitable, signature
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 import typing as t
-from xdi import Dep
+from uzi import Dep
 
 
 
 
-from xdi._bindings import Factory as Dependency
-from xdi._functools import BoundParams
-from xdi.injectors import Injector
+from uzi._bindings import Factory as Dependency
+from uzi._functools import BoundParams
+from uzi.injectors import Injector
 
 
 from .abc import BindingsTestCase, _T_NewBinding
@@ -82,7 +82,7 @@ class FactoryDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AsyncFactory as Dependency
+from uzi._bindings import AsyncFactory as Dependency
 
 class AsyncFactoryDependencyTests(BindingsTestCase[Dependency]):
 
@@ -107,7 +107,7 @@ class AsyncFactoryDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AwaitParamsFactory as Dependency
+from uzi._bindings import AwaitParamsFactory as Dependency
 
 class AwaitParamsFactoryDependencyTests(BindingsTestCase[Dependency]):
 
@@ -135,7 +135,7 @@ class AwaitParamsFactoryDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AwaitParamsAsyncFactory as Dependency
+from uzi._bindings import AwaitParamsAsyncFactory as Dependency
 
 class AwaitParamsAsyncFactoryDependencyTests(BindingsTestCase[Dependency]):
 

@@ -1,5 +1,5 @@
 # LookupMarkerProvider
 
-::: xdi.providers.LookupMarkerProvider
+::: uzi.providers.LookupMarkerProvider
 
 

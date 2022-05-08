@@ -3,14 +3,14 @@
 import attr
 
 
-class XdiException(Exception):
+class UziException(Exception):
     """Base class for all internal exceptions."""
 
 
 
 
 @attr.s()
-class FinalProviderOverrideError(TypeError, XdiException):
+class FinalProviderOverrideError(TypeError, UziException):
     """Raised when a final provider has an override.
     """
     
@@ -21,7 +21,7 @@ class FinalProviderOverrideError(TypeError, XdiException):
 
 
 @attr.s()
-class InjectorLookupError(KeyError, XdiException):
+class InjectorLookupError(KeyError, UziException):
     """Raised by ~Injector` when a missing dependency is requested.
     
     Args:
@@ -35,7 +35,7 @@ class InjectorLookupError(KeyError, XdiException):
 
 
 
-class ProError(TypeError, XdiException):
+class ProError(TypeError, UziException):
     """Raised when there is an issue with provider resolution order (`pro`) 
         consistency
     """
@@ -43,7 +43,7 @@ class ProError(TypeError, XdiException):
 
 
 
-class InjectorError(TypeError, XdiException):
+class InjectorError(TypeError, UziException):
     """Raise by `Scope`s"""
 
 

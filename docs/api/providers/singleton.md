@@ -1,4 +1,4 @@
 # Singleton
 
-::: xdi.providers.Singleton
+::: uzi.providers.Singleton
 

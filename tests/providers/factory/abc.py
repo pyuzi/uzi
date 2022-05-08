@@ -2,11 +2,11 @@ import asyncio
 import pytest
 
 import typing as t
-from xdi import Dep
+from uzi import Dep
 
 
 
-from xdi.providers import Factory as Provider
+from uzi.providers import Factory as Provider
 
 
 

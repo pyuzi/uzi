@@ -1,7 +1,7 @@
 import pytest
 
 
-from xdi._common import FrozenDict, ReadonlyDict
+from uzi._common import FrozenDict, ReadonlyDict
 
 
 

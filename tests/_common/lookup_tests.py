@@ -7,7 +7,7 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-from xdi._common.lookups import Lookup, EvaluationError, AttributeEvaluationError, KeyEvaluationError, IndexEvaluationError, CallEvaluationError
+from uzi._common.lookups import Lookup, EvaluationError, AttributeEvaluationError, KeyEvaluationError, IndexEvaluationError, CallEvaluationError
 
 class SomeKeyError(KeyError):
 

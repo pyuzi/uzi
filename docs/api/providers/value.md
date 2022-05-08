@@ -1,4 +1,4 @@
 # Value
 
-::: xdi.providers.Value
+::: uzi.providers.Value
 

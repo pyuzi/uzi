@@ -1,4 +1,4 @@
 # Alias
 
-::: xdi.providers.Alias
+::: uzi.providers.Alias
 

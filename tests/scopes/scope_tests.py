@@ -8,11 +8,11 @@ import pytest
 from collections import abc
 
 
-from xdi.containers import Container
-from xdi.exceptions import InjectorError
-from xdi.graph import DepGraph, _null_graph
-from xdi.injectors import Injector
-from xdi.scopes import Scope
+from uzi.containers import Container
+from uzi.exceptions import InjectorError
+from uzi.graph import DepGraph, _null_graph
+from uzi.injectors import Injector
+from uzi.scopes import Scope
 
 
 from .. import checks

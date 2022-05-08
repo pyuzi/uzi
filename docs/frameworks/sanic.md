@@ -1,25 +1,25 @@
 # Sanic
 
 [Sanic](https://sanic.dev/) framework integration is provided the 
-[sanic-xdi](https://github.com/pyxdi/sanic-xdi) adapter.
+[sanic-uzi](https://github.com/pyuzi/sanic-uzi) adapter.
 
 
 # Install
 
 ```bash
-pip install sanic-xdi
+pip install sanic-uzi
 ```
 
 or
 
 ```bash
-pip install xdi[sanic]
+pip install uzi[sanic]
 ```
 
 
 ## Usage
 
-Please refer to the adapter [documentation](https://pyxdi.github.io/sanic-xdi/) 
+Please refer to the adapter [documentation](https://pyuzi.github.io/sanic-uzi/) 
 for usage details
 
 

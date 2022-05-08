@@ -1,1 +1,1 @@
-::: xdi.graph
+::: uzi.graph

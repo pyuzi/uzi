@@ -1,1 +1,1 @@
-::: xdi.exceptions
+::: uzi.exceptions

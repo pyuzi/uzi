@@ -9,7 +9,7 @@ import pytest
 from collections import abc
 
 
-from xdi.markers import Dep, ProAndPredicate, ProInvertPredicate, ProNoopPredicate, ProOrPredicate, ProPredicate, PureDep
+from uzi.markers import Dep, ProAndPredicate, ProInvertPredicate, ProNoopPredicate, ProOrPredicate, ProPredicate, PureDep
 
 
 

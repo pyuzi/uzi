@@ -3,7 +3,7 @@ import os
 from unittest.mock import MagicMock, Mock
 import pytest
 
-from xdi.markers import ProFilter as Predicate
+from uzi.markers import ProFilter as Predicate
 
 
 

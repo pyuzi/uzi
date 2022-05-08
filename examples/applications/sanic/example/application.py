@@ -6,8 +6,8 @@ from sanic import Request, Sanic
 from sanic_routing import Route
 
 from . import handlers
-from xdi import DepGraph
-from xdi.injectors import Injector
+from uzi import DepGraph
+from uzi.injectors import Injector
 from .di import ioc, inject
 from .services import search, giphy
 
@@ -26,7 +26,7 @@ def create_app(use_di=False) -> Sanic:
         scope = DepGraph(ioc)
         @app.on_request
         def setup_request_injector(request: Request):
-            request.ctx._xdi_injector = Injector(scope)
+            request.ctx._uzi_injector = Injector(scope)
             # print('***<on_request>***')
 
         # @app.on_response

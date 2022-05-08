@@ -1,3 +1,3 @@
 # Scopes
 
-::: xdi.scopes
+::: uzi.scopes

@@ -1,6 +1,6 @@
 from pyinstrument import Profiler
 
-import _xdi
+import _uzi
 import _py 
 import _dependency_injector
 import _antidot
@@ -12,7 +12,7 @@ from _bench import Benchmark, ALL_DEPS
 
 
 libs = {}
-for mod in (_py, _xdi, _antidot, _dependency_injector):
+for mod in (_py, _uzi, _antidot, _dependency_injector):
     if mod.LABEL in libs:
         raise KeyError(f'{mod.__name__}.{mod.LABEL}')
     libs[mod.LABEL] = {

@@ -1,4 +1,4 @@
 # AnnotationProvider
 
 
-::: xdi.providers.AnnotationProvider
+::: uzi.providers.AnnotationProvider

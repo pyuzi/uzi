@@ -1,4 +1,4 @@
 # Partial
 
-::: xdi.providers.Partial
+::: uzi.providers.Partial
 

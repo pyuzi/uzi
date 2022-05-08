@@ -5,14 +5,14 @@ import pytest
 
 
 from collections.abc import Callable
-from xdi._common import FrozenDict, ReadonlyDict
+from uzi._common import FrozenDict, ReadonlyDict
 
 
-from xdi.containers import Container
-from xdi.exceptions import ProError
-from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, ProNoopPredicate, ProPredicate
-from xdi.providers import Provider, ProviderRegistry
-from xdi.graph import DepGraph, DepKey
+from uzi.containers import Container
+from uzi.exceptions import ProError
+from uzi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, ProNoopPredicate, ProPredicate
+from uzi.providers import Provider, ProviderRegistry
+from uzi.graph import DepGraph, DepKey
 
 
 from ..abc import BaseTestCase

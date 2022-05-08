@@ -1,6 +1,6 @@
 import typing as t
 import pytest
-from xdi import Dep
+from uzi import Dep
 
 from ..abc import BaseTestCase
 

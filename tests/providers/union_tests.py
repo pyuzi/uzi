@@ -6,10 +6,10 @@ import typing as t
 
 
 
-from xdi.providers import UnionProvider as Provider
+from uzi.providers import UnionProvider as Provider
 
-from xdi import is_injectable
-from xdi.graph import DepGraph
+from uzi import is_injectable
+from uzi.graph import DepGraph
 
  
 

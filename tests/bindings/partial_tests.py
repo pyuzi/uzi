@@ -3,15 +3,15 @@ from inspect import isawaitable, signature
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 import typing as t
-from xdi import Dep
-from xdi._common import FrozenDict
+from uzi import Dep
+from uzi._common import FrozenDict
 
 
 
 
-from xdi._bindings import Partial as Dependency
-from xdi._functools import BoundParams
-from xdi.injectors import Injector
+from uzi._bindings import Partial as Dependency
+from uzi._functools import BoundParams
+from uzi.injectors import Injector
 
 
 from .abc import BindingsTestCase, _T_NewBinding
@@ -89,7 +89,7 @@ class PartialDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AsyncPartial as Dependency
+from uzi._bindings import AsyncPartial as Dependency
 
 class AsyncPartialDependencyTests(BindingsTestCase[Dependency]):
 
@@ -120,7 +120,7 @@ class AsyncPartialDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AwaitParamsPartial as Dependency
+from uzi._bindings import AwaitParamsPartial as Dependency
 
 class AwaitParamsPartialDependencyTests(BindingsTestCase[Dependency]):
 
@@ -153,7 +153,7 @@ class AwaitParamsPartialDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AwaitParamsAsyncPartial as Dependency
+from uzi._bindings import AwaitParamsAsyncPartial as Dependency
 
 class AwaitParamsAsyncPartialDependencyTests(BindingsTestCase[Dependency]):
 

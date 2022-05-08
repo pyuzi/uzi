@@ -4,7 +4,7 @@ import typing as t
 
 
 
-from xdi.providers import Value as Provider
+from uzi.providers import Value as Provider
 
 
 from .abc import ProviderTestCase

@@ -7,7 +7,7 @@ from typing import Literal
 from dependency_injector import containers, providers, wiring, resources
 
 from _benchmarkutil import Benchmark
-import xdi
+import uzi
 
 # N = 1
 
@@ -125,7 +125,7 @@ class Test(object):
 
 
 
-ioc = xdi.Container()
+ioc = uzi.Container()
 
 ioc.factory(A)
 ioc.factory(B)#.singleton()
@@ -159,7 +159,7 @@ class Container(containers.DeclarativeContainer):
 
 
 # # @inject
-# # def _inj_xdi(test: Test, a: A, b: B, c: C):
+# # def _inj_uzi(test: Test, a: A, b: B, c: C):
 # #     assert isinstance(test, Test)
 # #     assert isinstance(a, A)
 # #     assert isinstance(b, B)
@@ -172,7 +172,7 @@ class Container(containers.DeclarativeContainer):
 
 # def _new_ctx_inj():
 #     with context(ioc) as ctx:
-#         _inj_xdi()
+#         _inj_uzi()
         
 
 # @wiring.inject
@@ -197,9 +197,9 @@ def main():
     c.wire([__name__])
     # c.init_resources()
 
-    scope = xdi.DepGraph(ioc)
+    scope = uzi.DepGraph(ioc)
 
-    inj = xdi.injectors.Injector(scope)
+    inj = uzi.injectors.Injector(scope)
 
     # with inj.exitstack:
     if True:
@@ -207,23 +207,23 @@ def main():
         ls = []
        
         
-        bench = Benchmark("A.", N).run(di=Container.a, xdi=inj.bound(A))
+        bench = Benchmark("A.", N).run(di=Container.a, uzi=inj.bound(A))
         # ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("B.", N).run( di=Container.b, xdi=inj.bound(B))
+        bench = Benchmark("B.", N).run( di=Container.b, uzi=inj.bound(B))
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("C.", N).run(di=Container.c, xdi=inj.bound(C))
+        bench = Benchmark("C.", N).run(di=Container.c, uzi=inj.bound(C))
         ls.append(bench)
         print(bench, "\n")
 
-        bench = Benchmark("Test.", N).run(di=Container.test, xdi=inj.bound(Test))
+        bench = Benchmark("Test.", N).run(di=Container.test, uzi=inj.bound(Test))
         ls.append(bench)
         print(bench, "\n")
 
-        # bench = Benchmark("inject.", N).run(di=_inj_di, xdi=_inj_xdi)
+        # bench = Benchmark("inject.", N).run(di=_inj_di, uzi=_inj_uzi)
         # ls.append(bench)
         # print(bench, "\n")
 
@@ -237,9 +237,9 @@ def main():
     # c.shutdown_resources()
     
 
-    # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), xdi=_new_ctx_test)
+    # b = Benchmark("new-ctx.test.", N).run(di=lambda: c.test(), uzi=_new_ctx_test)
     # print(b)
-    # b = Benchmark("new-ctx.inject.", N).run(di=_inj_di, xdi=_new_ctx_inj)
+    # b = Benchmark("new-ctx.inject.", N).run(di=_inj_di, uzi=_new_ctx_inj)
     # print(b, "\n")
 
 

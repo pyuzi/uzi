@@ -3,12 +3,12 @@ import pytest
 
 
 from collections.abc import Callable
-from xdi.graph import NullGraph
-from xdi.injectors import NullInjector
+from uzi.graph import NullGraph
+from uzi.injectors import NullInjector
 
 
 
-from xdi.scopes import NullScope, Scope
+from uzi.scopes import NullScope, Scope
 
 
 

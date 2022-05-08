@@ -2,9 +2,9 @@ import typing as t
 from unittest.mock import Mock
 
 import pytest
-from xdi.markers import Dep
-from xdi.providers import DepMarkerProvider as Provider
-from xdi.graph import DepGraph
+from uzi.markers import Dep
+from uzi.providers import DepMarkerProvider as Provider
+from uzi.graph import DepGraph
 
 from .abc import ProviderTestCase, _T_NewPro
 

@@ -1,3 +1,3 @@
 # Bindings
 
-::: xdi._bindings
+::: uzi._bindings

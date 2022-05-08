@@ -8,8 +8,8 @@ import pytest
 from collections import abc
 
 
-from xdi.graph import DepGraph
-from xdi.scopes import ThreadScope, Scope
+from uzi.graph import DepGraph
+from uzi.scopes import ThreadScope, Scope
 
 from .. import checks
 

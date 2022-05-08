@@ -1,4 +1,4 @@
-# XDI
+# Uzi
 
 
 [![PyPi version][pypi-image]][pypi-link]
@@ -7,24 +7,24 @@
 [![Coverage status][codecov-image]][codecov-link]
 
 
-`XDI` is a [dependency injection](https://en.wikipedia.org/wiki/Dependency_injection) framework for Python.
+`Uzi` is a [dependency injection](https://en.wikipedia.org/wiki/Dependency_injection) framework for Python.
 
 ## Install
 
-Install from [PyPi](https://pypi.org/project/xdi/)
+Install from [PyPi](https://pypi.org/project/uzi/)
 
 ```
-pip install xdi
+pip install uzi
 ```
 
 ## Features
 
-- Async support: `xdi` will `await` for you.
+- Async support: `uzi` will `await` for you.
 - Lots of Providers to choose from. E.g. [Value](basic/providers/value.md), 
 [Alias](basic/providers/alias.md).
 - Extensibility through `Container` inheritance.
 - Multi scope support.
-- Fast: minus the cost of an additional stack frame, `xdi` resolves dependencies 
+- Fast: minus the cost of an additional stack frame, `uzi` resolves dependencies 
 nearly as efficiently as resolving them by hand.
 
 
@@ -46,17 +46,17 @@ Will be production ready from version `v1.0.0` onwards.
 
 
 
-[docs-link]: https://pyxdi.github.io/xdi/
-[api-docs-link]: https://pyxdi.github.io/xdi/api/
-[install-link]: https://pyxdi.github.io/xdi/install.html
-[why-link]: https://pyxdi.github.io/xdi/why.html
-[contributing-link]: https://pyxdi.github.io/xdi/0.5.x/contributing.html
-[pypi-image]: https://img.shields.io/pypi/v/xdi.svg?color=%233d85c6
-[pypi-link]: https://pypi.python.org/pypi/xdi
-[pyversions-image]: https://img.shields.io/pypi/pyversions/xdi.svg
-[pyversions-link]: https://pypi.python.org/pypi/xdi
-[ci-image]: https://github.com/pyxdi/xdi/actions/workflows/workflow.yaml/badge.svg?event=push&branch=master
-[ci-link]: https://github.com/pyxdi/xdi/actions?query=workflow%3ACI%2FCD+event%3Apush+branch%3Amaster
-[codecov-image]: https://codecov.io/gh/pyxdi/xdi/branch/master/graph/badge.svg
-[codecov-link]: https://codecov.io/gh/pyxdi/xdi
+[docs-link]: https://pyuzi.github.io/uzi/
+[api-docs-link]: https://pyuzi.github.io/uzi/api/
+[install-link]: https://pyuzi.github.io/uzi/install.html
+[why-link]: https://pyuzi.github.io/uzi/why.html
+[contributing-link]: https://pyuzi.github.io/uzi/0.5.x/contributing.html
+[pypi-image]: https://img.shields.io/pypi/v/uzi.svg?color=%233d85c6
+[pypi-link]: https://pypi.python.org/pypi/uzi
+[pyversions-image]: https://img.shields.io/pypi/pyversions/uzi.svg
+[pyversions-link]: https://pypi.python.org/pypi/uzi
+[ci-image]: https://github.com/pyuzi/uzi/actions/workflows/workflow.yaml/badge.svg?event=push&branch=master
+[ci-link]: https://github.com/pyuzi/uzi/actions?query=workflow%3ACI%2FCD+event%3Apush+branch%3Amaster
+[codecov-image]: https://codecov.io/gh/pyuzi/uzi/branch/master/graph/badge.svg
+[codecov-link]: https://codecov.io/gh/pyuzi/uzi
 

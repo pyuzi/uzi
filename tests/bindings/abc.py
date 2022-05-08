@@ -5,12 +5,12 @@ import typing as t
 from unittest.mock import AsyncMock, MagicMock
 import attr
 import pytest
-from xdi._common import Missing
+from uzi._common import Missing
 
 
-# from xdi.providers import 
-from xdi._bindings import Binding, SimpleBinding, _T_Binding
-from xdi.injectors import Injector
+# from uzi.providers import 
+from uzi._bindings import Binding, SimpleBinding, _T_Binding
+from uzi.injectors import Injector
 
 from ..abc import BaseTestCase
 

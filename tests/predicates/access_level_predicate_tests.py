@@ -2,7 +2,7 @@ import random
 from unittest.mock import MagicMock
 import pytest
 
-from xdi.markers import AccessLevel as Predicate
+from uzi.markers import AccessLevel as Predicate
 
 
 

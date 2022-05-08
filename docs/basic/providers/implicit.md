@@ -44,7 +44,7 @@ Support for `typing.Union`
 ## Dep Maker
 
 
-Support for `xdi.Dep` 
+Support for `uzi.Dep` 
 
 
 

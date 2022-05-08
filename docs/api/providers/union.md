@@ -1,6 +1,6 @@
 # UnionProvider
 
 
-::: xdi.providers.UnionProvider
+::: uzi.providers.UnionProvider
 
 

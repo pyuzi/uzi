@@ -4,7 +4,7 @@ import typing as t
 
 
 
-from xdi._bindings import Value as Dependency
+from uzi._bindings import Value as Dependency
 
 
 Dependency = Dependency

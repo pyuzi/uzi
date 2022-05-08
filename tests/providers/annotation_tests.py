@@ -4,9 +4,9 @@ from unittest import mock
 import attr
 
 import pytest
-from xdi import Dep, DependencyMarker, is_injectable
-from xdi.providers import AnnotationProvider as Provider
-from xdi.graph import DepGraph
+from uzi import Dep, DependencyMarker, is_injectable
+from uzi.providers import AnnotationProvider as Provider
+from uzi.graph import DepGraph
 
 from .abc import ProviderTestCase, _T_NewPro
 

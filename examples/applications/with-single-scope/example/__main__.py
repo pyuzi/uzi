@@ -2,7 +2,7 @@
 
 import sys
 
-from xdi import Injector, DepGraph
+from uzi import Injector, DepGraph
 
 from .services import UserService, AuthService, PhotoService
 from .di import ioc

@@ -8,7 +8,7 @@ from .markers import (
 )
 
 
-from .exceptions import InjectorLookupError, XdiException
+from .exceptions import InjectorLookupError, UziException
 
 
 from . import injectors, providers

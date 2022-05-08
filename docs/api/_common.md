@@ -1,5 +1,5 @@
 # Common
 
-::: xdi._common
+::: uzi._common
 
-::: xdi._common.lookups
+::: uzi._common.lookups

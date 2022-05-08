@@ -1,3 +1,3 @@
 # Resource
 
-::: xdi.providers.Resource
+::: uzi.providers.Resource

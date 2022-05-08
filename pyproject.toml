@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "xdi"
-version = "0.7.4"
+name = "uzi"
+version = "0.0.1"
 description = "Dependency injection library"
 authors = ["David Kyalo <davidmkyalo@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/pyxdi/xdi"
-documentation = "https://pyxdi.github.io/xdi"
+repository = "https://github.com/pyuzi/uzi"
+documentation = "https://pyuzi.github.io/uzi"
 keywords = [
     "dependency-injection",
     "inversion-of-control",
@@ -16,7 +16,7 @@ keywords = [
     "injector",
     "IoC",
     "DI",
-    "XDI",
+    "Uzi",
 ]
 classifiers = [
     "Programming Language :: Python :: 3.9",
@@ -51,7 +51,7 @@ mkdocstrings = {version = "^0.18.1", extras = ["python"]}
 
 
 [tool.pytest.ini_options]
-addopts = "--cov=xdi --cov-report html --cov-config pyproject.toml"
+addopts = "--cov=uzi --cov-report html --cov-config pyproject.toml"
 asyncio_mode="auto"
 
 

@@ -4,7 +4,7 @@ import pickle
 import pytest
 
 
-from xdi._common import ReadonlyDict
+from uzi._common import ReadonlyDict
 
 
 

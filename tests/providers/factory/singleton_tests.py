@@ -5,7 +5,7 @@ import typing as t
 
 
 
-from xdi.providers import Singleton as Provider
+from uzi.providers import Singleton as Provider
 
 
 from ..abc import _T_NewPro, ProviderTestCase

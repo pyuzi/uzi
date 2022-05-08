@@ -13,7 +13,7 @@ from logging import getLogger
 import attr
 from typing_extensions import Self
 
-from xdi._common import FrozenDict
+from uzi._common import FrozenDict
 
 from ._common import Missing
 from .markers import Injectable, is_injectable_annotation

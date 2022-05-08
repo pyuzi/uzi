@@ -3,11 +3,11 @@ from unittest.mock import MagicMock
 import pytest
 
 import typing as t
-from xdi.markers import Lookup
+from uzi.markers import Lookup
 
 
 
-from xdi.providers import LookupMarkerProvider as Provider
+from uzi.providers import LookupMarkerProvider as Provider
 
 
 from ..abc import _T_NewPro, ProviderTestCase

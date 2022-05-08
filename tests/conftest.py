@@ -4,16 +4,16 @@ import operator
 from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
-from xdi import is_injectable
-from xdi.containers import Container
-from xdi.markers import Injectable
-from xdi.injectors import Injector
-from xdi.markers import ProPredicate
-from xdi.providers import Provider
+from uzi import is_injectable
+from uzi.containers import Container
+from uzi.markers import Injectable
+from uzi.injectors import Injector
+from uzi.markers import ProPredicate
+from uzi.providers import Provider
 
-from xdi._bindings import Binding
-from xdi.graph import DepGraph, DepKey, DepSrc
-from xdi.scopes import Scope
+from uzi._bindings import Binding
+from uzi.graph import DepGraph, DepKey, DepSrc
+from uzi.scopes import Scope
 
 
 

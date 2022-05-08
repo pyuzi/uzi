@@ -1,4 +1,4 @@
 # Functools
 
-::: xdi._functools
+::: uzi._functools
 

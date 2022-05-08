@@ -1,5 +1,5 @@
 # DepMarkerProvider
 
 
-::: xdi.providers.DepMarkerProvider
+::: uzi.providers.DepMarkerProvider
 

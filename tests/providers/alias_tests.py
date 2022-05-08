@@ -6,9 +6,9 @@ import typing as t
 
 
 
-from xdi.providers import Alias as Provider
-from xdi._bindings import Binding
-from xdi.graph import DepGraph
+from uzi.providers import Alias as Provider
+from uzi._bindings import Binding
+from uzi.graph import DepGraph
 
 
 from .abc import ProviderTestCase, AsyncProviderTestCase, _T_NewPro

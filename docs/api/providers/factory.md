@@ -1,4 +1,4 @@
 # Factory
 
-::: xdi.providers.Factory
+::: uzi.providers.Factory
 

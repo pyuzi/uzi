@@ -1,3 +1,3 @@
 # Callable
 
-::: xdi.providers.Callable
+::: uzi.providers.Callable

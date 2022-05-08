@@ -13,7 +13,7 @@ In the above snippet, dependents of both `_Tb` and `_Ta` will be provided with `
 
 ```python
 import typing as t
-from xdi import Container, providers
+from uzi import Container, providers
 
 _Ta = t.TypeVar('_Ta') 
 _Tb = t.TypeVar('_Tb') 

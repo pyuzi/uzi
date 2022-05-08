@@ -1,6 +1,6 @@
 import pytest
 
-from xdi.markers import ProSlice as Predicate
+from uzi.markers import ProSlice as Predicate
 
 
 

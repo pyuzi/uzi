@@ -5,12 +5,12 @@ import typing as t
 from unittest.mock import Mock, patch
 import pytest
 from tests.conftest import Container
-from xdi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC
+from uzi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC
 
 
-from xdi.providers import Provider
-from xdi._bindings import Binding
-from xdi.graph import DepGraph
+from uzi.providers import Provider
+from uzi._bindings import Binding
+from uzi.graph import DepGraph
 
 
 from ..abc import BaseTestCase

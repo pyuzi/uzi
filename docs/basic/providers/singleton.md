@@ -5,7 +5,7 @@ It memorizes the first created object and returns it on the rest of the calls.
 
 
 ```py linenums="1" hl_lines="8 10"
-from xdi import Container, providers
+from uzi import Container, providers
 
 class Service:
     ...

@@ -4,7 +4,7 @@ import typing as t
 
 
 
-from xdi.providers import Resource as Provider
+from uzi.providers import Resource as Provider
 
 
 from ..abc import _T_NewPro, ProviderTestCase

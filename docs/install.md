@@ -2,26 +2,26 @@
 
 ## Supported Python Versions
 
-`xdi` only supports __python 3.9__ or __higher__. 
+`uzi` only supports __python 3.9__ or __higher__. 
 
 Support for __python 3.8__ might be added in the near future.
 
 
 ## Standalone Mode.
 
-`xdi` is available on [PyPi](https://pypi.org/project/xdi/). To install, run:-
+`uzi` is available on [PyPi](https://pypi.org/project/uzi/). To install, run:-
 
 ```
-pip install xdi
+pip install uzi
 ```
 
 ## Integrated Mode
 
-`xdi` provides seamless integrations with some popular python frameworks like 
+`uzi` provides seamless integrations with some popular python frameworks like 
 [Django](frameworks/django.md), [Sanic](frameworks/sanic.md) 
 and many [more...](frameworks/index.md) . 
 
-To use `xdi` with your favorite framework, you will need to install the
+To use `uzi` with your favorite framework, you will need to install the
 appropriate adapter for that framework. 
 
 For more information please refer to the [intergration docs](frameworks/index.md).

@@ -5,11 +5,11 @@ import typing as t
 
 from collections.abc import Callable
 from tests.abc import BaseTestCase
-from xdi import InjectorLookupError
+from uzi import InjectorLookupError
 
 
-from xdi._bindings import LookupErrorBinding as Dependency, SimpleBinding
-from xdi.injectors import Injector
+from uzi._bindings import LookupErrorBinding as Dependency, SimpleBinding
+from uzi.injectors import Injector
 
 
 Dependency = Dependency

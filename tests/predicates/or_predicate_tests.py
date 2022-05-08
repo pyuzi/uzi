@@ -1,6 +1,6 @@
 import pytest
 
-from xdi.markers import ProOrPredicate as Predicate
+from uzi.markers import ProOrPredicate as Predicate
 
 
 

@@ -1,3 +1,3 @@
 # Injectors
 
-::: xdi.injectors
+::: uzi.injectors

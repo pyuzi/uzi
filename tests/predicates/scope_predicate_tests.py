@@ -1,7 +1,7 @@
 import pytest
 
-from xdi.markers import ScopePredicate as Predicate
-from xdi.graph import DepGraph, DepSrc
+from uzi.markers import ScopePredicate as Predicate
+from uzi.graph import DepGraph, DepSrc
 
 
 

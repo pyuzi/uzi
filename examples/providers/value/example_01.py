@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-import xdi
+import uzi
 
 class Config(SimpleNamespace):
     debug: bool = False
@@ -7,17 +7,17 @@ class Config(SimpleNamespace):
 
 config = Config(debug=True, database=':memory:')
 
-container = xdi.Container()
+container = uzi.Container()
 
 # a) using the helper method
 container.value(Config, config) 
 # or 
 # b) manually creating and attaching the provider
-container[Config] = xdi.providers.Value(config)
+container[Config] = uzi.providers.Value(config)
 
 
 if __name__ == '__main__':
-    injector = xdi.Injector(xdi.DepGraph(container))
+    injector = uzi.Injector(uzi.DepGraph(container))
 
     assert config == injector.make(Config)
     assert config is injector.make(Config)

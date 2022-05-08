@@ -1,11 +1,11 @@
 
 from functools import cache
 from typing import Union
-from xdi import Container, DepGraph
+from uzi import Container, DepGraph
 
 
 from _benchmarkutil import Benchmark, Timer
-from xdi.injectors import Injector
+from uzi.injectors import Injector
 
 
 
@@ -105,18 +105,18 @@ with Timer() as tm:
     scp = DepGraph(ioc)
     inj = Injector(scp)
 
-    bfoo = Benchmark('Foo.', _n).run(py=mkfoo, xdi=inj.bound(Foo))
-    bbar = Benchmark('Bar.', _n).run(py=mkbar, xdi=inj.bound(Bar))
-    bbaz = Benchmark('Baz.', _n).run(py=mkbaz, xdi=inj.bound(Baz))
+    bfoo = Benchmark('Foo.', _n).run(py=mkfoo, uzi=inj.bound(Foo))
+    bbar = Benchmark('Bar.', _n).run(py=mkbar, uzi=inj.bound(Bar))
+    bbaz = Benchmark('Baz.', _n).run(py=mkbaz, uzi=inj.bound(Baz))
     print(bfoo, bbar, bbaz, sep='\n')
     # bench = Benchmark(str(Union[Foo, Bar, Baz]), _n)
     # bench |= bfoo | bbar | bbaz 
     # print(bench, '\n')
 
 
-    bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, xdi=inj.bound(FooBar))
-    bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, xdi=inj.bound(FooBarBaz))
-    bservice    = Benchmark('Service.', _n).run(py=mkservice, xdi=inj.bound(Service))
+    bfoobar     = Benchmark('FooBar.', _n).run(py=mkfoobar, uzi=inj.bound(FooBar))
+    bfoobarbaz  = Benchmark('FooBarBaz.', _n).run(py=mkfoobarbaz, uzi=inj.bound(FooBarBaz))
+    bservice    = Benchmark('Service.', _n).run(py=mkservice, uzi=inj.bound(Service))
 
     print('', bfoobar, bfoobarbaz, bservice, sep='\n')
 
@@ -124,9 +124,9 @@ with Timer() as tm:
     # bench |= bfoobar | bfoobarbaz | bservice
     # print(bench, '\n')
 
-    # binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, xdi=inject_1)
-    # binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, xdi=inject_2)
-    # binject_3 = Benchmark('inject_3.', _n).run(py=mkinject_3, xdi=inject_3)
+    # binject_1 = Benchmark('inject_1.', _n).run(py=mkinject_1, uzi=inject_1)
+    # binject_2 = Benchmark('inject_2.', _n).run(py=mkinject_2, uzi=inject_2)
+    # binject_3 = Benchmark('inject_3.', _n).run(py=mkinject_3, uzi=inject_3)
 
 
     # bench = Benchmark('INJECT', _n)

@@ -1,3 +1,3 @@
 # Markers
 
-::: xdi.markers
+::: uzi.markers

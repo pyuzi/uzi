@@ -396,19 +396,19 @@ class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding
 
         ### Values and Dependencies
 
-        Arguments of type [`DependencyMarker`](../makers/#xdi.makers.DependencyMarker) 
+        Arguments of type [`DependencyMarker`](../makers/#uzi.makers.DependencyMarker) 
         will automatically be resolved and passed to the factory while calling it. 
         
-        e.g. using [`Dep`](../makers/#xdi.makers.Dep) and 
-        [`Lookup`](../makers/#xdi.makers.Lookup):
+        e.g. using [`Dep`](../makers/#uzi.makers.Dep) and 
+        [`Lookup`](../makers/#uzi.makers.Lookup):
         ```python linenums="1" hl_lines="4 7"
         Factory(
             func, 
             'a', 
-            xdi.makers.Dep(Foo), 
+            uzi.makers.Dep(Foo), 
             obj, 
             key='xyz', 
-            bar=xdi.makers.Lookup(FooBar).bar
+            bar=uzi.makers.Lookup(FooBar).bar
         )
         # will call: func('a', <inject: Foo>, obj, key='xyz', bar=<inject: FooBar>.bar)
         ```
@@ -679,7 +679,7 @@ class Callable(Partial[T_Injected, bindings._T_CallableBinding]):
 
 @attr.s(slots=True, frozen=True)
 class LookupMarkerProvider(Factory[lookups.look, bindings._T_FactoryBinding]):
-    """Provider for resolving `xdi.Lookup` dependencies. 
+    """Provider for resolving `uzi.Lookup` dependencies. 
     """
     
     abstract = Lookup

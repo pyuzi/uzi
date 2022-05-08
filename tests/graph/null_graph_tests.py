@@ -5,7 +5,7 @@ import pytest
 from collections.abc import Callable
 
 
-from xdi.graph import NullGraph, DepGraph
+from uzi.graph import NullGraph, DepGraph
 
 
 

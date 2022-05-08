@@ -8,11 +8,11 @@ from unittest.mock import  Mock
 from collections.abc import Callable, Iterator, Mapping
 
 
-from xdi.containers import Container
-from xdi.exceptions import FinalProviderOverrideError, ProError
-from xdi.providers import Provider
-from xdi._bindings import Binding
-from xdi.graph import NullGraph, DepGraph
+from uzi.containers import Container
+from uzi.exceptions import FinalProviderOverrideError, ProError
+from uzi.providers import Provider
+from uzi._bindings import Binding
+from uzi.graph import NullGraph, DepGraph
 
 
 from .. import checks

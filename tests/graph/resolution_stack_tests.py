@@ -9,8 +9,8 @@ import pytest
 from collections import abc
 
 
-from xdi.providers import Provider
-from xdi.graph import ResolutionStack
+from uzi.providers import Provider
+from uzi.graph import ResolutionStack
 
 
 

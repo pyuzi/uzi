@@ -3,14 +3,14 @@ from inspect import isawaitable, signature
 from unittest.mock import MagicMock
 import pytest
 import typing as t
-from xdi import Dep
+from uzi import Dep
 
 
 
 
-from xdi._bindings import Singleton as Dependency
-from xdi.injectors import Injector
-from xdi._functools import BoundParams
+from uzi._bindings import Singleton as Dependency
+from uzi.injectors import Injector
+from uzi._functools import BoundParams
 
 
 from .abc import _T_NewBinding, BindingsTestCase
@@ -67,7 +67,7 @@ class SingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AsyncSingleton as Dependency
+from uzi._bindings import AsyncSingleton as Dependency
 
 class AsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 
@@ -93,7 +93,7 @@ class AsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AwaitParamsSingleton as Dependency
+from uzi._bindings import AwaitParamsSingleton as Dependency
 
 class AwaitParamsSingletonDependencyTests(BindingsTestCase[Dependency]):
 
@@ -121,7 +121,7 @@ class AwaitParamsSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from xdi._bindings import AwaitParamsAsyncSingleton as Dependency
+from uzi._bindings import AwaitParamsAsyncSingleton as Dependency
 
 class AwaitParamsAsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 

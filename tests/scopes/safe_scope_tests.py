@@ -8,8 +8,8 @@ import pytest
 from collections import abc
 
 
-from xdi.graph import DepGraph
-from xdi.scopes import SafeScope, Scope
+from uzi.graph import DepGraph
+from uzi.scopes import SafeScope, Scope
 
 from .. import checks
 

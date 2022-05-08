@@ -8,13 +8,13 @@ import pytest
 
 
 from collections.abc import Callable, Iterator, Set, MutableSet
-from xdi.exceptions import InjectorLookupError
-from xdi._common import FrozenDict
-from xdi.injectors import Injector, NullInjector, _null_injector
-from xdi._bindings import SimpleBinding, Binding, LookupErrorBinding
+from uzi.exceptions import InjectorLookupError
+from uzi._common import FrozenDict
+from uzi.injectors import Injector, NullInjector, _null_injector
+from uzi._bindings import SimpleBinding, Binding, LookupErrorBinding
 
 
-from xdi.graph import NullGraph, DepGraph
+from uzi.graph import NullGraph, DepGraph
 
 
 

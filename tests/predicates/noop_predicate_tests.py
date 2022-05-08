@@ -1,6 +1,6 @@
 import pytest
 
-from xdi.markers import ProNoopPredicate as Predicate
+from uzi.markers import ProNoopPredicate as Predicate
 
 
 

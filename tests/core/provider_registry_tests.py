@@ -4,9 +4,9 @@ import pytest
 
 
 from collections.abc import Callable
-from xdi import providers
-from xdi.containers import Container
-from xdi.providers import ProviderRegistry
+from uzi import providers
+from uzi.containers import Container
+from uzi.providers import ProviderRegistry
 
 
 

@@ -9,7 +9,7 @@ from dependency_injector import containers, providers, wiring
 
 from _benchmarkutil import Benchmark
 from vs_dependency_injector import A, B, C, Test, Connection, Container, ioc
-import xdi
+import uzi
 
 
 # N = 1
@@ -19,7 +19,7 @@ ST = 0# .000000001
 
 
 
-ioc = xdi.Container()
+ioc = uzi.Container()
 
 ioc.factory(A)
 ioc.factory(B).use(B.make)#.singleton()
@@ -47,7 +47,7 @@ class Container(containers.DeclarativeContainer):
 
 
 # @inject
-# async def _inj_xdi(test: Test, a: A, b: B, c: C):
+# async def _inj_uzi(test: Test, a: A, b: B, c: C):
 #     assert isinstance(test, Test)
 #     assert isinstance(a, A)
 #     assert isinstance(b, B)
@@ -76,24 +76,24 @@ async def main():
     c.wire([__name__])
     # c.init_resources()
 
-    scope = xdi.DepGraph(ioc)
+    scope = uzi.DepGraph(ioc)
 
-    if inj := xdi.injectors.Injector(scope):
+    if inj := uzi.injectors.Injector(scope):
 
     # async with context(ioc) as ctx:
         ls = []
        
         pre =None # lambda k, b: print(f'----------------{k}--------------')
-        bench = await Benchmark("B.", N).arun(pre, di=Container.b, xdi=inj.bound(B))
+        bench = await Benchmark("B.", N).arun(pre, di=Container.b, uzi=inj.bound(B))
         ls.append(bench)
         print(bench, "\n")
 
 
-        bench = await Benchmark("C.", N).arun(pre, di=Container.c, xdi=inj.bound(C))
+        bench = await Benchmark("C.", N).arun(pre, di=Container.c, uzi=inj.bound(C))
         ls.append(bench)
         print(bench, "\n")
 
-        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, xdi=inj.bound(Test))
+        bench = await Benchmark("Test.", N).arun(pre, di=Container.test, uzi=inj.bound(Test))
         ls.append(bench)
         print(bench, "\n")
 

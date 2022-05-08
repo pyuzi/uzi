@@ -85,7 +85,7 @@ markdown_extensions:
 extra:
   analytics:
     provider: google
-    property: G-WS80L3FT2L
+    property: G-TMB4GDY4Y7
   version:
     provider: mike
 

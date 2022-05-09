@@ -9,7 +9,7 @@ from collections import abc
 
 
 from uzi.containers import Container
-from uzi.exceptions import InjectorError
+from uzi.exceptions import InvalidStateError
 from uzi.graph import DepGraph, _null_graph
 from uzi.injectors import Injector
 from uzi.scopes import Scope
@@ -87,7 +87,7 @@ def test_create_with_other_object(new: _T_FnNew):
 
 def test__set_current(new: _T_FnNew, MockInjector):
     sub, inj = new(), MockInjector()
-    sub._set_current_injector(inj)
+    sub._set_current(inj)
     assert sub.current is inj
     
 
@@ -100,92 +100,92 @@ def test_new_injector(new: _T_FnNew, cls: type[Scope], MockScope, MockInjector):
         sub._injector_class.assert_called_once_with(sub.graph, sub.parent.injector())
 
 
-def test_setup_reset(new: _T_FnNew, cls: type[Scope], MockInjector):
+def test_push_pop(new: _T_FnNew, cls: type[Scope], MockInjector):
     with patch.object(cls, '_new_injector'):
         cls._new_injector.return_value = inj = MockInjector()
         initial = MockInjector()
         sub = new(initial=initial)
 
-        assert not sub.is_active
+        assert not sub.active
         assert sub.current is sub.initial is initial
         
-        res = sub.setup()
+        res = sub.push()
         assert isinstance(res, Injector)
         assert inj is res
         assert inj is sub.current
-        assert sub.is_active
+        assert sub.active
 
-        sub.reset()
-        assert not sub.is_active
+        sub.pop()
+        assert not sub.active
         assert sub.current is sub.initial is initial
 
         sub._new_injector.assert_called_once()
 
-def test_setup_reset_multiple_times(new: _T_FnNew, cls: type[Scope], MockInjector):
+def test_push_pop_multiple_times(new: _T_FnNew, cls: type[Scope], MockInjector):
     with patch.object(cls, '_new_injector'):
         cls._new_injector.return_value = inj = MockInjector()
         initial = MockInjector()
         sub = new(initial=initial)
         N = 4
 
-        assert not sub.is_active
+        assert not sub.active
         assert sub.current is sub.initial is initial
         for _ in range(N):
-            res = sub.setup()
-            assert sub.is_active and inj is res is sub.current
-            sub.reset()
-            assert not sub.is_active and sub.current is sub.initial is initial
+            res = sub.push()
+            assert sub.active and inj is res is sub.current
+            sub.pop()
+            assert not sub.active and sub.current is sub.initial is initial
 
         sub._new_injector.assert_called()
         assert sub._new_injector.call_count == N
 
 
-@xfail(raises=InjectorError, strict=True)
-def test_setup_multiple_times(new: _T_FnNew, cls: type[Scope], MockInjector):
+@xfail(raises=InvalidStateError, strict=True)
+def test_push_multiple_times(new: _T_FnNew, cls: type[Scope], MockInjector):
     with patch.object(cls, '_new_injector', spec=Injector):
         cls._new_injector = MockInjector
         sub = new()
-        assert not sub.is_active
-        sub.setup()
-        assert sub.is_active
-        sub.setup()
+        assert not sub.active
+        sub.push()
+        assert sub.active
+        sub.push()
         
 
-@xfail(raises=InjectorError, strict=True)
-def test_reset_multiple_times(new: _T_FnNew, cls: type[Scope], MockInjector):
+@xfail(raises=InvalidStateError, strict=True)
+def test_pop_multiple_times(new: _T_FnNew, cls: type[Scope], MockInjector):
     with patch.object(cls, '_new_injector', spec=Injector):
         cls._new_injector = MockInjector
         sub = new()
-        assert not sub.is_active
-        sub.setup()
-        assert sub.is_active
-        sub.reset()
-        assert not sub.is_active
-        sub.reset()
+        assert not sub.active
+        sub.push()
+        assert sub.active
+        sub.pop()
+        assert not sub.active
+        sub.pop()
 
 
 def test_injector(new: _T_FnNew, cls: type[Scope], MockInjector):
     with patch.object(cls, '_new_injector', spec=Injector):
         cls._new_injector = MockInjector
         N, sub = 3, new()
-        assert not sub.is_active
+        assert not sub.active
         res = sub.injector()
         assert isinstance(res, Injector)
-        assert sub.is_active
+        assert sub.active
 
         for _ in range(N):
             assert sub.injector() is res is sub.current
         
-        assert sub.injector(setup=False) is res is sub.current
+        assert sub.injector(push=False) is res is sub.current
         
         sub._new_injector.assert_called_once()
 
-        sub.reset()
-        assert not sub.is_active
+        sub.pop()
+        assert not sub.active
 
         for _ in range(N):
-            assert not sub.injector(setup=False) is sub.current
-            assert not sub.is_active
+            assert not sub.injector(push=False) is sub.current
+            assert not sub.active
 
         assert sub._new_injector.call_count == N + 1
 
@@ -194,23 +194,23 @@ def test_as_contextmanager(new: _T_FnNew, cls: type[Scope], MockInjector):
     with patch.object(cls, '_new_injector', spec=Injector):
         cls._new_injector.return_value = inj = MockInjector()
         sub = new()
-        assert not sub.is_active
+        assert not sub.active
         with sub as io:
-            assert sub.is_active
+            assert sub.active
             assert io is inj is sub.current
-        assert not sub.is_active
+        assert not sub.active
 
 
 def test_as_contextmanager_after_setup(new: _T_FnNew, cls: type[Scope], MockInjector):
     with patch.object(cls, '_new_injector', spec=Injector):
         cls._new_injector.return_value = inj = MockInjector()
         sub = new()
-        assert not sub.is_active
-        inj_ = sub.setup()
-        assert sub.is_active
+        assert not sub.active
+        inj_ = sub.push()
+        assert sub.active
         with sub as io:
-            assert sub.is_active
+            assert sub.active
             assert io is inj is inj_ is sub.current
-        assert not sub.is_active
+        assert not sub.active
 
 

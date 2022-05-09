@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from ._common import private_setattr
 
-from .exceptions import InjectorError
+from .exceptions import InvalidStateError, InvalidStateError
 from .containers import Container
 from .graph import DepGraph, _null_graph
 from .injectors import Injector, NullInjector, _null_injector
@@ -81,7 +81,7 @@ class Scope(t.Generic[_T_Injector]):
         }
         
         self.__init_attrs__(attrs)
-        self._set_current_injector(initial)
+        self._set_current(initial)
 
     @property
     def container(self):
@@ -92,7 +92,7 @@ class Scope(t.Generic[_T_Injector]):
         return self.container.name
 
     @property
-    def is_active(self):
+    def active(self):
         return not self.initial is self.current
 
     def __getitem__(self, key):
@@ -104,40 +104,40 @@ class Scope(t.Generic[_T_Injector]):
     def __default_attrs__(self):
         return {}
 
-    def injector(self, *, setup=True) -> _T_Injector:
+    def injector(self, *, push=True) -> _T_Injector:
         if inj := self.current:
             return inj
-        elif setup:
-            return self.setup()
+        elif push:
+            return self.push()
         else:
             return self._new_injector()
 
     def _new_injector(self):
         return self._injector_class(self.graph, self.parent.injector())
 
-    def setup(self):
-        if self.is_active:
-           raise InjectorError(f"injector already running: {self}")
-        return self._do_setup()
+    def push(self):
+        if self.active:
+           raise InvalidStateError(f"injector already running: {self}")
+        return self._push(force=True)
 
-    def _do_setup(self):
-        if self.is_active:
-            return self.current
-        inj = self._new_injector()
-        self._set_current_injector(inj)
-        return inj
+    def _push(self, *, force: bool=False):
+        if force or not self.active:
+            inj = self._new_injector()
+            self._set_current(inj)
+            return inj
+        return self.current
 
-    def reset(self):
-        if not self.is_active:
-            raise InjectorError(f"injector not running: {self}")
-        return self._do_teardown()
+    def pop(self):
+        if not self.active:
+            raise InvalidStateError(f"injector not running: {self}")
+        return self._pop(force=True)
 
-    def _do_teardown(self):
-        if self.is_active:
+    def _pop(self, *, force: bool=False):
+        if force or self.active:
             self.current.close()
-            self._set_current_injector(self.initial)
+            self._set_current(self.initial)
 
-    def _set_current_injector(self, injector: _T_Injector):
+    def _set_current(self, injector: _T_Injector):
         self.__setattr('current', injector, injector is self.initial)
 
     def __eq__(self, o) -> bool:
@@ -163,14 +163,14 @@ class Scope(t.Generic[_T_Injector]):
         return self.injector()
     
     def __exit__(self, *err):
-        self.reset()
+        self.pop()
         return err and err[0] != None or False
 
 
 
 
 
-class SafeScope(Scope[_T_Injector]):
+class ThreadSafeScope(Scope[_T_Injector]):
     """A thread safe `Scope` implementation
     """
 
@@ -182,19 +182,54 @@ class SafeScope(Scope[_T_Injector]):
         kwds['lock'] = Lock()
         return super().__init_attrs__(kwds)
 
-    def setup(self) -> _T_Injector:
-        if self.is_active:
-            raise InjectorError(f"injector already running: {self}")
+    def push(self) -> _T_Injector:
+        if self.active:
+            raise InvalidStateError(f"injector already running: {self}")
         
         with self.lock:
-            return self._do_setup()
+            return self._push()
 
-    def reset(self):
-        if self.is_active:
+    def pop(self):
+        if self.active:
             with self.lock:
-                return self._do_teardown()
+                return self._pop()
             
-        raise InjectorError(f"injector not running: {self}")
+        raise InvalidStateError(f"injector not running: {self}")
+
+
+
+
+
+class _ThreadLocalState(local, t.Generic[_T_Injector]):
+
+    __slots__ = '__initial',
+
+    injector: _T_Injector
+
+    def __init__(self, injector=_null_injector) -> None:
+        self.injector = injector
+
+
+
+class ThreadLocalScope(Scope[_T_Injector]):
+    """A scope that uses `threading.local` to manage injectors
+    """
+
+    __slots__ = "__local",
+
+    __local: _ThreadLocalState[_T_Injector]
+
+    @property
+    def current(self):
+        return self.__local.injector
+
+    def __init_attrs__(self, kwds):
+        self.__local = _ThreadLocalState(kwds['initial'])
+        return super().__init_attrs__(kwds)
+
+    def _set_current(self, injector: _T_Injector) -> _T_Injector:
+        self.__local.injector = injector
+        return injector
 
 
 
@@ -206,10 +241,9 @@ class _NullContextVar:
 _null_context_var = _NullContextVar()
 
 
-class ContextScope(Scope[_T_Injector]):
+class ContextLocalScope(Scope[_T_Injector]):
     """A scope that uses `contextvars.ContextVar` to manage injectors
     """
-
     __slots__ = "__var",
 
     __var: ContextVar[_T_Injector]
@@ -223,47 +257,11 @@ class ContextScope(Scope[_T_Injector]):
     def current(self):
         return self.__var.get()
 
-    def _set_current_injector(self, injector: _T_Injector) -> _T_Injector:
-        init, prev = self.initial, self.__var.set(injector)
-        if prev.old_value is prev.MISSING or init in (injector, prev.old_value):
-            return injector
+    def _set_current(self, injector: _T_Injector) -> _T_Injector:
+        self.__var.set(injector)
         
-        self.__var.reset(prev)
-        raise InjectorError(f"injector already running: {prev.old_value=} {self}")
+        
 
-
-
-
-
-class _Local(local, t.Generic[_T_Injector]):
-
-    injector: _T_Injector
-
-    def __init__(self, injector=_null_injector) -> None:
-        self.injector = injector
-
-
-
-
-class ThreadScope(Scope[_T_Injector]):
-    """A scope that uses `threading.local` to manage injectors
-    """
-
-    __slots__ = "__local",
-
-    __local: _Local[_T_Injector]
-
-    @property
-    def current(self):
-        return self.__local.injector
-
-    def __init_attrs__(self, kwds):
-        self.__local = _Local(kwds['initial'])
-        return super().__init_attrs__(kwds)
-
-    def _set_current_injector(self, injector: _T_Injector) -> _T_Injector:
-        self.__local.injector = injector
-        return injector
 
 
 

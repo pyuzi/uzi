@@ -15,7 +15,7 @@ from . import injectors, providers
 from .containers import Container
 from .injectors import Injector
 from .providers import Provider
-from .scopes import Scope, SafeScope, ThreadScope, ContextScope
+from .scopes import Scope, ThreadSafeScope, ThreadLocalScope, ContextLocalScope
 
 
 from . import _receivers

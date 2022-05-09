@@ -9,7 +9,7 @@ from collections import abc
 
 
 from uzi.graph import DepGraph
-from uzi.scopes import SafeScope, Scope
+from uzi.scopes import ThreadLocalScope, Scope
 
 from .. import checks
 
@@ -17,12 +17,11 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-
 _T = t.TypeVar('_T')
-_T_FnNew = abc.Callable[..., SafeScope]
+_T_FnNew = abc.Callable[..., ThreadLocalScope]
 
 
-from .scope_tests import test_setup_multiple_times, test_reset_multiple_times
+from .scope_tests import test_push_pop_multiple_times, test_push_multiple_times, test_pop_multiple_times
 
 
 @pytest.fixture
@@ -31,18 +30,12 @@ def new_args(MockContainer: type[DepGraph]):
 
 @pytest.fixture
 def cls():
-    return SafeScope
+    return ThreadLocalScope
 
 
 
-def test_basic(new: _T_FnNew):
-    sub = new()
-    assert isinstance(sub, SafeScope)
-    
 
-
-
-def test_setup(new: _T_FnNew, cls: type[SafeScope], MockInjector):
+def test_multithread(new: _T_FnNew, cls: type[ThreadLocalScope], MockInjector):
 
     N, L = 4, int(1e4)
 
@@ -54,33 +47,34 @@ def test_setup(new: _T_FnNew, cls: type[SafeScope], MockInjector):
         inj = MockInjector()
         inj.close =MagicMock(wraps=load_fn)
         return inj
+    
+    def func(sub: cls, res, n):
+        res[n] = sub.active, sub.injector()
+
 
     with patch.object(cls, '_new_injector'):
         cls._new_injector = MagicMock(wraps=load_mock)
         sub = new()
 
         res = [None] * N
+        threads = [Thread(target=func, args=(sub, res, i)) for i in range(N)]
             
-        def func(n):
-            res[n] = sub.is_active, sub.lock.locked(), sub.injector()
-
-        threads = [Thread(target=func, args=(i,)) for i in range(N)]
-        
         *(t.start() for t in threads), 
         *(t.join() for t in threads),
         
+        assert not sub.active        
+        inj = sub.push()
 
         seen = set()
-        for i, (active, locked, val) in enumerate(res):
-            print(f'{i} -> {active=}, {locked=} {val=}')
+        for i, (active, val) in enumerate(res):
+            print(f'{i} -> {active=}, {val=}')
             if i == 0:
                 assert not active
-                assert not locked
             else:
-                assert active or locked
-                assert val in seen
+                assert not val in seen
+            assert not val is inj
             seen.add(val)
-        
-        sub.reset()
-        sub._new_injector.assert_called_once()
+
+        assert len(seen) == N
+        assert sub._new_injector.call_count == N + 1
 

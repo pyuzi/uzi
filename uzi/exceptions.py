@@ -19,6 +19,10 @@ class FinalProviderOverrideError(TypeError, UziException):
     overrides: tuple['Provider' ]= attr.ib(default=(), converter=tuple)
 
 
+class InvalidStateError(UziException):
+    """The operation is not allowed in this state."""
+
+
 
 @attr.s()
 class InjectorLookupError(KeyError, UziException):
@@ -40,11 +44,6 @@ class ProError(TypeError, UziException):
         consistency
     """
 
-
-
-
-class InjectorError(TypeError, UziException):
-    """Raise by `Scope`s"""
 
 
 

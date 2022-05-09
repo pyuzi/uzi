@@ -1,29 +1,26 @@
 import asyncio
-from threading import Lock, Thread
+from threading import Thread
 import typing as t
-from unittest.mock import MagicMock, Mock, patch
-import attr
+from unittest.mock import MagicMock, patch
 import pytest
 
 
 from collections import abc
 
 
-from uzi.exceptions import InjectorError
 from uzi.graph import DepGraph
-from uzi.scopes import ContextScope
+from uzi.scopes import ContextLocalScope
 
-from .. import checks
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_FnNew = abc.Callable[..., ContextScope]
+_T_FnNew = abc.Callable[..., ContextLocalScope]
 
 
-from .scope_tests import test_setup_multiple_times, test_reset_multiple_times
+from .scope_tests import test_push_pop_multiple_times, test_push_multiple_times, test_pop_multiple_times
 
 
 @pytest.fixture
@@ -32,24 +29,11 @@ def new_args(MockContainer: type[DepGraph]):
 
 @pytest.fixture
 def cls():
-    return ContextScope
+    return ContextLocalScope
 
 
 
-def test_basic(new: _T_FnNew):
-    sub = new()
-    assert isinstance(sub, ContextScope)
-    
-
-
-@xfail(raises=InjectorError, strict=True)
-def test__set_current_injector_multiple_times(new: _T_FnNew, MockInjector):
-    sub = new()
-    sub._set_current_injector(MockInjector())
-    sub._set_current_injector(MockInjector())
-
-
-async def test_setup_multiple_async(new: _T_FnNew, cls: type[ContextScope], MockInjector):
+async def test_multiple(new: _T_FnNew, cls: type[ContextLocalScope], MockInjector):
 
     N, L = 5, int(1e4)
 
@@ -60,13 +44,13 @@ async def test_setup_multiple_async(new: _T_FnNew, cls: type[ContextScope], Mock
         res = [None] * N
             
         async def func(n):
-            res[n] = sub.is_active, sub.injector()
+            res[n] = sub.active, sub.injector()
 
         tasks = [func(i) for i in range(N)]
         
         await asyncio.gather(*tasks)
         
-        assert not sub.is_active
+        assert not sub.active
 
         seen = set()
         for i, (active, val) in enumerate(res):
@@ -79,7 +63,7 @@ async def test_setup_multiple_async(new: _T_FnNew, cls: type[ContextScope], Mock
 
 
 
-async def test_parent_context_setup(new: _T_FnNew, cls: type[ContextScope], MockInjector):
+async def test_multiple_with_parent_context(new: _T_FnNew, cls: type[ContextLocalScope], MockInjector):
 
     N, L = 5, int(1e4)
 
@@ -90,11 +74,11 @@ async def test_parent_context_setup(new: _T_FnNew, cls: type[ContextScope], Mock
         res = [None] * N
             
         async def func(n):
-            res[n] = sub.is_active, sub.injector()
+            res[n] = sub.active, sub.injector()
 
         tasks = [func(i) for i in range(N)]
 
-        inj = sub.setup()
+        inj = sub.push()
 
         await asyncio.gather(*tasks)
         
@@ -106,12 +90,12 @@ async def test_parent_context_setup(new: _T_FnNew, cls: type[ContextScope], Mock
             seen.add(val)
 
         sub._new_injector.assert_called_once()
-        sub.reset()
+        sub.pop()
 
 
 
 
-def test_in_multithread_setup(new: _T_FnNew, cls: type[ContextScope], MockInjector):
+def test_in_multithread_setup(new: _T_FnNew, cls: type[ContextLocalScope], MockInjector):
 
     N, L = 4, int(1e4)
 
@@ -122,7 +106,7 @@ def test_in_multithread_setup(new: _T_FnNew, cls: type[ContextScope], MockInject
         res = [None] * N
             
         def func(n):
-            res[n] = sub.is_active, sub.injector()
+            res[n] = sub.active, sub.injector()
 
         with sub as inj:
 
@@ -139,6 +123,6 @@ def test_in_multithread_setup(new: _T_FnNew, cls: type[ContextScope], MockInject
                 seen.add(val)
             
 
-        assert not sub.is_active
+        assert not sub.active
         assert sub._new_injector.call_count == N + 1
 

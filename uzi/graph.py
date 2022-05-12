@@ -16,7 +16,7 @@ from . import Injectable, signals
 from ._bindings import _T_Binding, LookupErrorBinding
 from .markers import _noop_pred, ProNoopPredicate, ProPredicate, is_injectable, is_dependency_marker
 from ._common import ReadonlyDict, private_setattr, FrozenDict, Missing
-from .providers import Provider, ProviderRegistry
+from .providers import Provider, ProviderRegistryMixin
 
 
 

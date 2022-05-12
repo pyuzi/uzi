@@ -8,10 +8,10 @@ from collections.abc import Callable
 from uzi._common import FrozenDict, ReadonlyDict
 
 
-from uzi.containers import Container
+from uzi.containers import BaseContainer, Container, Group
 from uzi.exceptions import ProError
 from uzi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, ProNoopPredicate, ProPredicate
-from uzi.providers import Provider, ProviderRegistry
+from uzi.providers import Provider, ProviderRegistryMixin
 from uzi.graph import DepGraph, DepKey
 
 
@@ -38,8 +38,8 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         sub = new('test_ioc')
         str(sub)
         assert isinstance(sub, Container)
-        assert isinstance(sub, ProviderRegistry)
-        assert isinstance(sub.bases, tuple)
+        assert isinstance(sub, ProviderRegistryMixin)
+        # assert isinstance(sub.bases, abc.I)
 
         assert sub
         assert sub.name == 'test_ioc'
@@ -50,14 +50,14 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert isinstance(hash(c1), int)
         assert c1 != c2 and not (c1 == c2) and c1.name == c2.name
       
-    def test_immutable(self, new: _T_FnNew, immutable_attrs):
-        self.assert_immutable(new(), immutable_attrs)
+    # def test_immutable(self, new: _T_FnNew, immutable_attrs):
+    #     self.assert_immutable(new(), immutable_attrs)
 
     def test_extend(self, new: _T_FnNew):
         c1, c2, c3, c4 = new('c1'), new('c2'), new('c3'), new('c4')
         assert c1.extend(c3).extend(c2.extend(c4), c2) is c1
-        assert c1.bases == (c3, c2)
-        assert c2.bases == (c4,)
+        assert tuple(c1.bases) == (c3, c2)
+        assert tuple(c2.bases) == (c4,)
         assert c1.extends(c1) and c1.extends(c2) and c1.extends(c3) and c1.extends(c4)
         assert not (c2.extends(c1) or c2.extends(c3))
 
@@ -142,12 +142,12 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
 
     def test_or(self, new: _T_FnNew):
         c1, c2, c3 = new('c1'), new('c2'), new('c3')
-        assert isinstance(c1 | c2 | c3, ProPredicate)
-        assert not isinstance(c1 | c2 | c3, Container)
+        assert isinstance(c1 | c2 | c3, Group)
         pred = ProNoopPredicate()
-        assert isinstance(c1 | pred, ProPredicate)
-        assert isinstance(pred | c1, ProPredicate)
-
+        for res in (c1 | pred, pred | c1, c1 | pred | c2):
+            assert isinstance(res, ProPredicate)
+            assert not isinstance(res, BaseContainer)
+            
     def test__resolve(self, new: _T_FnNew, mock_graph: DepGraph, MockDepKey: type[DepKey], MockProvider: type[Provider]):
         T1, T2, T3, T4 = t.TypeVar('T1'), t.TypeVar('T2'), t.TypeVar('T3'), t.TypeVar('T4'),
         c1, c2, c3 = new('child'), new('subject'), new('base')

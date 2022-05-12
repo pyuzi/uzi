@@ -6,7 +6,7 @@ import pytest
 from collections.abc import Callable
 from uzi import providers
 from uzi.containers import Container
-from uzi.providers import ProviderRegistry
+from uzi.providers import ProviderRegistryMixin
 
 
 
@@ -17,9 +17,9 @@ from ..abc import BaseTestCase
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
-ProviderRegistry = Container
+ProviderRegistryMixin = Container
 
-_T_Reg = t.TypeVar('_T_Reg', bound=ProviderRegistry)
+_T_Reg = t.TypeVar('_T_Reg', bound=ProviderRegistryMixin)
 
 _T_FnNew = Callable[..., _T_Reg]
 
@@ -38,11 +38,11 @@ class Bar(t.Generic[T_Foo]):
 
    
 
-class ProviderRegistryTests(BaseTestCase[ProviderRegistry]):
+class ProviderRegistryTests(BaseTestCase[ProviderRegistryMixin]):
 
     def test_basic(self, new: _T_FnNew):
         sub = new()
-        assert isinstance(sub, ProviderRegistry)
+        assert isinstance(sub, ProviderRegistryMixin)
 
     def test_provide(self, new: _T_FnNew):
         sub = new()

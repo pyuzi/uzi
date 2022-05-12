@@ -210,14 +210,16 @@ class _PredicateOpsMixin:
                 return self
             return ProOrPredicate(self, x)
         return NotImplemented
-
+    __ior__ = __or__
+    
     def __and__(self, x):
         if isinstance(x, ProPredicate):
             if x == self:
                 return self
             return ProAndPredicate(self, x)
         return NotImplemented
-   
+    __iand__ = __and__
+    
     def __ror__(self, x):    
         if isinstance(x, ProPredicate):
             return ProOrPredicate(x, self)

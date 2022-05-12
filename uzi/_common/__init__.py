@@ -1,4 +1,5 @@
 
+from collections import abc
 from functools import partial
 import inspect
 import re
@@ -14,6 +15,10 @@ _object_setattr = object.__setattr__
 _setattr = setattr
 
 _T = TypeVar('_T')
+
+
+def ordered_set(it: abc.Iterable[_T]) -> abc.Set[_T]:
+    return dict.fromkeys(it).keys()
 
 
 def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn=_object_setattr, frozen: str =None):
@@ -174,6 +179,10 @@ class ReadonlyDict(dict[_T_Key, _T_Val]):
     __delitem__ = __setitem__ = setdefault = not_mutable
     clear = pop = popitem = update = __ior__ = not_mutable
     del not_mutable
+
+    @classmethod
+    def fromkeys(cls, it: abc.Iterable[_T_Key], value: _T_Val=None):
+        return cls((k, value) for k in it)
 
     def __reduce__(self):
         return (

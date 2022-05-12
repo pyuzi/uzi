@@ -10,7 +10,7 @@ from typing_extensions import Self
 from ._common import private_setattr
 
 from .exceptions import InvalidStateError, InvalidStateError
-from .containers import Container
+from .containers import BaseContainer, Container
 from .graph import DepGraph, _null_graph
 from .injectors import Injector, NullInjector, _null_injector
 
@@ -63,7 +63,7 @@ class Scope(t.Generic[_T_Injector]):
     ) -> None:
         parent=parent or _null_scope
 
-        if isinstance(graph, Container):
+        if isinstance(graph, BaseContainer):
             graph = graph.get_graph(parent.graph)
         elif isinstance(graph, DepGraph):
             if not graph.parent is parent.graph:
@@ -89,7 +89,7 @@ class Scope(t.Generic[_T_Injector]):
 
     @property
     def name(self):
-        return self.container.name
+        return self.container.qualname
 
     @property
     def active(self):
@@ -154,7 +154,7 @@ class Scope(t.Generic[_T_Injector]):
         return id(self)
 
     def __str__(self):
-        return f"{self.name}"
+        return f'{self.__class__.__name__}({self.name!r})'
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.name!r}, parent="{self.parent!s}")'

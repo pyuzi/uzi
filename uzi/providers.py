@@ -768,7 +768,7 @@ _T_Fn = t.TypeVar('_T_Fn', bound=abc.Callable)
 
 def _provder_factory_method(cls: _T_Fn) -> _T_Fn:
     @wraps(cls)
-    def wrapper(self: "ProviderRegistry", abstract, *a, **kw):
+    def wrapper(self: "ProviderRegistryMixin", abstract, *a, **kw):
         if not a:
             a = abstract,
         self[abstract] = pro = cls(*a, **kw)
@@ -777,7 +777,7 @@ def _provder_factory_method(cls: _T_Fn) -> _T_Fn:
 
 
 
-class ProviderRegistry(ABC):
+class ProviderRegistryMixin(ABC):
     """Implements a collection of helper methods for creating providers.
 
     Subclassed by `Container` to provide these methods

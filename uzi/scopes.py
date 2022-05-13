@@ -1,4 +1,3 @@
-from collections import defaultdict
 from contextvars import ContextVar
 from logging import getLogger
 from threading import Lock, local
@@ -11,19 +10,17 @@ from ._common import private_setattr
 
 from .exceptions import InvalidStateError, InvalidStateError
 from .containers import BaseContainer, Container
-from .graph import Graph, _null_graph
+from .graph.core import Graph, _null_graph
 from .injectors import Injector, NullInjector, _null_injector
 
 logger = getLogger(__name__)
 
 
 _T_Injector = t.TypeVar("_T_Injector", bound=Injector)
-_T_Initial = t.Union[_T_Injector, t.Literal[_null_injector]] # type: ignore
+_T_Initial = t.Union[_T_Injector, t.Literal[_null_injector]]  # type: ignore
 
 
-
-
-@private_setattr(frozen='is_active')
+@private_setattr(frozen="is_active")
 class Scope(t.Generic[_T_Injector]):
     """An isolated dependency resolution `scope` for a given container.
 
@@ -61,25 +58,27 @@ class Scope(t.Generic[_T_Injector]):
         initial: _T_Initial[_T_Injector] = None,
         **kwargs,
     ) -> None:
-        parent=parent or _null_scope
+        parent = parent or _null_scope
 
         if isinstance(graph, BaseContainer):
             graph = graph.get_graph(parent.graph)
         elif isinstance(graph, Graph):
             if not graph.parent is parent.graph:
-                raise ValueError(f'graph mismatch')
+                raise ValueError(f"graph mismatch")
         else:
-            raise TypeError(f'first argument must be a `Container`, `DepGraph` not `{graph.__class__.__name__}` ')
-          
+            raise TypeError(
+                f"first argument must be a `Container`, `DepGraph` not `{graph.__class__.__name__}` "
+            )
+
         if initial is None:
             initial = _null_injector
 
-        attrs = self.__default_attrs__() | kwargs | {
-            'parent': parent,
-            'graph': graph,
-            'initial' : initial
-        }
-        
+        attrs = (
+            self.__default_attrs__()
+            | kwargs
+            | {"parent": parent, "graph": graph, "initial": initial}
+        )
+
         self.__init_attrs__(attrs)
         self._set_current(initial)
 
@@ -117,10 +116,10 @@ class Scope(t.Generic[_T_Injector]):
 
     def push(self):
         if self.active:
-           raise InvalidStateError(f"injector already running: {self}")
+            raise InvalidStateError(f"injector already running: {self}")
         return self._push(force=True)
 
-    def _push(self, *, force: bool=False):
+    def _push(self, *, force: bool = False):
         if force or not self.active:
             inj = self._new_injector()
             self._set_current(inj)
@@ -132,13 +131,13 @@ class Scope(t.Generic[_T_Injector]):
             raise InvalidStateError(f"injector not running: {self}")
         return self._pop(force=True)
 
-    def _pop(self, *, force: bool=False):
+    def _pop(self, *, force: bool = False):
         if force or self.active:
             self.current.close()
             self._set_current(self.initial)
 
     def _set_current(self, injector: _T_Injector):
-        self.__setattr('current', injector, injector is self.initial)
+        self.__setattr("current", injector, injector is self.initial)
 
     def __eq__(self, o) -> bool:
         if isinstance(o, Scope):
@@ -154,38 +153,34 @@ class Scope(t.Generic[_T_Injector]):
         return id(self)
 
     def __str__(self):
-        return f'{self.__class__.__name__}({self.name!r})'
+        return f"{self.__class__.__name__}({self.name!r})"
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.name!r}, parent="{self.parent!s}")'
 
     def __enter__(self):
         return self.injector()
-    
+
     def __exit__(self, *err):
         self.pop()
         return err and err[0] != None or False
 
 
-
-
-
 class ThreadSafeScope(Scope[_T_Injector]):
-    """A thread safe `Scope` implementation
-    """
+    """A thread safe `Scope` implementation"""
 
-    __slots__ = "lock", 
+    __slots__ = ("lock",)
 
     lock: Lock
 
     def __init_attrs__(self, kwds: dict):
-        kwds['lock'] = Lock()
+        kwds["lock"] = Lock()
         return super().__init_attrs__(kwds)
 
     def push(self) -> _T_Injector:
         if self.active:
             raise InvalidStateError(f"injector already running: {self}")
-        
+
         with self.lock:
             return self._push()
 
@@ -193,16 +188,13 @@ class ThreadSafeScope(Scope[_T_Injector]):
         if self.active:
             with self.lock:
                 return self._pop()
-            
+
         raise InvalidStateError(f"injector not running: {self}")
-
-
-
 
 
 class _ThreadLocalState(local, t.Generic[_T_Injector]):
 
-    __slots__ = '__initial',
+    __slots__ = ("__initial",)
 
     injector: _T_Injector
 
@@ -210,12 +202,10 @@ class _ThreadLocalState(local, t.Generic[_T_Injector]):
         self.injector = injector
 
 
-
 class ThreadLocalScope(Scope[_T_Injector]):
-    """A scope that uses `threading.local` to manage injectors
-    """
+    """A scope that uses `threading.local` to manage injectors"""
 
-    __slots__ = "__local",
+    __slots__ = ("__local",)
 
     __local: _ThreadLocalState[_T_Injector]
 
@@ -224,7 +214,7 @@ class ThreadLocalScope(Scope[_T_Injector]):
         return self.__local.injector
 
     def __init_attrs__(self, kwds):
-        self.__local = _ThreadLocalState(kwds['initial'])
+        self.__local = _ThreadLocalState(kwds["initial"])
         return super().__init_attrs__(kwds)
 
     def _set_current(self, injector: _T_Injector) -> _T_Injector:
@@ -232,19 +222,20 @@ class ThreadLocalScope(Scope[_T_Injector]):
         return injector
 
 
-
-
 class _NullContextVar:
     __slots__ = ()
-    def get(self): return _null_injector
+
+    def get(self):
+        return _null_injector
+
 
 _null_context_var = _NullContextVar()
 
 
 class ContextLocalScope(Scope[_T_Injector]):
-    """A scope that uses `contextvars.ContextVar` to manage injectors
-    """
-    __slots__ = "__var",
+    """A scope that uses `contextvars.ContextVar` to manage injectors"""
+
+    __slots__ = ("__var",)
 
     __var: ContextVar[_T_Injector]
 
@@ -259,10 +250,6 @@ class ContextLocalScope(Scope[_T_Injector]):
 
     def _set_current(self, injector: _T_Injector) -> _T_Injector:
         self.__var.set(injector)
-        
-        
-
-
 
 
 class NullScope(Scope[NullInjector]):
@@ -295,7 +282,6 @@ class NullScope(Scope[NullInjector]):
 
     def injector(self, *, setup=True, create=True):
         return _null_injector
-
 
 
 _null_scope = NullScope()

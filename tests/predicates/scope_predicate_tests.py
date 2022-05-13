@@ -1,14 +1,11 @@
 import pytest
 
 from uzi.markers import ScopePredicate as Predicate
-from uzi.graph import Graph, DepSrc
-
+from uzi.graph.core import Graph, DepSrc
 
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
-
-
 
 
 @pytest.fixture
@@ -23,23 +20,26 @@ from .cases import *
 def new_predicate_args(request):
     return (request.param,)
 
-_T_New = T_New[Predicate]
 
+_T_New = T_New[Predicate]
 
 
 def test_immutable():
     pass
 
 
-
 @xfail(raises=ValueError, strict=True)
 def test_create_invalid(new_predicate):
-    new_predicate('sdfgnbfsdadfgvb')
+    new_predicate("sdfgnbfsdadfgvb")
 
 
-
-
-def test_pro_entries(new_predicate: _T_New, cls: type[Predicate], MockDepSrc: type[DepSrc], MockGraph: type[Graph], MockContainer):
+def test_pro_entries(
+    new_predicate: _T_New,
+    cls: type[Predicate],
+    MockDepSrc: type[DepSrc],
+    MockGraph: type[Graph],
+    MockContainer,
+):
     sub = new_predicate()
     n = 5
     containers = tuple(MockContainer() for _ in range(n))
@@ -51,4 +51,3 @@ def test_pro_entries(new_predicate: _T_New, cls: type[Predicate], MockDepSrc: ty
         src = MockDepSrc()
         assert sub.pro_entries(containers, src.graph, src) == ()
         assert sub.pro_entries(containers, MockGraph(), src) == containers
-

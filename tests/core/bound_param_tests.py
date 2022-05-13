@@ -1,20 +1,13 @@
-from inspect import Parameter, signature
-from itertools import chain
-from os import sep
+from inspect import Parameter
 import typing as t
-import attr
 import pytest
 
-from unittest.mock import  MagicMock, Mock
 
-from collections.abc import Callable, Iterator, Set, MutableSet
+from collections import abc
 from uzi import Dep
-from uzi._common import FrozenDict
 
 
 from uzi._functools import BoundParam
-from uzi.graph import Graph
-
 
 
 from ..abc import BaseTestCase
@@ -23,10 +16,6 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Graph)
-
-_T_FnNew = Callable[..., _T_Scp]
 
 
 class Foo:
@@ -49,15 +38,14 @@ class FooBar:
         pass
 
 
-
 class BoundParamTests(BaseTestCase[BoundParam]):
-
-    type_: t.ClassVar[type[_T_Scp]] = BoundParam
 
     def test_basic(self, cls: type[BoundParam]):
         value = object()
-        default=object()
-        param = Parameter('foo', Parameter.POSITIONAL_ONLY, annotation=Foo, default=default)
+        default = object()
+        param = Parameter(
+            "foo", Parameter.POSITIONAL_ONLY, annotation=Foo, default=default
+        )
         sub = cls(param, value)
         assert isinstance(sub, cls)
         assert sub.param is param
@@ -69,34 +57,47 @@ class BoundParamTests(BaseTestCase[BoundParam]):
         assert sub.is_injectable
         assert sub.value is value
         assert sub.default is default
-    
-    def test_value(self,  cls: type[BoundParam]):
+
+    def test_value(self, cls: type[BoundParam]):
         value = object()
-        sub = cls(Parameter('foo', Parameter.POSITIONAL_ONLY), value)
+        sub = cls(Parameter("foo", Parameter.POSITIONAL_ONLY), value)
         assert sub.has_value
         assert sub.value is value
 
     def test_value_injectable(self, cls: type[BoundParam]):
         value = Dep(Foo)
-        sub = cls(Parameter('foo', Parameter.POSITIONAL_ONLY, default=Dep(Bar), annotation=Baz), value)
+        sub = cls(
+            Parameter(
+                "foo", Parameter.POSITIONAL_ONLY, default=Dep(Bar), annotation=Baz
+            ),
+            value,
+        )
         assert not sub.has_value
         assert not sub.has_default
         assert sub.is_injectable
         assert sub.injectable is value
 
     def test_default_injectable(self, cls: type[BoundParam]):
-        default=Dep(Bar)
-        sub = cls(Parameter('foo', Parameter.POSITIONAL_ONLY, default=default, annotation=Baz), object())
+        default = Dep(Bar)
+        sub = cls(
+            Parameter(
+                "foo", Parameter.POSITIONAL_ONLY, default=default, annotation=Baz
+            ),
+            object(),
+        )
         assert sub.is_injectable
         assert sub.has_value
         assert not sub.has_default
         assert sub.injectable is default
 
     def test_annotation_injectable(self, cls: type[BoundParam]):
-        sub = cls(Parameter('foo', Parameter.POSITIONAL_ONLY, default=object(), annotation=Baz), object())
+        sub = cls(
+            Parameter(
+                "foo", Parameter.POSITIONAL_ONLY, default=object(), annotation=Baz
+            ),
+            object(),
+        )
         assert sub.is_injectable
         assert sub.has_value
         assert sub.has_default
         assert sub.injectable is Baz
-
-    

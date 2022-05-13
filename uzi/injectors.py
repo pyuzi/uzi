@@ -10,31 +10,28 @@ from typing_extensions import Self
 from . import providers
 from .markers import Injectable, T_Injectable, T_Injected
 from .exceptions import InjectorLookupError
-from ._common import Missing, FrozenDict, ReadonlyDict, private_setattr
+from ._common import ReadonlyDict, private_setattr
 from .graph.nodes import Node
 
 
-if t.TYPE_CHECKING: # pragma: no cover
-    from .graph import Graph, NullGraph
+if t.TYPE_CHECKING:  # pragma: no cover
+    from .graph.core import Graph, NullGraph
     from .scopes import Scope
 
 
 logger = logging.getLogger(__name__)
 
-_T = t.TypeVar('_T')
+_T = t.TypeVar("_T")
 _object_new = object.__new__
 
 
-TContextNode = Callable[
-    ["Injector", t.Optional[Injectable]], Callable[..., T_Injected]
-]
-
+TContextNode = Callable[["Injector", t.Optional[Injectable]], Callable[..., T_Injected]]
 
 
 @private_setattr
 class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
-    """An isolated dependency injection context for a given `Scope`. 
-    
+    """An isolated dependency injection context for a given `Scope`.
+
     Attributes:
         graph (DepGraph): the dependency graph for this injector
         parent (Injector): a parent injector to provide missing dependencies.
@@ -44,18 +41,22 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
         parent (Injector): a parent injector to provide missing dependencies.
 
     """
-    __slots__ = 'graph', 'parent', '__weakref__',
+
+    __slots__ = (
+        "graph",
+        "parent",
+        "__weakref__",
+    )
 
     graph: "Graph"
     parent: Self
 
-    def __init__(self, graph: 'Graph', parent: Self):
-        self.__setattr(graph=graph, parent= parent)
+    def __init__(self, graph: "Graph", parent: Self):
+        self.__setattr(graph=graph, parent=parent)
 
     @property
     def name(self) -> str:
-        """The name of the scope. Usually returns the injector's `scope.name` 
-        """
+        """The name of the scope. Usually returns the injector's `scope.name`"""
         return self.graph.name
 
     def bound(self, abstract: T_Injectable) -> T_Injected:
@@ -66,47 +67,52 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
         if dep := graph[abstract]:
             return self[dep](*args, **kwds)
         elif callable(abstract):
-            if prov := getattr(abstract, '__uzi_provider__', None):
+            if prov := getattr(abstract, "__uzi_provider__", None):
                 if dep := graph[prov]:
                     return self[dep](*args, **kwds)
             else:
                 prov = providers.Partial(abstract)
-                setattr(abstract, '__uzi_provider__', prov)
+                setattr(abstract, "__uzi_provider__", prov)
                 return self[graph[prov]](*args, **kwds)
         else:
             return self[abstract](*args, **kwds)
 
     def __bool__(self):
         return not not self.graph
-        
+
     def __contains__(self, x) -> bool:
         return self.__contains(x) or x in self.parent
 
     def __missing__(self, dep: Node):
         try:
-            return self.__setdefault(dep, (dep.graph is self.graph and dep.bind(self)) or self.parent[dep])   
+            return self.__setdefault(
+                dep, (dep.graph is self.graph and dep.bind(self)) or self.parent[dep]
+            )
         except AttributeError as e:
-            raise TypeError(f'Injector key must be a `Dependency` not `{dep.__class__.__qualname__}`')
-        
+            raise TypeError(
+                f"Injector key must be a `Dependency` not `{dep.__class__.__qualname__}`"
+            )
+
     __setdefault = dict.setdefault
     __contains = dict.__contains__
 
-    def close(self): ...            
+    def close(self):
+        ...
 
     def copy(self):
         return self
 
     __copy__ = copy
 
-    def __reduce__(self): 
-        raise TypeError(f'cannot copy `{self.__class__.__name__}`')
+    def __reduce__(self):
+        raise TypeError(f"cannot copy `{self.__class__.__name__}`")
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.name!r})"
 
     def __repr__(self) -> str:
         return f"<{self!s}, {self.parent!r}>"
-    
+
     def __hash__(self):
         return id(self)
 
@@ -117,16 +123,11 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
         return not x is self if isinstance(x, Injector) else NotImplemented
 
 
-
-
-
-
-
 class NullInjector(Injector):
-    """A 'noop' `Injector` used as the parent of root injectors.  
+    """A 'noop' `Injector` used as the parent of root injectors.
 
     Attributes:
-        scope (NullScope): the scope 
+        scope (NullScope): the scope
         parent (None): The parent injector
 
     Params:
@@ -136,7 +137,7 @@ class NullInjector(Injector):
     __slots__ = ()
 
     parent: t.Final = None
-    _scope: 'NullGraph' = None
+    _scope: "NullGraph" = None
 
     @property
     def scope(self):
@@ -144,6 +145,7 @@ class NullInjector(Injector):
             return scp
         else:
             from uzi.scopes import _null_scope
+
             scp = self.__class__._scope = _null_scope
             return scp
 
@@ -151,9 +153,11 @@ class NullInjector(Injector):
     def graph(self):
         return self.scope.graph
 
-    def __init__(self, *a, **kw) -> None: ...
-    
-    def __reduce__(self): return self.__class__, ()
+    def __init__(self, *a, **kw) -> None:
+        ...
+
+    def __reduce__(self):
+        return self.__class__, ()
 
     def __getitem__(self, dep: Node):
         try:
@@ -162,22 +166,20 @@ class NullInjector(Injector):
             raise InjectorLookupError(dep) from e
         else:
             raise InjectorLookupError(dep)
-    
-    def __bool__(self, *a, **kw): 
+
+    def __bool__(self, *a, **kw):
         return False
 
     __contains__ = __bool__
-    
+
     def __eq__(self, o) -> bool:
-        return o.__class__ is self.__class__ 
+        return o.__class__ is self.__class__
 
     def __ne__(self, o) -> bool:
-        return not o.__class__ is self.__class__ 
+        return not o.__class__ is self.__class__
 
     __hash__ = classmethod(hash)
-   
-   
-    
+
 
 _null_injector = NullInjector()
 
@@ -186,8 +188,7 @@ _T = t.TypeVar("_T")
 _T_Fn = t.TypeVar("_T_Fn", bound=Callable)
 
 
-
-class _InjectorExitStack(list[tuple[bool, _T_Fn]]): # pragma: no cover
+class _InjectorExitStack(list[tuple[bool, _T_Fn]]):  # pragma: no cover
     """Async context manager for dynamic management of a stack of exit
     callbacks.
 
@@ -199,6 +200,7 @@ class _InjectorExitStack(list[tuple[bool, _T_Fn]]): # pragma: no cover
             # end of the async with statement, even if attempts to open a
             # connection later in the list raise an exception.
     """
+
     __slots__ = ()
 
     @staticmethod
@@ -209,6 +211,7 @@ class _InjectorExitStack(list[tuple[bool, _T_Fn]]): # pragma: no cover
     def _create_cb_wrapper(callback, /, *args, **kwds):
         def _exit_wrapper(exc_type, exc, tb):
             callback(*args, **kwds)
+
         return _exit_wrapper
 
     @staticmethod
@@ -423,9 +426,7 @@ class _InjectorExitStack(list[tuple[bool, _T_Fn]]): # pragma: no cover
         return received_exc and suppressed_exc
 
 
-
-
-def _fix_exception_context(new_exc, old_exc, frame_exc): # pragma: no cover
+def _fix_exception_context(new_exc, old_exc, frame_exc):  # pragma: no cover
     # Context may not be correct, so find the end of the chain
     while 1:
         exc_context = new_exc.__context__

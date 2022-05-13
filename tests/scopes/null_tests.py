@@ -3,13 +3,11 @@ import pytest
 
 
 from collections.abc import Callable
-from uzi.graph import NullGraph
+from uzi.graph.core import NullGraph
 from uzi.injectors import NullInjector
 
 
-
 from uzi.scopes import NullScope, Scope
-
 
 
 from ..abc import BaseTestCase
@@ -18,7 +16,7 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T = t.TypeVar('_T')
+_T = t.TypeVar("_T")
 
 _T_FnNew = Callable[..., NullScope]
 
@@ -37,7 +35,7 @@ class NullScopeTests(BaseTestCase[NullScope]):
         assert not sub
         assert not sub.container
         str(sub)
-        
+
     def test_compare(self, new: _T_FnNew):
         sub = new()
         assert sub == new()
@@ -48,10 +46,10 @@ class NullScopeTests(BaseTestCase[NullScope]):
     @xfail(raises=TypeError, strict=True)
     def test_fail_invalid_getitem(self, new: _T_FnNew):
         new()[2345.6789]
-             
+
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)
- 
+
     def test_injector(self, new: _T_FnNew):
         sub = new()
         assert sub.injector() is sub.injector()

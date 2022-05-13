@@ -1,10 +1,8 @@
-import logging
 import typing as t
 from abc import abstractmethod
 from collections.abc import Callable, Hashable
 
 from . import FrozenDict, private_setattr
-
 
 
 _T_Obj = t.TypeVar("_T_Obj")
@@ -19,7 +17,6 @@ _object_new = object.__new__
 
 class ExpressionError(Exception):
     ...
-
 
 
 class EvaluationError(ExpressionError):
@@ -98,7 +95,7 @@ class Expression(t.Generic[_T_Expr, _T_Obj]):
         return self.__class__, (self.__expr__,)
 
     @abstractmethod
-    def __eval__(self, o: _T_Obj): # pragma: no cover
+    def __eval__(self, o: _T_Obj):  # pragma: no cover
         raise NotImplementedError(f"{self.__class__.__name__}.__eval__datapath__()")
 
     # def __setattr__(self, name: str, value) -> None:
@@ -178,13 +175,9 @@ class Call(Expression[tuple[_T_Args, _T_Kwargs], _T_Obj]):
         return f'({", ".join(filter(None, (a, kw)))})'
 
 
+class Lookup(Expression[tuple[Expression[t.Any, _T_Obj]], _T_Obj], t.Generic[_T_Obj]):
+    """A chain of lookup experesions."""
 
-
-class Lookup(
-    Expression[tuple[Expression[t.Any, _T_Obj]], _T_Obj], t.Generic[_T_Obj]
-):
-    """A chain of lookup experesions.
-    """
     __slots__ = ("__expr__",)
 
     __offset__ = None
@@ -195,10 +188,10 @@ class Lookup(
         self = _object_new(cls)
         self.__setattr(__expr__=ops)
         return self
-    
+
     @property
     def __ops__(self) -> None:
-        return self.__expr__[self.__offset__:]
+        return self.__expr__[self.__offset__ :]
 
     def __push__(self, *expr: Expression[_T_Expr, _T_Obj]):
         return self.__class__(*self.__expr__, *expr)
@@ -248,9 +241,5 @@ class Lookup(
         return self.__class__, self.__expr__
 
 
-
-def look(
-    expr: Lookup, /, root: _T_Obj, *, start: int = None, stop: int = None
-):
+def look(expr: Lookup, /, root: _T_Obj, *, start: int = None, stop: int = None):
     return expr.__eval__(root, start=start, stop=stop)
-

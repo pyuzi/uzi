@@ -15,19 +15,16 @@ from uzi.injectors import Injector
 Dependency = Dependency
 
 
-
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-
 _T = t.TypeVar("_T")
-_T_Dep = t.TypeVar('_T_Dep', bound=Dependency, covariant=True)
+_T_Dep = t.TypeVar("_T_Dep", bound=Dependency, covariant=True)
 _T_NewDep = Callable[..., _T_Dep]
 
 
 class LookupErrorDependencyTests(BaseTestCase[Dependency]):
-
     @pytest.fixture
     def abstract(self):
         return _T
@@ -70,5 +67,5 @@ class LookupErrorDependencyTests(BaseTestCase[Dependency]):
 
     @xfail(raises=InjectorLookupError, strict=True)
     def test_bind(self, new: _T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         subject.bind(mock_injector)

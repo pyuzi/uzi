@@ -3,7 +3,6 @@ import pytest
 import typing as t
 
 
-
 from uzi.providers import Resource as Provider
 
 
@@ -14,16 +13,11 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-
-_T_NewPro =  _T_NewPro[Provider]
-        
+_T_NewPro = _T_NewPro[Provider]
 
 
 class ResourceProviderTests(ProviderTestCase[Provider]):
-    
-
     class ContextManager:
-
         def __init__(self, func):
             self.func = func
             self.enters = 0

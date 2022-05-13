@@ -40,8 +40,8 @@ nav:
     - 'uzi.containers': 'api/containers.md'
     - 'uzi.exceptions': 'api/exceptions.md'
     - 'uzi.graph': 
-      - 'api/graph/index.md'
-      - 'api/graph/nodes.md'
+      - 'core': 'api/graph/core.md'
+      - 'nodes': 'api/graph/nodes.md'
     - 'uzi.injectors': 'api/injectors.md'
     - 'uzi.markers': 'api/markers.md'
     - 'uzi.providers':

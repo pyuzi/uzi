@@ -1,40 +1,38 @@
-from asyncio import gather, sleep
 from copy import copy, deepcopy
-import operator
 import typing as t
-import attr
 import pytest
 
 
 from collections import abc
 
 
-from uzi.markers import Dep, ProAndPredicate, ProInvertPredicate, ProNoopPredicate, ProOrPredicate, ProPredicate
-
+from uzi.markers import (
+    Dep,
+    ProNoopPredicate,
+)
 
 
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T = t.TypeVar('_T')
-_Tx = t.TypeVar('_Tx')
+_T = t.TypeVar("_T")
+_Tx = t.TypeVar("_Tx")
 
 _T_FnNew = abc.Callable[..., Dep]
 
-   
-   
-   
 
 @pytest.fixture
 def new_args():
-    return _T, ~ProNoopPredicate(),
+    return (
+        _T,
+        ~ProNoopPredicate(),
+    )
+
 
 @pytest.fixture
 def cls():
     return Dep
-
-
 
 
 def test_basic(new: _T_FnNew):
@@ -52,20 +50,16 @@ def test_basic(new: _T_FnNew):
     assert sub == cp == deepcopy(sub)
 
 
-    
-    
 # def test_predicate_operations(new: _T_FnNew):
 #     sub, pred = new(), ~ProNoopPredicate()
 #     assert sub
 #     assert isinstance((sub & pred).predicate, ProAndPredicate)
 #     assert isinstance((sub | pred).predicate, ProOrPredicate)
-    
+
 #     assert isinstance((pred & sub).predicate, ProAndPredicate)
 #     assert isinstance((pred | sub).predicate, ProOrPredicate)
-  
-    # assert isinstance((~sub).predicate, ProInvertPredicate)
 
-  
+# assert isinstance((~sub).predicate, ProInvertPredicate)
 
 
 # @xfail(raises=TypeError, strict=True)

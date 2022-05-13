@@ -10,7 +10,7 @@ from uzi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC
 
 from uzi.providers import Provider
 from uzi.graph.nodes import Node
-from uzi.graph import Graph
+from uzi.graph.core import Graph
 
 
 from ..abc import BaseTestCase
@@ -32,14 +32,16 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
     type_: t.ClassVar[type[_T_Pro]] = Provider
 
     value = _notset
-    
+
     @pytest.fixture
     def abstract(self):
         return _T
 
     @pytest.fixture
     def concrete(self):
-        def fn(): ...
+        def fn():
+            ...
+
         return fn
 
     @pytest.fixture
@@ -55,6 +57,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         def fn(*a, **kw):
             self.value = val = value_factory(*a, **kw)
             return val
+
         return fn
 
     def test_basic(self, new: _T_New_, cls: type[_T_Pro]):
@@ -104,16 +107,16 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         subject = new()
         assert subject.container is None
         subject._setup(MockContainer(), None)._setup(MockContainer(), None)
-        return subject,
+        return (subject,)
 
     @xfail(raises=ValueError, strict=True)
     def test_xfail_invalid_abstract(self, new: _T_New_, mock_container):
         subject = new()
         if subject.abstract:
-            _Tx = t.TypeVar('_Tx')
+            _Tx = t.TypeVar("_Tx")
             subject._setup(mock_container, _Tx)
         else:
-            raise ValueError('')
+            raise ValueError("")
 
     def test_is_default(self, new: _T_New_):
         subject = new()
@@ -138,10 +141,10 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
 
         assert subject is subject.protected()
         assert subject.access_level is PROTECTED
-        
+
         assert subject is subject.guarded()
         assert subject.access_level is GUARDED
-        
+
         assert subject is subject.private()
         assert subject.access_level is PRIVATE
 
@@ -158,7 +161,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
             ("protected", ()),
             ("guarded", ()),
             ("private", ()),
-            ('when', ()),
+            ("when", ()),
             ("_setup", (None, None)),
         ],
     )
@@ -182,8 +185,8 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
 
     def test_filters(self, new: _T_New_):
         subject = new()
-        f0, f1, f2, f3 = (Mock(Callable, name=f'filter[{i}]') for i in range(4))
-        
+        f0, f1, f2, f3 = (Mock(Callable, name=f"filter[{i}]") for i in range(4))
+
         assert subject.when(f1, f2, f0, f2) is subject
         assert tuple(subject.filters) == (f1, f2, f0)
 
@@ -191,14 +194,19 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         assert not isinstance(subject.filters, (MutableSet, MutableSequence))
 
         assert tuple(subject.when(f3, f1).filters) == (f1, f2, f0, f3)
-        assert tuple(subject.when(f0, f1, replace=True).filters) == (f0, f1,)
+        assert tuple(subject.when(f0, f1, replace=True).filters) == (
+            f0,
+            f1,
+        )
         assert tuple(subject.when(replace=True).filters) == ()
         return subject
 
     def test_apply_filters(self, abstract, new: _T_New_, mock_graph: Graph):
         subject = new()
-        
-        f0, f1, f2, f3, f4 = (Mock(Callable, return_value=True, name=f'filter[{i}]') for i in range(5))
+
+        f0, f1, f2, f3, f4 = (
+            Mock(Callable, return_value=True, name=f"filter[{i}]") for i in range(5)
+        )
 
         subject.when(f0, f1, f2, f3, f4)
         assert tuple(subject.filters) == (f0, f1, f2, f3, f4)
@@ -206,29 +214,34 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         for f in (f0, f1, f2, f3, f4):
             f.assert_called_once_with(subject, abstract, mock_graph)
             f.reset_mock()
-        
+
         f2.return_value = False
         assert subject._can_resolve(abstract, mock_graph) is False
-        
-        for f in (f0, f1, f2,):
+
+        for f in (
+            f0,
+            f1,
+            f2,
+        ):
             f.assert_called_once_with(subject, abstract, mock_graph)
 
         for f in (f3, f4):
             f.assert_not_called()
         return subject
-    
 
-    def test__can_resolve_calls__freeze(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph):
-        with patch.object(cls, '_freeze'):
+    def test__can_resolve_calls__freeze(
+        self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph
+    ):
+        with patch.object(cls, "_freeze"):
             subject = new()
             # subject._freeze.return_value = True
             res = subject._can_resolve(abstract, mock_graph)
-            subject._freeze.assert_called_once()        
+            subject._freeze.assert_called_once()
 
         subject = new()
         res = subject._can_resolve(abstract, mock_graph)
         assert subject._frozen
-        return subject, res    
+        return subject, res
 
     # def _test_can_resolve(self, abstract, cls: type[_T_Pro], new: _T_New_, mock_graph: Scope, mock_container: Container):
     #     with patch.object(cls, '_can_resolve'):
@@ -237,7 +250,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
     #         f = Mock(Callable, return_value=True, name=f'filter')
 
     #         subject.when(f).set_container(mock_container)
-            
+
     #         assert subject.can_resolve(abstract, mock_graph) is True
     #         f.assert_called_once_with(subject, abstract, mock_graph)
     #         assert subject.can_resolve(abstract, mock_graph) is True
@@ -266,28 +279,40 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         subject = new()
         kwds = dict(_x__aGgYh0RdYvYa__x_=object(), _a_xRbYf78PxKsT4x_a_=object())
         res = subject._node_kwargs(**kwds)
-        assert res['_x__aGgYh0RdYvYa__x_'] is kwds['_x__aGgYh0RdYvYa__x_'] 
-        assert res['_a_xRbYf78PxKsT4x_a_'] is kwds['_a_xRbYf78PxKsT4x_a_'] 
+        assert res["_x__aGgYh0RdYvYa__x_"] is kwds["_x__aGgYh0RdYvYa__x_"]
+        assert res["_a_xRbYf78PxKsT4x_a_"] is kwds["_a_xRbYf78PxKsT4x_a_"]
         return subject
-        
 
     @xfail(raises=NotImplementedError, strict=False)
-    def test__make_node(self, cls: type[_T_Pro], abstract, mock_graph: Graph, new: _T_New_):
+    def test__make_node(
+        self, cls: type[_T_Pro], abstract, mock_graph: Graph, new: _T_New_
+    ):
         orig = cls._node_kwargs
-        with patch.object(cls, '_node_kwargs', wraps=lambda *a, **kw: orig(subject, *a, **kw)):
+        with patch.object(
+            cls, "_node_kwargs", wraps=lambda *a, **kw: orig(subject, *a, **kw)
+        ):
             subject = new()
             dep = subject._make_node(abstract, mock_graph)
             assert isinstance(dep, Node)
             subject._node_kwargs.assert_called_once()
             return subject, dep
 
-    def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph):
+    def test_resolve(
+        self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph
+    ):
         subject = new()
         res = subject._resolve(abstract, mock_graph)
         assert isinstance(res, Node)
-        return subject, res    
+        return subject, res
 
-    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph, mock_injector):
+    async def test_inject(
+        self,
+        cls: type[_T_Pro],
+        abstract,
+        new: _T_New_,
+        mock_graph: Graph,
+        mock_injector,
+    ):
         subject = new()
         dep = subject._resolve(abstract, mock_graph)
 
@@ -298,12 +323,10 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         if dep.is_async:
             assert isawaitable(res)
             res = await res
-        return subject, res    
-
+        return subject, res
 
 
 class AsyncProviderTestCase(ProviderTestCase):
-
     @pytest.fixture
     def value_factory(self):
         async def fn():
@@ -318,4 +341,3 @@ class AsyncProviderTestCase(ProviderTestCase):
             return val
 
         return sfn
-

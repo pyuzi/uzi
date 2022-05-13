@@ -5,10 +5,7 @@ import typing as t
 from uzi import Dep
 
 
-
 from uzi.providers import Factory as Provider
-
-
 
 
 from ..abc import ProviderTestCase, AsyncProviderTestCase, _T_NewPro
@@ -18,12 +15,12 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T_Pro = t.TypeVar('_T_Pro', bound=Provider, covariant=True)
-_T_NewPro =  _T_NewPro[_T_Pro]
+_T_Pro = t.TypeVar("_T_Pro", bound=Provider, covariant=True)
+_T_NewPro = _T_NewPro[_T_Pro]
 
 
-_T = t.TypeVar('_T')
-_T_Async = t.TypeVar('_T_Async')
+_T = t.TypeVar("_T")
+_T_Async = t.TypeVar("_T_Async")
 
 
 class Foo:
@@ -47,16 +44,17 @@ class FooBar:
 
 
 class ProviderTestCase(ProviderTestCase[_T_Pro]):
-    
     @pytest.fixture
     def concrete(self):
-        def fn(a: Foo, /, b: 'Bar', *, z=Dep(Baz, default=None)): ...
+        def fn(a: Foo, /, b: "Bar", *, z=Dep(Baz, default=None)):
+            ...
+
         return fn
 
     def test_args_kwargs(self, new: _T_NewPro):
         subject = new()
-        
-        args = 1,2,3
+
+        args = 1, 2, 3
         kwd = dict(foo=Foo, bar=Bar)
 
         assert subject.args(*args) is subject
@@ -66,14 +64,13 @@ class ProviderTestCase(ProviderTestCase[_T_Pro]):
         assert rargs == args
         assert rkwds == kwd
 
-        args = 4,5,7
+        args = 4, 5, 7
         subject.args(*args)
         assert (args, kwd) == subject.arguments
 
         kwd = dict(foobar=122, baz=Baz)
         subject.kwargs(**kwd)
         assert (args, kwd) == subject.arguments
-
 
 
 # class AsyncFactoryProviderTests(FactoryProviderTests, AsyncProviderTestCase):
@@ -93,4 +90,3 @@ class ProviderTestCase(ProviderTestCase[_T_Pro]):
 #             assert a is b
 #             return await value_setter()
 #         return factory
-

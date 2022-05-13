@@ -1,8 +1,3 @@
-# cython: language_level=3
-# cython: boundscheck=False
-# cython: wraparound=False
-
-
 import typing as t
 from asyncio import AbstractEventLoop, Future, ensure_future, get_running_loop
 from collections.abc import Callable, ItemsView, Iterator, Mapping, ValuesView
@@ -15,7 +10,6 @@ from typing_extensions import Self
 
 from uzi._common import FrozenDict
 
-from ._common import Missing
 from .markers import Injectable, is_injectable_annotation
 from .markers import DependencyMarker
 
@@ -23,7 +17,7 @@ if t.TYPE_CHECKING:  # pragma: no cover
     from .graph.nodes import Node
     from .containers import Container
     from .injectors import Injector
-    from .graph import Graph
+    from .graph.core import Graph
 
 
 logger = getLogger(__name__)
@@ -51,9 +45,7 @@ _object_setattr = object.__setattr__
 
 
 class BoundParam:
-    """A bound param    
-    """
-
+    """A bound param"""
 
     __slots__ = (
         "param",
@@ -131,8 +123,7 @@ class BoundParam:
 
 @attr.s(slots=True, frozen=True)
 class BoundParams:
-    """A collection of bound params
-    """
+    """A collection of bound params"""
 
     params: tuple[BoundParam] = attr.ib(converter=tuple)
 
@@ -244,15 +235,18 @@ class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
 
     # def __reduce__(self): return tuple, (tuple(self),)
 
-    def copy(self): return self[:]
+    def copy(self):
+        return self[:]
 
     __copy__ = copy
 
     @t.overload
-    def __getitem__(self, index: int) -> tuple[_T, bool]: ...
+    def __getitem__(self, index: int) -> tuple[_T, bool]:
+        ...
 
     @t.overload
-    def __getitem__(self, slice: slice) -> Self: ...
+    def __getitem__(self, slice: slice) -> Self:
+        ...
 
     def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
         v, fn = self.get_raw(index)

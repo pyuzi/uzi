@@ -7,38 +7,34 @@ import pytest
 from uzi._common import ReadonlyDict
 
 
-
-
-
-
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-
-
 class ReadonlyDictTests:
-
     def test_basic(self):
         vals = dict(a=1, b=2, c=3)
         dct = ReadonlyDict(vals)
         assert isinstance(dct, ReadonlyDict)
         assert dct == vals == ReadonlyDict(**vals)
         for cp in (copy(dct), deepcopy(dct)):
-            assert isinstance(cp, ReadonlyDict) 
+            assert isinstance(cp, ReadonlyDict)
             assert cp == dct
-      
+
     @xfail(raises=TypeError, strict=True)
-    @parametrize(['op', 'args'], [
-        (operator.setitem, ('a', 1)),
-        (operator.delitem, ('a',)),
-        (operator.ior, ({'a': 1},)),
-        (ReadonlyDict.update, ({'a': 1},)),
-        (ReadonlyDict.setdefault, ('a', 1)),
-        (ReadonlyDict.pop, ('a',)),
-        (ReadonlyDict.popitem, ()),
-        (ReadonlyDict.clear, ()),
-    ])
+    @parametrize(
+        ["op", "args"],
+        [
+            (operator.setitem, ("a", 1)),
+            (operator.delitem, ("a",)),
+            (operator.ior, ({"a": 1},)),
+            (ReadonlyDict.update, ({"a": 1},)),
+            (ReadonlyDict.setdefault, ("a", 1)),
+            (ReadonlyDict.pop, ("a",)),
+            (ReadonlyDict.popitem, ()),
+            (ReadonlyDict.clear, ()),
+        ],
+    )
     def test_xfail_not_mutable(self, op, args):
         op(ReadonlyDict(a=1, b=2, c=3), *args)
 

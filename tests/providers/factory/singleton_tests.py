@@ -4,7 +4,6 @@ import pytest
 import typing as t
 
 
-
 from uzi.providers import Singleton as Provider
 
 
@@ -15,12 +14,10 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T_NewPro =  _T_NewPro[Provider]
+_T_NewPro = _T_NewPro[Provider]
 
 
 class SingletonProviderTests(ProviderTestCase[Provider]):
-    
-    
     def test_is_thread_safe(self, new: _T_NewPro):
         subject = new()
         subject.thread_safe()
@@ -29,4 +26,3 @@ class SingletonProviderTests(ProviderTestCase[Provider]):
         assert not subject.is_thread_safe
         subject.thread_safe()
         assert subject.is_thread_safe
-    

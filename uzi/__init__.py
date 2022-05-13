@@ -1,10 +1,15 @@
-
 from ._common import Missing
 
 
 from .markers import (
-    Injectable, is_injectable, T_Injected, T_Injectable,
-    Dep, DependencyMarker, Lookup, PureDep
+    Injectable,
+    is_injectable,
+    T_Injected,
+    T_Injectable,
+    Dep,
+    DependencyMarker,
+    Lookup,
+    PureDep,
 )
 
 

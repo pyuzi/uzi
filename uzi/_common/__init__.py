@@ -1,4 +1,3 @@
-
 from collections import abc
 from functools import partial
 import inspect
@@ -14,15 +13,21 @@ from typing_extensions import Self
 _object_setattr = object.__setattr__
 _setattr = setattr
 
-_T = TypeVar('_T')
+_T = TypeVar("_T")
 
 
 def ordered_set(it: abc.Iterable[_T]) -> abc.Set[_T]:
     return dict.fromkeys(it).keys()
 
 
-def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn=_object_setattr, frozen: str =None):
-
+def private_setattr(
+    klass=None,
+    *,
+    name: str = "setattr",
+    setattr=True,
+    setattr_fn=_object_setattr,
+    frozen: str = None,
+):
     def decorator(cls_):
 
         # def _setfunc(self: Self, force=False):
@@ -36,29 +41,32 @@ def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn
                 setter_ = _setattr
             else:
                 setter_ = setattr_fn
-            
+
             name and kw.setdefault(name, value)
-            for k,v in kw.items():
+            for k, v in kw.items():
                 setter_(self, k, v)
-        
+
         def __setattr__(self: Self, name: str, value):
             if self._privateattr_regex.search(name):
                 # if not (frozen or getattr(self, frozen, False)):
                 return setattr_fn(self, name, value)
             getattr(self, name)
-            raise AttributeError(f"`cannot set {name!r} on frozen {self.__class__.__qualname__!r}.")
+            raise AttributeError(
+                f"`cannot set {name!r} on frozen {self.__class__.__qualname__!r}."
+            )
 
         _base__init_subclass__ = cls_.__init_subclass__
-        
+
         def __init_subclass__(cls: type[Self], **kwargs):
             if not hasattr(cls, fn := f'_{cls.__name__.lstrip("_")}__{name}'):
                 _setattr(cls, fn, setter)
-            pre = r'|'.join(f'_{c.__name__.lstrip("_")}__' for c in cls.__mro__)
+            pre = r"|".join(f'_{c.__name__.lstrip("_")}__' for c in cls.__mro__)
             cls._privateattr_regex = re.compile(f"^(?:{pre}).+")
             _base__init_subclass__(**kwargs)
+
         cls_.__init_subclass__ = classmethod(__init_subclass__)
 
-        pre = r'|'.join(f'_{c.__name__.lstrip("_")}__' for c in cls_.__mro__)
+        pre = r"|".join(f'_{c.__name__.lstrip("_")}__' for c in cls_.__mro__)
         cls_._privateattr_regex = re.compile(f"^(?:{pre}).+")
 
         if not hasattr(cls_, fn := f'_{cls_.__name__.lstrip("_")}__{name}'):
@@ -66,12 +74,10 @@ def private_setattr(klass=None, *, name: str='setattr', setattr=True, setattr_fn
 
         if setattr and cls_.__setattr__ is _object_setattr:
             cls_.__setattr__ = __setattr__
-        
+
         return cls_
 
     return decorator if klass is None else decorator(klass)
-
-
 
 
 def typed_signature(
@@ -85,12 +91,10 @@ def typed_signature(
         )
 
     if globalns is None:
-        if not (globalns := getattr(callable, "__globals__", None)): 
+        if not (globalns := getattr(callable, "__globals__", None)):
             if isinstance(callable, partial):
                 callable = callable.func
-            getattr(
-            import_module(callable.__module__), "__dict__", None
-        )
+            getattr(import_module(callable.__module__), "__dict__", None)
 
     params = (
         p.replace(annotation=eval_type(p.annotation, globalns, localns))
@@ -109,17 +113,15 @@ def eval_type(value, globalns, localns=None):
         value = ForwardRef(value)
     try:
         return t._eval_type(value, globalns, localns)
-    except NameError: # pragma: no cover
+    except NameError:  # pragma: no cover
         return value
-
-
 
 
 class MissingType:
 
     __slots__ = ()
 
-    __value__: t.ClassVar['MissingType'] = None
+    __value__: t.ClassVar["MissingType"] = None
 
     def __new__(cls):
         return cls.__value__
@@ -130,15 +132,18 @@ class MissingType:
             cls.__value__ = object.__new__(cls)
         return cls()
 
-    def __bool__(self): return False
+    def __bool__(self):
+        return False
 
-    def __str__(self): return ''
+    def __str__(self):
+        return ""
 
-    def __repr__(self): return f'Missing'
+    def __repr__(self):
+        return f"Missing"
 
     def __reduce__(self):
-        return self.__class__, () # pragma: no cover
-    
+        return self.__class__, ()  # pragma: no cover
+
     def __eq__(self, x):
         return x is self
 
@@ -146,16 +151,7 @@ class MissingType:
         return id(self)
 
 
-
-
-
-
-
-Missing = MissingType._makenew__('Missing')
-
-
-
-
+Missing = MissingType._makenew__("Missing")
 
 
 _T_Key = t.TypeVar("_T_Key")
@@ -172,7 +168,6 @@ class ReadonlyDict(dict[_T_Key, _T_Val]):
 
     __slots__ = ()
 
-
     def not_mutable(self, *a, **kw):
         raise TypeError(f"readonly type: {self} ")
 
@@ -181,7 +176,7 @@ class ReadonlyDict(dict[_T_Key, _T_Val]):
     del not_mutable
 
     @classmethod
-    def fromkeys(cls, it: abc.Iterable[_T_Key], value: _T_Val=None):
+    def fromkeys(cls, it: abc.Iterable[_T_Key], value: _T_Val = None):
         return cls((k, value) for k in it)
 
     def __reduce__(self):
@@ -192,6 +187,7 @@ class ReadonlyDict(dict[_T_Key, _T_Val]):
 
     def copy(self):
         return self.__class__(self)
+
     __copy__ = copy
 
     def __deepcopy__(self, memo=None):
@@ -201,13 +197,12 @@ class ReadonlyDict(dict[_T_Key, _T_Val]):
 
     def __or__(self, o):
         return self.__class__(self.__or(o))
-        
 
 
 class FrozenDict(ReadonlyDict[_T_Key, _T_Val]):
-    """An hashable `ReadonlyDict`
-    """
-    __slots__ = "_v_hash",
+    """An hashable `ReadonlyDict`"""
+
+    __slots__ = ("_v_hash",)
 
     def __hash__(self):
         try:
@@ -220,7 +215,7 @@ class FrozenDict(ReadonlyDict[_T_Key, _T_Val]):
                     ash = hash(items)
                 except TypeError:
                     pass
-            _object_setattr(self, '_v_hash', ash)
+            _object_setattr(self, "_v_hash", ash)
 
         if ash is None:
             raise TypeError(f"un-hashable type: {self.__class__.__name__!r}")
@@ -228,5 +223,4 @@ class FrozenDict(ReadonlyDict[_T_Key, _T_Val]):
         return ash
 
     def _eval_hashable(self) -> Hashable:
-        return *((k, self[k]) for k in sorted(self)),
-
+        return (*((k, self[k]) for k in sorted(self)),)

@@ -5,8 +5,7 @@ import pytest
 from collections.abc import Callable
 
 
-from uzi.graph import NullGraph, Graph
-
+from uzi.graph.core import NullGraph, Graph
 
 
 from ..abc import BaseTestCase
@@ -15,8 +14,8 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=Graph)
+_T = t.TypeVar("_T")
+_T_Scp = t.TypeVar("_T_Scp", bound=Graph)
 
 _T_FnNew = Callable[..., _T_Scp]
 
@@ -36,7 +35,7 @@ class NullGraphTests(BaseTestCase[NullGraph]):
         assert not sub.pros
         assert not sub.extends(new())
         str(sub)
-        
+
     def test_compare(self, new: _T_FnNew):
         sub = new()
         assert sub == NullGraph()
@@ -53,6 +52,6 @@ class NullGraphTests(BaseTestCase[NullGraph]):
     @xfail(raises=TypeError, strict=True)
     def test_fail_invalid_getitem(self, new: _T_FnNew):
         new()[2345.6789]
-             
+
     def test_immutable(self, new: _T_FnNew, immutable_attrs):
         self.assert_immutable(new(), immutable_attrs)

@@ -4,15 +4,11 @@ import typing as t
 import pytest
 
 
-
-
-
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T_Sub = t.TypeVar('_T_Sub')
-
+_T_Sub = t.TypeVar("_T_Sub")
 
 
 class BaseTestCase(t.Generic[_T_Sub]):
@@ -43,11 +39,16 @@ class BaseTestCase(t.Generic[_T_Sub]):
         def fn(*a, **kw):
             self.value = val = value_factory(*a, **kw)
             return val
+
         return fn
 
     @pytest.fixture
     def immutable_attrs(self, cls):
-        return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or isfunction(getattr(cls, a)))]
+        return [
+            a
+            for a in dir(cls)
+            if not (a[:2] == "__" == a[-2:] or isfunction(getattr(cls, a)))
+        ]
 
     def assert_immutable(self, sub: _T_Sub, immutable_attrs):
         it = iter(immutable_attrs)
@@ -57,5 +58,7 @@ class BaseTestCase(t.Generic[_T_Sub]):
             except AttributeError:
                 continue
             else:
-                raise AssertionError(f"attribute `{sub.__class__.__qualname__}.{atr}` is mutable")
+                raise AssertionError(
+                    f"attribute `{sub.__class__.__qualname__}.{atr}` is mutable"
+                )
         return sub

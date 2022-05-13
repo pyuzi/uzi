@@ -1,6 +1,3 @@
-
-
-
 def is_immutable(new, immutable_attrs):
     sub = new()
     it = iter(immutable_attrs)
@@ -10,5 +7,7 @@ def is_immutable(new, immutable_attrs):
         except AttributeError:
             continue
         else:
-            raise AssertionError(f"attribute `{sub.__class__.__qualname__}.{atr}` is mutable")
+            raise AssertionError(
+                f"attribute `{sub.__class__.__qualname__}.{atr}` is mutable"
+            )
     return sub

@@ -1,10 +1,8 @@
 import typing as t
-from unittest.mock import Mock
 
 import pytest
 from uzi.markers import Dep
 from uzi.providers import DepMarkerProvider as Provider
-from uzi.graph import Graph
 
 from .abc import ProviderTestCase, _T_NewPro
 
@@ -24,15 +22,11 @@ class CaseConf:
     inject_default: t.Union[t.Any, None]
 
 
-
-
-
 class DepMarkerTests(ProviderTestCase[Provider]):
-
 
     expected: dict[Dep, CaseConf] = [
         Dep(_Tx),
-        Dep(_Tx, default='[DEFAULT]'),
+        Dep(_Tx, default="[DEFAULT]"),
         Dep(_Tx, default=Dep(_Ta)),
         # Dep(_Tx, graph=Dep.ONLY_SELF, default='[DEFAULT]'),
         # Dep(_Tx, graph=Dep.ONLY_SELF, default=Dep(_Ta)),
@@ -48,9 +42,6 @@ class DepMarkerTests(ProviderTestCase[Provider]):
     @pytest.fixture
     def new_args(self):
         return ()
-
-
-
 
 
 class Foo:

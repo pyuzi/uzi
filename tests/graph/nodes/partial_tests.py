@@ -1,12 +1,10 @@
 import asyncio
 from inspect import isawaitable, signature
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 import pytest
 import typing as t
 from uzi import Dep
 from uzi._common import FrozenDict
-
-
 
 
 from uzi.graph.nodes import Partial as Dependency
@@ -17,23 +15,21 @@ from uzi.injectors import Injector
 from .abc import NodeTestCase, _T_NewNode
 
 
-
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T_Dep = t.TypeVar('_T_Dep', bound=Dependency, covariant=True)
+_T_Dep = t.TypeVar("_T_Dep", bound=Dependency, covariant=True)
 
 T_NewDep = _T_NewNode[_T_Dep]
 
 
-
-_Ta = t.TypeVar('_Ta')
-_Tb = t.TypeVar('_Tb')
-_Tc = t.TypeVar('_Tc')
-_Tx = t.TypeVar('_Tx')
-_Ty = t.TypeVar('_Ty')
-_Tz = t.TypeVar('_Tz')
+_Ta = t.TypeVar("_Ta")
+_Tb = t.TypeVar("_Tb")
+_Tc = t.TypeVar("_Tc")
+_Tx = t.TypeVar("_Tx")
+_Ty = t.TypeVar("_Ty")
+_Tz = t.TypeVar("_Tz")
 
 
 # @pytest.fixture
@@ -57,9 +53,6 @@ def new_kwargs(new_kwargs, bound_params):
     return new_kwargs | dict(params=bound_params)
 
 
-
-
-
 class PartialDependencyTests(NodeTestCase[Dependency]):
 
     _call_args: tuple = ()
@@ -68,16 +61,18 @@ class PartialDependencyTests(NodeTestCase[Dependency]):
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
-        def fn(a: _Ta, b: _Tb, /, *_a,  z=dep_z, **_kw):
+
+        def fn(a: _Ta, b: _Tb, /, *_a, z=dep_z, **_kw):
             assert _a == self._call_args
             assert _kw == self._call_kwargs
-            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps({_Ta: a, _Tb: b, dep_z: z}, mock_graph, mock_injector)
             val = self.value = object()
             return val
+
         return fn
 
     def test_validity(self, new: T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
 
         fn = subject.bind(mock_injector)
@@ -87,9 +82,8 @@ class PartialDependencyTests(NodeTestCase[Dependency]):
         assert not val is fn(*a, **kw) is self.value
 
 
-
-
 from uzi.graph.nodes import AsyncPartial as Dependency
+
 
 class AsyncPartialDependencyTests(NodeTestCase[Dependency]):
 
@@ -99,16 +93,18 @@ class AsyncPartialDependencyTests(NodeTestCase[Dependency]):
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
-        async def fn(a: _Ta, b: _Tb, /,  *_a,  z=dep_z, **_kw):
+
+        async def fn(a: _Ta, b: _Tb, /, *_a, z=dep_z, **_kw):
             assert _a == self._call_args
             assert _kw == self._call_kwargs
-            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps({_Ta: a, _Tb: b, dep_z: z}, mock_graph, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
+
         return fn
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         fn = subject.bind(mock_injector)
         a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
         aw = fn(*a, **kw)
@@ -119,8 +115,8 @@ class AsyncPartialDependencyTests(NodeTestCase[Dependency]):
         assert not val is await fn(*a, **kw) is self.value
 
 
-
 from uzi.graph.nodes import AwaitParamsPartial as Dependency
+
 
 class AwaitParamsPartialDependencyTests(NodeTestCase[Dependency]):
 
@@ -128,19 +124,25 @@ class AwaitParamsPartialDependencyTests(NodeTestCase[Dependency]):
     _call_kwargs: dict = FrozenDict()
 
     @pytest.fixture
-    def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
+    def value_setter(
+        self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]
+    ):
         dep_z = Dep(_Tz, default=object())
         mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
+
         def fn(a: _Ta, b: _Tb, x: _Tx, /, *_a, y: _Ty, z=dep_z, **_kw):
             assert _a == self._call_args
             assert _kw == self._call_kwargs
-            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps(
+                {_Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z}, mock_graph, mock_injector
+            )
             val = self.value = object()
             return val
+
         return fn
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
         fn = subject.bind(mock_injector)
         aw = fn(*a, **kw)
@@ -152,8 +154,8 @@ class AwaitParamsPartialDependencyTests(NodeTestCase[Dependency]):
         assert not val is await fn(*a, **kw) is self.value
 
 
-
 from uzi.graph.nodes import AwaitParamsAsyncPartial as Dependency
+
 
 class AwaitParamsAsyncPartialDependencyTests(NodeTestCase[Dependency]):
 
@@ -161,19 +163,25 @@ class AwaitParamsAsyncPartialDependencyTests(NodeTestCase[Dependency]):
     _call_kwargs: dict = FrozenDict()
 
     @pytest.fixture
-    def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
+    def value_setter(
+        self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]
+    ):
         dep_z = Dep(_Tz, default=object())
         mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
+
         async def fn(a: _Ta, b: _Tb, x: _Tx, /, *_a, y: _Ty, z=dep_z, **_kw):
             assert _a == self._call_args
             assert _kw == self._call_kwargs
-            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps(
+                {_Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z}, mock_graph, mock_injector
+            )
             val = self.value = await asyncio.sleep(0, object())
             return val
+
         return fn
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
         fn = subject.bind(mock_injector)
         val = await fn(*a, **kw)

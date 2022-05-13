@@ -1,15 +1,13 @@
-from copy import copy, deepcopy
-from collections.abc import Callable
-from inspect import isawaitable, ismethod
+from copy import copy
+from collections import abc
+from inspect import isawaitable
 import typing as t
 from unittest.mock import AsyncMock, MagicMock
-import attr
 import pytest
-from uzi._common import Missing
 
 
-# from uzi.providers import 
-from uzi.graph.nodes import Node, SimpleNode, _T_Node
+# from uzi.providers import
+from uzi.graph.nodes import Node, _T_Node
 from uzi.injectors import Injector
 
 from ...abc import BaseTestCase
@@ -21,7 +19,7 @@ parametrize = pytest.mark.parametrize
 _notset = object()
 
 _T = t.TypeVar("_T")
-_T_NewNode = Callable[..., _T_Node]
+_T_NewNode = abc.Callable[..., _T_Node]
 
 
 class NodeTestCase(BaseTestCase[_T_Node]):
@@ -29,7 +27,7 @@ class NodeTestCase(BaseTestCase[_T_Node]):
     type_: t.ClassVar[type[_T_Node]] = Node
 
     value = _notset
-    
+
     @pytest.fixture
     def abstract(self):
         return _T
@@ -46,13 +44,18 @@ class NodeTestCase(BaseTestCase[_T_Node]):
     def bound(self, subject: _T_Node, mock_injector: Injector):
         return subject.bind(mock_injector)
 
-    def check_deps(self, deps: dict, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, AsyncMock]]):
+    def check_deps(
+        self,
+        deps: dict,
+        mock_graph,
+        mock_injector: t.Union[Injector, dict[t.Any, AsyncMock]],
+    ):
         for _t, _v in deps.items():
             d = mock_graph[_t]
             _x = mock_injector[d]
             _x.assert_called()
-            if getattr(d, 'is_async', False):
-               _x.assert_awaited()
+            if getattr(d, "is_async", False):
+                _x.assert_awaited()
             assert all(_ is _t or not deps[_] is _v for _ in deps)
 
     def test_basic(self, new: _T_NewNode, cls: type[_T_Node]):
@@ -63,7 +66,6 @@ class NodeTestCase(BaseTestCase[_T_Node]):
         assert subject.is_async in (True, False)
         assert callable(subject.bind)
         return subject
-
 
     def test_copy(self, new: _T_NewNode):
         subject = new()
@@ -95,6 +97,6 @@ class NodeTestCase(BaseTestCase[_T_Node]):
             val = await val
         if not self.value is _notset:
             assert val is self.value
-        
+
     def test_validity(self):
         assert False, "No validity tests"

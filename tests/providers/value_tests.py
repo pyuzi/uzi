@@ -3,7 +3,6 @@ import pytest
 import typing as t
 
 
-
 from uzi.providers import Value as Provider
 
 
@@ -14,14 +13,10 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T = t.TypeVar('_T')
+_T = t.TypeVar("_T")
 
 
 class ValueProviderTests(ProviderTestCase[Provider]):
-
     @pytest.fixture
     def concrete(self, value_setter):
         return value_setter()
-
-
-

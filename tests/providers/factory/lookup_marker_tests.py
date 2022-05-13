@@ -6,7 +6,6 @@ import typing as t
 from uzi.markers import Lookup
 
 
-
 from uzi.providers import LookupMarkerProvider as Provider
 
 
@@ -17,10 +16,11 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-_T_NewPro =  _T_NewPro[Provider]
+_T_NewPro = _T_NewPro[Provider]
 
 _Ta = t.TypeVar("_Ta")
 _Tx = t.TypeVar("_Tx")
+
 
 class Foo:
     a = dict(list=list(range(10)), data=dict(bee="Im a bee"))
@@ -33,9 +33,7 @@ class Foo:
             return Foo
 
 
-
 class LookupMarkerProviderTests(ProviderTestCase[Provider]):
-    
     @pytest.fixture
     def new_args(self):
         return ()
@@ -48,5 +46,3 @@ class LookupMarkerProviderTests(ProviderTestCase[Provider]):
     def mock_injector(self, mock_graph, mock_injector):
         mock_injector[mock_graph[Foo]] = MagicMock(type[Foo], wraps=Foo)
         return mock_injector
-
-    

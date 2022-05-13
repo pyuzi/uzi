@@ -6,8 +6,6 @@ import typing as t
 from uzi import Dep
 
 
-
-
 from uzi.graph.nodes import Singleton as Dependency
 from uzi.injectors import Injector
 from uzi._functools import BoundParams
@@ -16,22 +14,20 @@ from uzi._functools import BoundParams
 from .abc import _T_NewNode, NodeTestCase
 
 
-
 xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
-
-
 
 
 T_NewDep = _T_NewNode[Dependency]
 
 
-_Ta = t.TypeVar('_Ta')
-_Tb = t.TypeVar('_Tb')
-_Tc = t.TypeVar('_Tc')
-_Tx = t.TypeVar('_Tx')
-_Ty = t.TypeVar('_Ty')
-_Tz = t.TypeVar('_Tz')
+_Ta = t.TypeVar("_Ta")
+_Tb = t.TypeVar("_Tb")
+_Tc = t.TypeVar("_Tc")
+_Tx = t.TypeVar("_Tx")
+_Ty = t.TypeVar("_Ty")
+_Tz = t.TypeVar("_Tz")
+
 
 @pytest.fixture
 def bound_params(value_setter, mock_graph):
@@ -43,46 +39,43 @@ def new_kwargs(new_kwargs, bound_params):
     return new_kwargs | dict(params=bound_params)
 
 
-
 class SingletonDependencyTests(NodeTestCase[Dependency]):
-
-
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
+
         def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps({_Ta: a, _Tb: b, dep_z: z}, mock_graph, mock_injector)
             val = self.value = object()
             return val
 
         return fn
 
     def test_validity(self, new: _T_NewNode, mock_injector: Injector):
-        subject= new()
+        subject = new()
         fn = subject.bind(mock_injector)
         val = fn()
         assert val is fn() is self.value
         assert val is fn() is self.value
 
 
-
-
 from uzi.graph.nodes import AsyncSingleton as Dependency
 
+
 class AsyncSingletonDependencyTests(NodeTestCase[Dependency]):
-
-
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
+
         async def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps({_Ta: a, _Tb: b, dep_z: z}, mock_graph, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
+
         return fn
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         fn = subject.bind(mock_injector)
         aw = fn()
         assert isawaitable(aw)
@@ -90,26 +83,30 @@ class AsyncSingletonDependencyTests(NodeTestCase[Dependency]):
         assert val is self.value
         assert val is await fn() is self.value
         assert val is await fn() is self.value
-
 
 
 from uzi.graph.nodes import AwaitParamsSingleton as Dependency
 
+
 class AwaitParamsSingletonDependencyTests(NodeTestCase[Dependency]):
-
-
     @pytest.fixture
-    def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
+    def value_setter(
+        self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]
+    ):
         dep_z = Dep(_Tz, default=object())
         mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
+
         def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps(
+                {_Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z}, mock_graph, mock_injector
+            )
             val = self.value = object()
             return val
+
         return fn
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         fn = subject.bind(mock_injector)
         aw = fn()
         assert isawaitable(aw)
@@ -120,24 +117,28 @@ class AwaitParamsSingletonDependencyTests(NodeTestCase[Dependency]):
         assert val is await fn() is self.value
 
 
-
 from uzi.graph.nodes import AwaitParamsAsyncSingleton as Dependency
 
+
 class AwaitParamsAsyncSingletonDependencyTests(NodeTestCase[Dependency]):
-
-
     @pytest.fixture
-    def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
+    def value_setter(
+        self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]
+    ):
         dep_z = Dep(_Tz, default=object())
         mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
+
         async def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
-            self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
+            self.check_deps(
+                {_Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z}, mock_graph, mock_injector
+            )
             val = self.value = await asyncio.sleep(0, object())
             return val
+
         return fn
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
-        subject= new()
+        subject = new()
         fn = subject.bind(mock_injector)
         val = await fn()
         assert val is self.value

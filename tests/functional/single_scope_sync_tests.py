@@ -1,7 +1,5 @@
-from inspect import signature
 import pytest
 import typing as t
-
 
 
 from uzi.containers import Container
@@ -16,9 +14,7 @@ skip = pytest.mark.skip
 parametrize = pytest.mark.parametrize
 
 
-
 class Tests(FunctionalTestCase):
-
     def test(self):
         container = Container()
         container.provide(Foo, Bar, Baz)
@@ -43,6 +39,3 @@ class Tests(FunctionalTestCase):
         assert isinstance(injector.make(Service), Service)
         assert injector.make(entry)
         assert injector.make(entry)
-
-
-        

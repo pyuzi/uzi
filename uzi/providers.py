@@ -263,11 +263,11 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
 
     @t.overload
     def use(self) -> abc.Callable[[_T], _T]:
-        ...
+        ...  # pragma: no cover
 
     @t.overload
     def use(self, using: t.Any) -> Self:
-        ...
+        ...  # pragma: no cover
 
     @_fluent_decorator()
     def use(self, using: _T_Concrete) -> Self:
@@ -279,7 +279,7 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
 
             @provider.use()
             def func():
-                ...
+                ...  # pragma: no cover
 
         Args:
             using (_T_Concrete): the object to provide. this depends on the type
@@ -323,7 +323,7 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
             self.__setattr(_frozen=True)
 
     def _onfreeze(self):
-        ...
+        ...  # pragma: no cover
 
     def _node_kwargs(self, **kwds):
         return self._default_node_kwargs | kwds
@@ -506,11 +506,11 @@ class Factory(
 
     @t.overload
     def use(self) -> abc.Callable[[_T], _T]:
-        ...
+        pass
 
     @t.overload
     def use(self, using: abc.Callable, *args, **kwargs) -> Self:
-        ...
+        pass
 
     @_fluent_decorator()
     def use(self, concrete, *args, **kwargs):
@@ -779,7 +779,7 @@ class ProviderRegistryMixin(ABC):
 
     @abstractmethod
     def __setitem__(self, abstract: Injectable, provider: Provider):  # pragma: no cover
-        ...
+        ...  # pragma: no cover
 
     def provide(
         self, *providers: t.Union[Provider, type, t.TypeVar, abc.Callable], **kwds
@@ -808,30 +808,30 @@ class ProviderRegistryMixin(ABC):
     if t.TYPE_CHECKING:  # pragma: no cover
 
         def alias(self, abstract: Injectable, alias: t.Any, *a, **kw) -> Alias:
-            ...
+            ...  # pragma: no cover
 
         def value(self, abstract: Injectable, value: t.Any, *a, **kw) -> Value:
-            ...
+            ...  # pragma: no cover
 
         def callable(
             self, abstract: Injectable, factory: _T_Fn = ..., *a, **kw
         ) -> Callable:
-            ...
+            ...  # pragma: no cover
 
         def factory(
             self, abstract: Injectable, factory: _T_Fn = ..., *a, **kw
         ) -> Factory:
-            ...
+            ...  # pragma: no cover
 
         def resource(
             self, abstract: Injectable, factory: _T_Fn = ..., *a, **kw
         ) -> Resource:
-            ...
+            ...  # pragma: no cover
 
         def singleton(
             self, abstract: Injectable, factory: _T_Fn = ..., *a, **kw
         ) -> Singleton:
-            ...
+            ...  # pragma: no cover
 
     alias = _provder_factory_method(Alias)
     value = _provder_factory_method(Value)

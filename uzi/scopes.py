@@ -267,7 +267,7 @@ class NullScope(Scope[NullInjector]):
     name = "<null>"
 
     def __init__(self) -> None:
-        ...
+        ...  # pragma: no cover
 
     def __bool__(self):
         return False

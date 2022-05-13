@@ -304,7 +304,7 @@ class NullGraph(Graph):
     name = "<null>"
 
     def __init__(self) -> None:
-        ...
+        ...  # pragma: no cover
 
     def extends(self, graph: Self):
         return False

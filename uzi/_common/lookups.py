@@ -16,7 +16,7 @@ _object_new = object.__new__
 
 
 class ExpressionError(Exception):
-    ...
+    ...  # pragma: no cover
 
 
 class EvaluationError(ExpressionError):
@@ -35,19 +35,19 @@ class EvaluationError(ExpressionError):
 
 
 class AttributeEvaluationError(EvaluationError, AttributeError):
-    ...
+    ...  # pragma: no cover
 
 
 class KeyEvaluationError(EvaluationError, KeyError):
-    ...
+    ...  # pragma: no cover
 
 
 class IndexEvaluationError(EvaluationError, IndexError):
-    ...
+    ...  # pragma: no cover
 
 
 class CallEvaluationError(EvaluationError, TypeError):
-    ...
+    ...  # pragma: no cover
 
 
 _eval_exc_types = {

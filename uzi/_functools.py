@@ -242,11 +242,11 @@ class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
 
     @t.overload
     def __getitem__(self, index: int) -> tuple[_T, bool]:
-        ...
+        ...  # pragma: no cover
 
     @t.overload
     def __getitem__(self, slice: slice) -> Self:
-        ...
+        ...  # pragma: no cover
 
     def __getitem__(self, index: t.Union[int, slice]) -> t.Union[tuple[_T, bool], Self]:
         v, fn = self.get_raw(index)
@@ -264,10 +264,10 @@ class _PositionalArgs(tuple[tuple[t.Any, Callable[[], _T]]], t.Generic[_T]):
     if t.TYPE_CHECKING:  # pragma: no cover
 
         def get_raw(index: int) -> tuple[t.Any, Callable[[], _T]]:
-            ...
+            ...  # pragma: no cover
 
         def iter_raw() -> Iterator[tuple[t.Any, Callable[[], _T]]]:
-            ...
+            ...  # pragma: no cover
 
     else:
         get_raw = tuple.__getitem__

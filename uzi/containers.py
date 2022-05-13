@@ -92,7 +92,7 @@ class _ContainerRegistry(ReadonlyDict[str, dict["BaseContainer", None]]):
         name: t.Union[str, list[str], tuple[str]] = None,
         group: t.Literal[False] = False,
     ) -> abc.Generator["BaseContainer", None, None]:
-        ...
+        ...  # pragma: no cover
 
     @t.overload
     def all(
@@ -102,7 +102,7 @@ class _ContainerRegistry(ReadonlyDict[str, dict["BaseContainer", None]]):
         name: t.Union[str, list[str], tuple[str]] = None,
         group: t.Literal[True] = True,
     ) -> abc.Generator[tuple["BaseContainer"], None, None]:
-        ...
+        ...  # pragma: no cover
 
     def all(
         self,
@@ -151,7 +151,7 @@ class _ContainerRegistry(ReadonlyDict[str, dict["BaseContainer", None]]):
         name: str = None,
         group: bool = True,
     ):
-        ...
+        ...  # pragma: no cover
 
     def find(self, *a, **kw):
         for v in self.all(*a, **kw):
@@ -181,7 +181,7 @@ class ProEntrySet(FrozenDict["BaseContainer", None]):
 
     @classmethod
     def make(cls, it: abc.Iterable["BaseContainer"] = ()):
-        return cls((v, None) for v in it)
+        return it if isinstance(it, cls) else cls((v, None) for v in it)
 
     fromkeys = make
 
@@ -224,7 +224,11 @@ class AtomicProEntrySet(ProEntrySet):
 
     @classmethod
     def make(cls, it: abc.Iterable["Container"] = ()):
-        return cls((a, None) for at in it for a in at.atomic)
+        return (
+            it
+            if isinstance(it, cls)
+            else cls((a, None) for at in it for a in at.atomic)
+        )
 
     def atomic(self):
         return self
@@ -256,7 +260,7 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
     @classmethod
     @abstractmethod
     def _collect(cls, *a, **kw) -> "Group":
-        ...
+        ...  # pragma: no cover
 
     @property
     def _is_anonymous(self) -> bool:
@@ -307,17 +311,17 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
     @property
     @abstractmethod
     def g(self) -> ReadonlyDict["Graph", "Graph"]:
-        ...
+        ...  # pragma: no cover
 
     @property
     @abstractmethod
     def module(self) -> str:
-        ...
+        ...  # pragma: no cover
 
     @property
     @abstractmethod
     def name(self) -> str:
-        ...
+        ...  # pragma: no cover
 
     def extends(self, other: Self) -> bool:
         """Check whether this container extends the given base.
@@ -564,11 +568,12 @@ class Group(BaseContainer):
     """A `Container` group."""
 
     __slots__ = (
-        "g",
+        "_g",
         "bases",
         "name",
         "module",
         "_pro",
+        "_is_anonymous",
         "__weakref__",
     )
     is_atomic = False
@@ -576,39 +581,39 @@ class Group(BaseContainer):
     bases: ProEntrySet
     _pro: FrozenDict[Self, int]
 
-    @t.overload
     def __new__(
         cls: type[Self],
-        it: t.Union[abc.Iterable[Container], Self] = (),
+        bases: t.Union[abc.Iterable[Container], Self] = (),
         *,
         name: str = None,
-        module: str = None,
-    ) -> Self:
-        ...
-
-    def __new__(
-        cls: type[Self],
-        it: t.Union[abc.Iterable[Container], Self] = (),
-        *,
         module: str,
-        **kwds,
     ) -> Self:
         self = _object_new(cls)
-        typ: type[it] = it.__class__
-        if issubclass(typ, cls):
-            if not kwds and module == it.module:
-                return it
-            else:
-                kwds["bases"], kwds["_pro"] = it.bases, it._pro
-        elif typ is ProEntrySet:
-            kwds["bases"], kwds["_pro"] = it, None
-        else:
-            kwds["bases"] = it = ProEntrySet.make(it)
-            kwds["_pro"] = None
+        # typ: type[bases] = bases.__class__
+        # if issubclass(typ, cls):
+        #     if not name and module == bases.module:
+        #         return bases
+        #     else:
+        #         bases = bases.bases
+        # else:
+        #     bases = ProEntrySet.make(bases)
 
-        kwds.setdefault("name", None)
-        self.__setattr(module=module, g=ReadonlyDict(), **kwds)
+        self.__setattr(
+            _pro=None,
+            bases=ProEntrySet.make(bases),
+            _is_anonymous=not name,
+            module=module,
+            name=name or f'[{"|".join(ordered_set(c.qualname for c in bases))}]',
+        )
         return self
+
+    @property
+    def g(self):
+        try:
+            return self._g
+        except AttributeError:
+            self.__setattr(_g=ReadonlyDict())
+            return self._g
 
     @property
     def atomic(self):
@@ -616,7 +621,7 @@ class Group(BaseContainer):
 
     @property
     def qualname(self) -> None:
-        return f'{self.module}:{self.name or "|".join(ordered_set(c.qualname for c in self.bases))}'
+        return f"{self.module}:{self.name}"
 
     @property
     def providers(self):

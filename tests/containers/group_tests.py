@@ -69,10 +69,8 @@ class GroupTest(BaseTestCase[_T_Ioc]):
 
     def test_create(self, new: _T_FnNew):
         sub = new()
-        assert sub is new(sub)
-        assert not sub is new(sub, name="abc")
-        assert not sub is new(sub, module="abc")
-        assert sub.bases is new(sub.bases).bases
+        assert sub != new(sub.bases)
+        assert sub.bases == new(sub.bases).bases
 
     def test_pro(self, new: _T_FnNew, MockContainer):
         conts = [MockContainer(name=f"{x}") for x in range(4)]

@@ -97,7 +97,7 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     __contains = dict.__contains__
 
     def close(self):
-        ...
+        ...  # pragma: no cover
 
     def copy(self):
         return self
@@ -154,7 +154,7 @@ class NullInjector(Injector):
         return self.scope.graph
 
     def __init__(self, *a, **kw) -> None:
-        ...
+        ...  # pragma: no cover
 
     def __reduce__(self):
         return self.__class__, ()

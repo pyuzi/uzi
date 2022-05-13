@@ -125,12 +125,12 @@ __static_makers = {
 
 @t.overload
 def is_dependency_marker(obj: "DependencyMarker") -> True:
-    ...
+    ...  # pragma: no cover
 
 
 @t.overload
 def is_dependency_marker(obj: object) -> False:
-    ...
+    ...  # pragma: no cover
 
 
 def is_dependency_marker(obj: t.Any, ind=0) -> bool:
@@ -149,7 +149,7 @@ def is_dependency_marker(obj: t.Any, ind=0) -> bool:
 
 
 class DependencyMarkerType(ABCMeta):
-    ...
+    ...  # pragma: no cover
 
 
 class DependencyMarker(
@@ -165,7 +165,7 @@ class DependencyMarker(
     @property
     @abstractmethod
     def __origin__(self):
-        ...
+        ...  # pragma: no cover
 
 
 _3_nones = None, None, None
@@ -405,7 +405,7 @@ class ProOperatorPredicate(ProPredicate):
     @staticmethod
     @abstractmethod
     def operate(pros: abc.Set["Container"]) -> abc.Iterable["Container"]:
-        ...
+        ...  # pragma: no cover
 
     def _reduce(self, it: abc.Iterable[abc.Iterable["Container"]]):
         return reduce(self.operate, it)
@@ -727,7 +727,7 @@ class Lookup(DependencyMarker, BaseLookup):
 
     @t.overload
     def __new__(cls: type[Self], abstract: type[T_Injected]) -> Self:
-        ...
+        ...  # pragma: no cover
 
     __new__ = BaseLookup.__new__
 

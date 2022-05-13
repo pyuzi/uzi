@@ -99,7 +99,7 @@ class DepKey:
 
 
 @private_setattr
-class ProMap(ReadonlyDict[DepSrc, _T_Pro]):
+class ProPathMap(ReadonlyDict[DepSrc, _T_Pro]):
     __slots__ = 'graph', 'pro',
 
     graph: 'DepGraph'
@@ -146,7 +146,7 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
     
     container: 'Container'
     parent: Self
-    pros: ProMap
+    pros: ProPathMap
     stack: 'ResolutionStack'
     keyclass: type[DepKey]
 
@@ -160,7 +160,7 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
             keyclass=type(f'BindKey', (DepKey,), {'graph': self}),
         )
         self.__setattr(
-            pros=ProMap(self),
+            pros=ProPathMap(self),
             stack=ResolutionStack(container),
         )
     

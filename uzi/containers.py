@@ -1,11 +1,11 @@
 from abc import ABC, ABCMeta, abstractmethod
-from itertools import groupby
+from itertools import groupby, zip_longest
 import re
 import sys
 from types import MappingProxyType
 import typing as t
 from logging import getLogger
-from collections import abc, defaultdict
+from collections import ChainMap, abc, defaultdict
 from typing_extensions import Self
 from weakref import WeakKeyDictionary, WeakSet, WeakValueDictionary, ref
 from importlib import import_module
@@ -34,110 +34,183 @@ def _calling_module(depth=2) -> t.Optional[str]:
     name = sys._getframe(depth).f_globals.get('__name__')
     try:
         name and import_module(name) 
-    except Exception:
+    except Exception: # pragma: no cover
         return
     else:
+        if name == __name__:
+            name = _calling_module(depth+2)    
         return name
 
 
 
-class _ContainerRegistry(ReadonlyDict[t.Union[tuple[str], str], t.Union[abc.Set['Container'], Self]]):
+class _ContainerRegistry(ReadonlyDict[str, dict['BaseContainer', None]]):
     __slots__ = ()
 
-    __getitem = dict[str, abc.MutableSet['Container']].__getitem__
+    __getitem = dict[str, dict['BaseContainer', None]].__getitem__
+    __get = dict[str, dict['BaseContainer', None]].get
+    __contains = dict[str, dict['BaseContainer', None]].__contains__
 
     _placeholders = {
-        '**': '[^{placeholders}]*',
-        '*': '[^{placeholders}.]*',
-        '++': '[^{placeholders}]+',
-        '+': '[^{placeholders}.]+',
+        '**': r'.*', # '[^{placeholders}]*',
+        '*': r'[^.|:]*', #'[^{placeholders}.]*',
+        '++': r'.+', # '[^{placeholders}]+',
+        '+': r'[^.|:]+', # '[^{placeholders}.]+',
     }
-    
+
     _pattern_split_re = re.compile(f"({'|'.join(map(re.escape, _placeholders))})")
     pfmt = { 'placeholders': re.escape(''.join({*''.join(_placeholders)})) }
     for k in _placeholders:
         _placeholders[k] = _placeholders[k].format_map(pfmt)
     del k, pfmt
-
-    def put(self, inst: 'Container') -> 'Container':
-        self.__getitem(inst.qualname).add(inst)
-        return inst
-    
+       
     @classmethod
-    def complie_pattern(cls, pattern: t.Union[str, re.Pattern]):
+    def _complie_pattern(cls, pattern: t.Union[str, re.Pattern]):
         if isinstance(pattern, re.Pattern):
             return pattern
         parts = cls._pattern_split_re.split(pattern)
         pattern = ''.join(cls._placeholders.get(x, re.escape(x)) for x in parts)
         return re.compile(f'^{pattern}$')
 
-    def find(self, *patterns: t.Union[str, re.Pattern], module: str=None, name: str=None, group: bool=False):
-        if module or name:
+    def add(self, *instances: 'BaseContainer'):
+        for inst in instances:
+            inst._is_anonymous or self.__getitem(inst.qualname).setdefault(inst)
+    
+    def get(self, key: str, default = None):
+        ret = self.__get(key)
+        return default if ret is None else tuple(ret)
 
-            patterns = (f'{module or "**"}:{name or "**"}',) + patterns
+    @t.overload
+    def all(self, 
+            *patterns: t.Union[str, re.Pattern], 
+            module: t.Union[str, list[str], tuple[str]]=None, 
+            name: t.Union[str, list[str], tuple[str]]=None, 
+            group: t.Literal[False]=False) -> abc.Generator['BaseContainer', None, None]: ...
+
+    @t.overload
+    def all(self, 
+            *patterns: t.Union[str, re.Pattern], 
+            module: t.Union[str, list[str], tuple[str]]=None, 
+            name: t.Union[str, list[str], tuple[str]]=None, 
+            group: t.Literal[True]=True) -> abc.Generator[tuple['BaseContainer'], None, None]: ...
+
+    def all(self, 
+            *patterns: t.Union[str, re.Pattern], 
+            module: t.Union[str, list[str], tuple[str]]=None, 
+            name: t.Union[str, list[str], tuple[str]]=None, 
+            group: bool=False):
         
+        if module or name:
+            if not isinstance(module, (list, tuple)):
+                module = f'{module or "**"}',
+            if not isinstance(name, (list, tuple)):
+                name = f'{name or "**"}',
+
+            lm, ln = len(module), len(name)
+            if lm == ln:
+                it = zip(module, name)
+            elif lm == 1:
+                it = zip(module * ln, name)
+            elif ln == 1:
+                it = zip(module, name * lm)
+            else:
+                raise ValueError(
+                    f'`module` and `name` lists can either be of equal lengths '
+                    f'or one of them must contain a single item.'
+                )
+            patterns = tuple(':'.join(mn) for mn in it) + patterns
+        elif not patterns:
+            patterns = "**",
+
         seen = set()
-        for pattern in patterns:
-            cp = self.complie_pattern(pattern)
+        for pattern in (self._complie_pattern(p) for p in patterns):
             for k, v in self.items():
-                if not (k in seen or not cp.search(k) or seen.add(k)):
+                if not (k in seen or not pattern.search(k) or seen.add(k)):
                     if group:
                         yield tuple(v)
                     else:
-                        yield from tuple(v)
+                        yield from v
 
     @t.overload                        
-    def first(self, *patterns: t.Union[str, re.Pattern], module: str=None, name: str=None, group: bool=True): ...
-    def first(self, *a, **kw):
-        for v in self.find(*a, **kw):
+    def find(self, *patterns: t.Union[str, re.Pattern], module: str=None, name: str=None, group: bool=True): ...
+    def find(self, *a, **kw):
+        for v in self.all(*a, **kw):
             return v
 
-    def __getitem__(self, k: str) -> list['Container']:
+    def __contains__(self, k: t.Union[str, 'BaseContainer']):
+        if isinstance(k, BaseContainer):
+            return k in self.__get(k.qualname, ())
+        return self.__contains(k)
+
+    def __getitem__(self, k: str) -> tuple['BaseContainer']:
         return tuple(self.__getitem(k))
 
-    def __missing__(self, key: t.Union[tuple[str], str]):
-        return _dict_setdefault(self, key, WeakSet())
+    def __missing__(self, key: str):
+        return _dict_setdefault(self, key, WeakKeyDictionary())
 
     def __repr__(self):
         return f'{self.__class__.__name__}({({k: self[k] for k in self})})'
 
 
 
-class ProGroup(FrozenDict['Container', None]):
+class ProEntries(FrozenDict['BaseContainer', None]):
     
     __slots__ = ()
 
     __contains = dict.__contains__
-    __getitem = dict.__getitem__
+    is_atomic: bool = False
 
     @classmethod
-    def atomic(cls, it: abc.Iterable['Container']=()):
-        return cls((o, o) for e in it for o in e.origin)
+    def make(cls, it: abc.Iterable['BaseContainer']=()):
+        return cls((v,None) for v in it)
+    fromkeys = make
+
+    def atomic(self):
+        return AtomicProEntries.make(self)
 
     def _eval_hashable(self):
-        return tuple(self)
+        return tuple(self.atomic())
+    
+    __hash__ = FrozenDict.__hash__
 
-    def __contains__(self, k) -> bool:
-        return self.__contains(k) or any(k in c for c in self)
-
-    # def __len__(self, o: Self) -> bool:
-    #     return sum(len(c) for c in self)
+    def __contains__(self, k: 'BaseContainer') -> bool:
+        if self.__contains(k):
+            return True
+        elif getattr(k, 'is_atomic', True):
+            return not self.is_atomic and any(k in c for c in self if not c.is_atomic)
+        else:
+            return all(a in self for a in k.atomic) 
 
     def __eq__(self, o: Self) -> bool:
-        if o.__class__ is self.__class__:
-            return self.keys() == o.keys()
+        if isinstance(o, ProEntries):
+            return self._eval_hashable() == o._eval_hashable()
+        elif isinstance(o, abc.Mapping):
+            return False
         return NotImplemented
 
     def __ne__(self, o: Self) -> bool:
-        if o.__class__ is self.__class__:
-            return self.keys() != o.keys()
+        if isinstance(o, ProEntries):
+            return self._eval_hashable() != o._eval_hashable()
+        elif isinstance(o, abc.Mapping):
+            return True
         return NotImplemented
 
-    def __getitem__(self, k: Injectable) -> t.Optional[Provider]:
-        for c in self:
-            if ret := c[k]:
-                return ret
-  
+
+class AtomicProEntries(ProEntries):
+    
+    __slots__ = ()
+
+    is_atomic: bool = True
+    
+    @classmethod
+    def make(cls, it: abc.Iterable['Container']=()):
+        return cls((a,None) for at in it for a in at.atomic)
+
+    def atomic(self):
+        return self
+
+    def _eval_hashable(self):
+        return tuple(self)
+    
 
 
 class ContainerMeta(ABCMeta):
@@ -149,7 +222,8 @@ class ContainerMeta(ABCMeta):
         if not 'module' in kwds:
             kwds['module'] = _calling_module()
         res: Container = super().__call__(*args, **kwds)
-        return self._registry.put(res)
+        self._registry.add(res)
+        return res
 
 
 
@@ -158,34 +232,37 @@ class ContainerMeta(ABCMeta):
 class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
     
     __slots__ = ()
-    is_leaf: bool = True
-    bases: ProGroup = ProGroup()
+    is_atomic: bool = True
     
-    _origin_abc: type[Self] = None
-    _collection_class: type['Group'] = None
-
-    def __init_subclass__(cls, **kwds) -> None:
-        # cls._origin_abc = kwds.get('abc', cls._origin_abc)
-        if cls._origin_abc is True:
-            cls._origin_abc = cls
-
-        if cls._collection_class is Self:
-            cls._collect = cls
-        elif cls._collection_class:
-            cls._collect = cls._collection_class
-            
-        return super().__init_subclass__()
-
-    @t.final
-    def _collect(self, *a, **kw) -> 'Group':
-        return Group(*a, **kw)
+    @classmethod
+    @abstractmethod
+    def _collect(cls, *a, **kw) -> 'Group': ...
 
     @property
-    def origin(self) -> abc.Set[Self]:
-        """`ProEnty`(s) 
+    def _is_anonymous(self) -> bool:
+        """`True` if this container can be added to the registry or `False` if 
+            otherwise.
         """
-        return {self}
+        return not self.name
+    
+    @property
+    @abstractmethod
+    def atomic(self):
+        """`AtomicProEntries`(s) 
+        """
+        
+    @property
+    @abstractmethod
+    def bases(self) -> abc.Mapping[Injectable, Provider]:
+        """the base container.
+        """
 
+    @property
+    @abstractmethod
+    def providers(self) -> abc.Mapping[Injectable, Provider]:
+        """A mapping of providers registered in the container.
+        """
+        
     @property
     @abstractmethod
     def _pro(self) -> t.Optional[FrozenDict[Self, int]]:
@@ -232,6 +309,10 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
             bool:
         """
         return other in self.pro
+        # if other.is_atomic:
+        #     return other in self.pro
+        # else:
+        #     return all(self.extends(x) for x in other.atomic)
 
     def get_graph(self, base: 'DepGraph'):
         try:
@@ -248,10 +329,10 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
         return tuple(c for c in it if c in pro)
         
     def _evaluate_pro(self):
-        if self.is_leaf:
+        if self.is_atomic:
             res, bases = {self:0}, [*self.bases]
         else:
-            res, bases = {}, [*self.origin]
+            res, bases = {}, [*self.atomic]
 
         if bases:
             i, miss = 0, 0
@@ -278,27 +359,20 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
                 else:
                     ml.pop(i)
 
-        return FrozenDict({c: i for i,c in enumerate(res)})
+        return AtomicProEntries.fromkeys(res)
 
     def __eq__(self, o) -> bool:
-        if True: # self.is_leaf:
+        if isinstance(o, BaseContainer):
             return self is o
-        elif isinstance(o, BaseContainer):
-            return (self.origin, self._origin_abc) == (o, o._origin_abc)
         return NotImplemented
 
     def __ne__(self, o) -> bool:
-        if True: # self.is_leaf:
+        if isinstance(o, BaseContainer):
             return not self is o
-        elif isinstance(o, BaseContainer):
-            return (self.origin, self._origin_abc) != (o, o._origin_abc)
         return NotImplemented
 
     def __hash__(self) -> int:
-        if True: # self.is_leaf:
-            return id(self)
-        else:
-            return hash(self.origin)
+        return id(self)
 
     def __or__(self, o):
         if isinstance(o, BaseContainer):
@@ -308,11 +382,11 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
     
     __ior__ = __or__
 
-    def __ror__(self, o):
-        if isinstance(o, BaseContainer):
-            return self._collect((o, self))
-        else:
-            return super().__ror__(o)
+    # def __ror__(self, o):
+    #     if isinstance(o, BaseContainer):
+    #         return self._collect((o, self))
+    #     else:
+    #         return super().__ror__(o)
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.qualname!r})"
@@ -320,7 +394,7 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
 
 
 
-class Container(BaseContainer, ProviderRegistryMixin): #, ReadonlyDict[Injectable, Provider]):
+class Container(BaseContainer, ProviderRegistryMixin):
     """A mapping of dependencies to their providers. We use them to bind 
     dependencies to their providers. 
    
@@ -332,19 +406,14 @@ class Container(BaseContainer, ProviderRegistryMixin): #, ReadonlyDict[Injectabl
     """
     __slots__ = 'module', 'name', 'providers', 'bases', 'default_access_level', 'g', '_pro', '__weakref__',
     
-    _origin_abc = True
-
     name: str
-    bases: ProGroup
+    bases: ProEntries
     default_access_level: AccessLevel 
     g: ReadonlyDict['DepGraph', 'DepGraph']
     providers: ReadonlyDict[Injectable, Provider]
     _pro: FrozenDict[Self, int]
-    is_leaf: t.Final = True
+    is_atomic: t.Final = True
     
-    __setitem = dict[Injectable,  Provider].__setitem__
-    __contains = dict[Injectable,  Provider].__contains__
-
     def __init__(self, name: str=None, *bases: Self, module: str, access_level: AccessLevel=PUBLIC) -> None:
         """Create a container.
         
@@ -359,8 +428,8 @@ class Container(BaseContainer, ProviderRegistryMixin): #, ReadonlyDict[Injectabl
         
         self.__setattr(
             _pro=None, 
-            bases=ProGroup(),
-            name=name or f'', 
+            bases=ProEntries(),
+            name=name or f'__anonymous__', 
             providers=ReadonlyDict(),
             module=module, 
             g=ReadonlyDict(),
@@ -370,6 +439,13 @@ class Container(BaseContainer, ProviderRegistryMixin): #, ReadonlyDict[Injectabl
         bases and self.extend(*bases)
         signals.on_container_create.send(self.__class__, container=self)
 
+
+    @property
+    def atomic(self):
+        """`AtomicProEntries`(s) 
+        """
+        return AtomicProEntries(((self, None),))
+
     def extend(self, *bases: Self) -> Self:
         """Adds containers to extended by this container.
         Args:
@@ -378,7 +454,7 @@ class Container(BaseContainer, ProviderRegistryMixin): #, ReadonlyDict[Injectabl
         Returns:
             Self: this container
         """
-        self.__setattr(bases=self.bases | ProGroup.atomic(bases))
+        self.__setattr(bases=self.bases | ProEntries.make(bases))
         return self
 
     def access_level(self, accessor: Self):
@@ -399,12 +475,15 @@ class Container(BaseContainer, ProviderRegistryMixin): #, ReadonlyDict[Injectabl
         else:
             return PUBLIC
 
+    @classmethod
+    def _collect(cls, *a, **kw) -> 'Group': 
+        return Group(*a, **kw)
+
     def _on_register(self, abstract: Injectable, provider: Provider):
         pass
 
-
     def __contains__(self, x):
-        return x in self.providers or x in self.bases
+        return x in self.providers or any(x in b for b in self.bases)
 
     def __setitem__(self, key: Injectable, provider: Provider) -> Self:
         """Register a dependency provider 
@@ -448,10 +527,10 @@ class Container(BaseContainer, ProviderRegistryMixin): #, ReadonlyDict[Injectabl
 class Group(BaseContainer):
     """A `Container` group.
     """
-    __slots__ = 'g', 'origin', 'name', 'module', '_pro', '__weakref__',
-    _origin_abc = True
-
-    origin: ProGroup
+    __slots__ = 'g', 'bases', 'name', 'module', '_pro', '__weakref__',
+    is_atomic = False
+    
+    bases: ProEntries
     _pro: FrozenDict[Self, int]
     
     @t.overload
@@ -463,48 +542,52 @@ class Group(BaseContainer):
             if not kwds and module == it.module:
                 return it
             else:
-                kwds['origin'], kwds['_pro'] = it.origin, it._pro
-        elif typ is ProGroup:
-            kwds['origin'], kwds['_pro'] = it, None
+                kwds['bases'], kwds['_pro'] = it.bases, it._pro
+        elif typ is ProEntries:
+            kwds['bases'], kwds['_pro'] = it, None
         else:
-            kwds['origin'] = it = ProGroup.atomic(it)
+            kwds['bases'] = it = ProEntries.make(it)
             kwds['_pro'] = None
 
-        kwds['name'] = kwds.get('name') or '|'.join(ordered_set(c.qualname for c in it))
+        kwds.setdefault('name', None)
         self.__setattr(module=module, g=ReadonlyDict(), **kwds)
         return self
 
     @property
-    def providers(self):
-        return MappingProxyType(self.origin)
+    def atomic(self):
+        return self.bases.atomic()
 
+    @property
+    def qualname(self) -> None:
+        return f'{self.module}:{self.name or "|".join(ordered_set(c.qualname for c in self.bases))}'
+
+    @property
+    def providers(self):
+        return ChainMap(*(a.providers for a in self.bases))
+
+    @classmethod
+    def _collect(cls, *a, **kw): 
+        return cls(*a, **kw)
 
     def __sub__(self, o):
         if isinstance(o, BaseContainer):
-            check = o.origin
-            return self._collect(x for x in self.origin if not x in check)
+            check = o.atomic
+            return self._collect(x for x in self.atomic if not x in check)
         return NotImplemented
-        
-    def __rsub__(self, o):
-        if isinstance(o, Group):
-            check = self.origin
-            return self._collect(x for x in o.origin if not x in check)
-        return NotImplemented
+    __isub__ = __sub__
+    
+    # def __rsub__(self, o):
+    #     if isinstance(o, Group):
+    #         check = self.atomic
+    #         return self._collect(x for x in o.atomic if not x in check)
+    #     return NotImplemented
     
     def __bool__(self):
-        return not not self.origin
+        return not not self.bases
 
-    def __iter__(self):
-        yield from self.origin
+    def __contains__(self, x):
+        return any(x in b for b in self.bases)
 
-    def __contains__(self, k):
-        return k in self.origin
-
-    def __getitem__(self, k):
-        return self.origin[k]
-    
-    def _resolve(self, key: 'DepKey', bindings: 'DepGraph'):
-        return ()
     
 
 ContainerMeta.register = None

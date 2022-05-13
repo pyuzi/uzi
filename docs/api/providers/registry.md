@@ -1,4 +1,2 @@
-# AbstractProviderRegistry
-
-::: uzi.providers.ProviderRegistry
+::: uzi.providers.ProviderRegistryMixin
 

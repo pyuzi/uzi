@@ -1,5 +1,6 @@
 from collections import abc
 import typing as t
+from unicodedata import name
 import pytest
 
 
@@ -8,7 +9,7 @@ from collections.abc import Callable
 from uzi._common import FrozenDict, ReadonlyDict
 
 
-from uzi.containers import BaseContainer, Container, Group
+from uzi.containers import BaseContainer, Container, Group, ProEntries
 from uzi.exceptions import ProError
 from uzi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, ProNoopPredicate, ProPredicate
 from uzi.providers import Provider, ProviderRegistryMixin
@@ -35,24 +36,61 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
     type_: t.ClassVar[type[_T_Ioc]] = Container
 
     def test_basic(self, new: _T_FnNew):
-        sub = new('test_ioc')
-        str(sub)
+        sub = new('tname', module='tmodule')
+        print(f'{sub=}')
+
         assert isinstance(sub, Container)
         assert isinstance(sub, ProviderRegistryMixin)
         # assert isinstance(sub.bases, abc.I)
 
         assert sub
-        assert sub.name == 'test_ioc'
+        assert sub.name == 'tname'
+        assert sub.module== 'tmodule'
+        assert sub.qualname== 'tmodule:tname'
+        assert sub.is_atomic
         assert sub[_T] is None
-        
+        assert not sub._is_anonymous
+        assert not new(None)._is_anonymous
+        assert {sub} == set(sub.atomic)
+        str(sub)
+        hash(sub)
+
+    @xfail(raises=ValueError, strict=True)
+    @parametrize('name', [ '1abc', ' abc', '=xyz', 'foo.bar', 'foo-bar'])
+    def test_create_with_invalid_name(self, new: _T_FnNew, name):
+        new(name=name)
+
     def test_compare(self, new: _T_FnNew):
         c1, c2 = new('c'), new('c')
         assert isinstance(hash(c1), int)
         assert c1 != c2 and not (c1 == c2) and c1.name == c2.name
+        assert not c1 == object()
+        assert c1 != object()
       
-    # def test_immutable(self, new: _T_FnNew, immutable_attrs):
-    #     self.assert_immutable(new(), immutable_attrs)
+    def test_immutable(self, new: _T_FnNew, immutable_attrs):
+        self.assert_immutable(new(), immutable_attrs)
 
+    def test_and(self, new: _T_FnNew):
+        c1, c2, c3 = new('c1'), new('c2'), new('c3')
+        assert isinstance(c1 & c2 & c3, ProPredicate)
+        assert not isinstance(c1 & c2 & c3, Container)
+        pred = ProNoopPredicate()
+        assert isinstance(c1 & pred, ProPredicate)
+        assert isinstance(pred & c1, ProPredicate)
+
+    def test_invert(self, new: _T_FnNew):
+        c1 = new('c1')
+        assert isinstance(~c1, ProPredicate)
+        assert not isinstance(~c1, Container)
+
+    def test_or(self, new: _T_FnNew):
+        c1, c2, c3 = new('c1'), new('c2'), new('c3')
+        assert isinstance(c1 | c2 | c3, Group)
+        pred = ProNoopPredicate()
+        for res in (c1 | pred, pred | c1, c1 | pred | c2):
+            assert isinstance(res, ProPredicate)
+            assert not isinstance(res, BaseContainer)
+            
     def test_extend(self, new: _T_FnNew):
         c1, c2, c3, c4 = new('c1'), new('c2'), new('c3'), new('c4')
         assert c1.extend(c3).extend(c2.extend(c4), c2) is c1
@@ -66,7 +104,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         c1.extend(c2.extend(c4.extend(c5, c6)))
         c1.extend(c3.extend(c5))
         pro = c1._evaluate_pro()
-        assert isinstance(pro, FrozenDict)
+        assert isinstance(pro, ProEntries)
         print(*(f'{c}' for c in c1.pro), sep='\n  - ')
         assert pro == c1.pro
         assert tuple(pro) == (c1, c2, c4, c3, c5, c6)
@@ -85,6 +123,19 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert c1.pro_entries(containers, None, None) == containers[:6]
         assert c1.pro_entries(containers[3:], None, None) == containers[3:6]
         assert all(c in c1.pro for c in c1.pro_entries(containers, None, None))
+
+    def test_extends(self, new: _T_FnNew):
+        sub, c1, c2, c3, c4 =  new(), new('c1'), new('c2'), new('c3'), new('c4')
+        
+        sub.extend(c1, c2.extend(c3))
+
+        assert all(sub.extends(c) for c in (sub, c1, c2, c3))
+        assert not sub.extends(c4)
+        assert sub.extends(c1 | c2)
+        assert sub.extends(c1 | c3)
+        assert sub.extends(sub | c1 | c2 | c3)
+        assert not sub.extends(c1 | c4)
+        assert not sub.extends(sub | c4 | c2)
 
     def test_access_level(self, new: _T_FnNew):
         c1, c2, c3, c4, c5, c6, c7 = tuple(new(f'c{i}') for i in range(7))
@@ -127,27 +178,6 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert sub[pro2] is pro2
         assert sub[pro3] is None
 
-    def test_and(self, new: _T_FnNew):
-        c1, c2, c3 = new('c1'), new('c2'), new('c3')
-        assert isinstance(c1 & c2 & c3, ProPredicate)
-        assert not isinstance(c1 & c2 & c3, Container)
-        pred = ProNoopPredicate()
-        assert isinstance(c1 & pred, ProPredicate)
-        assert isinstance(pred & c1, ProPredicate)
-
-    def test_invert(self, new: _T_FnNew):
-        c1 = new('c1')
-        assert isinstance(~c1, ProPredicate)
-        assert not isinstance(~c1, Container)
-
-    def test_or(self, new: _T_FnNew):
-        c1, c2, c3 = new('c1'), new('c2'), new('c3')
-        assert isinstance(c1 | c2 | c3, Group)
-        pred = ProNoopPredicate()
-        for res in (c1 | pred, pred | c1, c1 | pred | c2):
-            assert isinstance(res, ProPredicate)
-            assert not isinstance(res, BaseContainer)
-            
     def test__resolve(self, new: _T_FnNew, mock_graph: DepGraph, MockDepKey: type[DepKey], MockProvider: type[Provider]):
         T1, T2, T3, T4 = t.TypeVar('T1'), t.TypeVar('T2'), t.TypeVar('T3'), t.TypeVar('T4'),
         c1, c2, c3 = new('child'), new('subject'), new('base')

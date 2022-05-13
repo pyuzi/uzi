@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, NonCallableMagicMock
 import pytest
 import typing as t
 from uzi import is_injectable
-from uzi.containers import Container
+from uzi.containers import Container, Group
 from uzi.markers import Injectable
 from uzi.injectors import Injector
 from uzi.markers import ProPredicate
@@ -57,15 +57,22 @@ def value_factory(value_factory_spec):
 
 
 @pytest.fixture
-def MockContainer():
-    def make(spec=Container, **kw):
-        mi: Container = NonCallableMagicMock(spec)
+def MockContainer(request: pytest.FixtureRequest):
+    def make(**kw):
+        mi: Container = NonCallableMagicMock(Container)
         mi.pro = (mi,)
         mi.__bool__.return_value = True
         mi.__hash__.return_value = id(mi)
         mi.__getitem__.return_value = None
+        mi.is_atomic = True
+        mi.atomic = {mi}
         mi._resolve = MagicMock(wraps=lambda k,s: tuple(filter(None, [mi[getattr(k, 'abstract', k)]]))) # mi.__getitem__
 
+        kw.setdefault('module', request.module.__name__)
+        kw.setdefault('name', 'test')
+        kw.setdefault('qualname', f"{kw['module']}:{kw['name']}")
+        kw.setdefault('_is_anonymous', False)
+        
         G = {}
         def mock_graph(k):
             if k in G:
@@ -79,8 +86,46 @@ def MockContainer():
 
         for k,v in kw.items():
             setattr(mi, k, v)
+        
+        
         return mi
     return MagicMock(type[Container], wraps=make)
+
+
+
+
+@pytest.fixture
+def MockGroup(MockContainer, request: pytest.FixtureRequest):
+    def make(**kw):
+        mi: Group = NonCallableMagicMock(Group)
+        mi.pro = mi.atomic = dict.fromkeys(MockContainer() for _ in range(3))
+        mi.__bool__.return_value = True
+        mi.__hash__.return_value = id(mi)
+        mi.is_atomic = False
+        mi._resolve = MagicMock(wraps=lambda k,s: tuple(filter(None, [mi[getattr(k, 'abstract', k)]]))) # mi.__getitem__
+        
+        kw.setdefault('module', request.module.__name__)
+        kw.setdefault('name', f'test')
+        kw.setdefault('qualname', f"{kw['module']}:{kw['name']}")
+        kw.setdefault('_is_anonymous', not kw['name'])
+        
+        G = {}
+        def mock_graph(k):
+            if k in G:
+                return G[k]
+            mg = MagicMock(DepGraph)
+            mg.container = mi
+            mg.parent = k
+            return G.setdefault(k, mg)
+
+        mi.get_graph = MagicMock(wraps=mock_graph)
+
+        for k,v in kw.items():
+            setattr(mi, k, v)
+        
+        
+        return mi
+    return MagicMock(type[Group], wraps=make)
 
 
 

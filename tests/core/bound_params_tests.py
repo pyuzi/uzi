@@ -17,8 +17,6 @@ xfail = pytest.mark.xfail
 parametrize = pytest.mark.parametrize
 
 
-
-
 class Foo:
     def __init__(self) -> None:
         pass
@@ -40,7 +38,6 @@ class FooBar:
 
 
 class BoundParamsTests(BaseTestCase[BoundParams]):
-
     def test__iter_bind(self, cls: type[BoundParams], mock_graph: Graph):
         def func(foo: Foo, /, *args, bar: Bar, baz: Baz = None, **kwds):
             pass

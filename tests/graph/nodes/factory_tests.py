@@ -5,7 +5,6 @@ import pytest
 import typing as t
 
 
-
 from uzi import Dep
 from uzi.graph.nodes import Factory as Dependency
 from uzi._functools import BoundParams

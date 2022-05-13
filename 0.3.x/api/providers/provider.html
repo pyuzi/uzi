@@ -620,8 +620,8 @@
   
   
     <li class="md-nav__item">
-      <a href="../graph/index.html" class="md-nav__link">
-        Index
+      <a href="../graph/core.html" class="md-nav__link">
+        core
       </a>
     </li>
   
@@ -635,7 +635,7 @@
   
     <li class="md-nav__item">
       <a href="../graph/nodes.html" class="md-nav__link">
-        Nodes
+        nodes
       </a>
     </li>
   
@@ -1232,7 +1232,7 @@
 
     <div class="doc doc-contents first">
         <p class="doc doc-class-bases">
-          Bases: <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="uzi.graph._T_Concrete" href="../graph/nodes.html#uzi.graph.nodes._T_Concrete">_T_Concrete</a>, <a class="autorefs autorefs-internal" title="uzi.graph._T_Node" href="../graph/nodes.html#uzi.graph.nodes._T_Node">_T_Node</a>]</code></p>
+          Bases: <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="uzi.graph.nodes._T_Concrete" href="../graph/nodes.html#uzi.graph.nodes._T_Concrete">_T_Concrete</a>, <a class="autorefs autorefs-internal" title="uzi.graph.nodes._T_Node" href="../graph/nodes.html#uzi.graph.nodes._T_Node">_T_Node</a>]</code></p>
 
 
       <p>The base class for all providers.</p>
@@ -1254,7 +1254,7 @@
           <td>
                 <code>Any</code>
           </td>
-          <td><p>The object used to resolve </p></td>
+          <td><p>The object used to resolve</p></td>
         </tr>
         <tr>
           <td><code>container</code></td>
@@ -1269,14 +1269,14 @@
                 <code><span title="typing">t</span>.<span title="typing.Optional">Optional</span>[<a class="autorefs autorefs-internal" title="uzi.markers.AccessLevel" href="../markers.html#uzi.markers.AccessLevel">AccessLevel</a>]</code>
           </td>
           <td><p>The minimum access level required
-to access provider </p></td>
+to access provider</p></td>
         </tr>
         <tr>
           <td><code>is_default</code></td>
           <td>
                 <code>bool</code>
           </td>
-          <td><p>Whether this provider is the default. 
+          <td><p>Whether this provider is the default.
 A default provider only gets used if none other was provided to override it.</p></td>
         </tr>
         <tr>
@@ -1284,8 +1284,8 @@ A default provider only gets used if none other was provided to override it.</p>
           <td>
                 <code>bool</code>
           </td>
-          <td><p>Whether this provider is final. 
-A final provider will error if overridden by containers further 
+          <td><p>Whether this provider is final.
+A final provider will error if overridden by containers further
 down the provider resolution order.</p></td>
         </tr>
         <tr>
@@ -1343,10 +1343,10 @@ down the provider resolution order.</p></td>
 
     <div class="doc doc-contents ">
 
-      <p><em>Mark/Unmark</em> this provider as the default. Updates the provider's 
+      <p><em>Mark/Unmark</em> this provider as the default. Updates the provider's
 <code>is_default</code> attribute.</p>
-<p>A default provider will be skipped if the dependency they provide has 
-another provider. This means that a default provider will only get used 
+<p>A default provider will be skipped if the dependency they provide has
+another provider. This means that a default provider will only get used
 if no other providers for the given dependency were defined in the current scope.</p>
 
   <p><strong>Parameters:</strong></p>
@@ -1365,7 +1365,7 @@ if no other providers for the given dependency were defined in the current scope
           <td>
                 <code>bool</code>
           </td>
-          <td><p><code>True</code> to <em>mark</em> or <code>False</code> to <em>unmark</em>. 
+          <td><p><code>True</code> to <em>mark</em> or <code>False</code> to <em>unmark</em>.
 Defaults to <code>True</code>.</p></td>
           <td>
                 <code>True</code>
@@ -1412,7 +1412,7 @@ Defaults to <code>True</code>.</p></td>
     <div class="doc doc-contents ">
 
       <p><em>Mark/Unmark</em> this provider as final. Updates <code>is_final</code> attribute.</p>
-<p>A final provider will error if overridden by containers further down the 
+<p>A final provider will error if overridden by containers further down the
 provider resolution order. This does not apply to providers marked as
 default. Default providers will get skipped silently.</p>
 
@@ -1432,7 +1432,7 @@ default. Default providers will get skipped silently.</p>
           <td>
                 <code>bool</code>
           </td>
-          <td><p><code>True</code> to <em>mark</em> or <code>False</code> to <em>unmark</em>. 
+          <td><p><code>True</code> to <em>mark</em> or <code>False</code> to <em>unmark</em>.
 Defaults to <code>True</code>.</p></td>
           <td>
                 <code>True</code>
@@ -1520,7 +1520,7 @@ container.</p>
     <div class="doc doc-contents ">
 
       <p>Set the <code>access_level</code> for this provider to <code>AccessLevel.guarded</code>.</p>
-<p>A guarded provider is only visible to dependants declared in the 
+<p>A guarded provider is only visible to dependants declared in the
 provider's container and it's bases.</p>
 
   <p><strong>Returns:</strong></p>
@@ -1644,8 +1644,8 @@ both base and derived containers.</p>
 
       <p>Check whether this provider is avaliable to the given dep.</p>
 <p>Unlike <code>_resolve</code>, this method will be called on all matching dependencies.
-If available, the provider's <code>filters</code> will be applied and the result is 
-returned. </p>
+If available, the provider's <code>filters</code> will be applied and the result is
+returned.</p>
 <p>Returns <code>True</code> if no filters are available.</p>
 
   <p><strong>Parameters:</strong></p>
@@ -1662,7 +1662,7 @@ returned. </p>
         <tr>
           <td><code>dep</code></td>
           <td>
-                <code><span title="uzi.graph.DepKey">DepKey</span></code>
+                <code><span title="uzi.graph.core.DepKey">DepKey</span></code>
           </td>
           <td><p><em>description</em></p></td>
           <td>
@@ -1737,7 +1737,7 @@ returned. </p>
           <td>
                 <code><a class="autorefs autorefs-internal" title="uzi.markers.T_Injectable" href="../markers.html#uzi.markers.T_Injectable">T_Injectable</a></code>
           </td>
-          <td><p>dependency to be resolved </p></td>
+          <td><p>dependency to be resolved</p></td>
           <td>
               <em>required</em>
           </td>
@@ -1766,7 +1766,7 @@ returned. </p>
     <tbody>
         <tr>
 <td><code>node</code></td>          <td>
-                <code><a class="autorefs autorefs-internal" title="uzi.graph.Node" href="../graph/nodes.html#uzi.graph.nodes.Node">Node</a></code>
+                <code>Node</code>
           </td>
           <td></td>
         </tr>
@@ -1792,7 +1792,7 @@ returned. </p>
 
     <div class="doc doc-contents ">
 
-      <p>Called when the provider is added to a container. </p>
+      <p>Called when the provider is added to a container.</p>
 
   <p><strong>Parameters:</strong></p>
   <table>
@@ -1820,7 +1820,7 @@ returned. </p>
           <td>
                 <code><a class="autorefs autorefs-internal" title="uzi.markers.T_Injectable" href="../markers.html#uzi.markers.T_Injectable">T_Injectable</a></code>
           </td>
-          <td><p>the bound dependency </p></td>
+          <td><p>the bound dependency</p></td>
           <td>
                 <code>None</code>
           </td>
@@ -1883,11 +1883,11 @@ returned. </p>
 
     <div class="doc doc-contents ">
 
-      <p>Set the provider's <code>concrete</code> attribute. </p>
+      <p>Set the provider's <code>concrete</code> attribute.</p>
 <p>The given value will depend on the type of provider</p>
 <p>Can be used as decorator</p>
 <div class="highlight"><pre><span></span><code>@provider.use()
-def func(): 
+def func():
     ...
 </code></pre></div>
 
@@ -1905,9 +1905,9 @@ def func():
         <tr>
           <td><code>using</code></td>
           <td>
-                <code><a class="autorefs autorefs-internal" title="uzi.graph._T_Concrete" href="../graph/nodes.html#uzi.graph.nodes._T_Concrete">_T_Concrete</a></code>
+                <code><a class="autorefs autorefs-internal" title="uzi.graph.nodes._T_Concrete" href="../graph/nodes.html#uzi.graph.nodes._T_Concrete">_T_Concrete</a></code>
           </td>
-          <td><p>the object to provide. this depends on the type 
+          <td><p>the object to provide. this depends on the type
 of provider</p></td>
           <td>
               <em>required</em>
@@ -1953,12 +1953,12 @@ of provider</p></td>
 
     <div class="doc doc-contents ">
 
-      <p>Add/replace the provider's <code>filters</code>. </p>
+      <p>Add/replace the provider's <code>filters</code>.</p>
 <p>Filters are callables that determine whether this provider can provide a
 given dependency.</p>
-<p>Filters are called with 4 arguments:- <code>provider</code>- this provide, 
-<code>abstract</code> - the dependency to be provided, <code>scope</code>- scope within which 
-the dependency is getting resolved and <code>dependant</code> the <code>Container</code> from 
+<p>Filters are called with 4 arguments:- <code>provider</code>- this provide,
+<code>abstract</code> - the dependency to be provided, <code>scope</code>- scope within which
+the dependency is getting resolved and <code>dependant</code> the <code>Container</code> from
 which the dependency was requested.</p>
 
   <p><strong>Parameters:</strong></p>
@@ -1987,7 +1987,7 @@ which the dependency was requested.</p>
           <td>
                 <code>bool</code>
           </td>
-          <td><p>Whether to replace the existing filters 
+          <td><p>Whether to replace the existing filters
 instead of adding. Defaults to False.</p></td>
           <td>
                 <code>False</code>

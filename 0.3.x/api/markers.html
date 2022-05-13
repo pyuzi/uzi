@@ -620,8 +620,8 @@
   
   
     <li class="md-nav__item">
-      <a href="graph/index.html" class="md-nav__link">
-        Index
+      <a href="graph/core.html" class="md-nav__link">
+        core
       </a>
     </li>
   
@@ -635,7 +635,7 @@
   
     <li class="md-nav__item">
       <a href="graph/nodes.html" class="md-nav__link">
-        Nodes
+        nodes
       </a>
     </li>
   
@@ -1662,7 +1662,7 @@
 
       <p>Abstract base class for injectable types.</p>
 <p>An injectable is an object that can be used to represent a dependency.</p>
-<p>Builtin injectable types:- <code>type</code>, <code>TypeVar</code>, <code>FunctionType</code>, <code>MethodType</code>, 
+<p>Builtin injectable types:- <code>type</code>, <code>TypeVar</code>, <code>FunctionType</code>, <code>MethodType</code>,
 <code>GenericAlias</code></p>
 
 
@@ -1748,8 +1748,8 @@
           Bases: <code><a class="autorefs autorefs-internal" title="uzi.markers.Injectable" href="#uzi.markers.Injectable">Injectable</a></code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="uzi.markers.T_Injectable" href="#uzi.markers.T_Injectable">T_Injectable</a>]</code></p>
 
 
-      <p>Abstract base class for dependency markers. </p>
-<p>Dependency markers are used reperesent and/or annotate dependencies. </p>
+      <p>Abstract base class for dependency markers.</p>
+<p>Dependency markers are used reperesent and/or annotate dependencies.</p>
 
 
 
@@ -2035,7 +2035,7 @@
           Bases: <code><a class="autorefs autorefs-internal" title="uzi.markers.DependencyMarker" href="#uzi.markers.DependencyMarker">DependencyMarker</a></code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="uzi.markers.T_Injectable" href="#uzi.markers.T_Injectable">T_Injectable</a>]</code></p>
 
 
-      <p>Explicitly marks given injectable as a dependency. </p>
+      <p>Explicitly marks given injectable as a dependency.</p>
 
   <p><strong>Attributes:</strong></p>
   <table>
@@ -2287,8 +2287,30 @@
     <div class="doc doc-contents ">
 
       <p>Returns <code>True</code> if the given type annotation is injectable.</p>
-<p>Params: 
-    typ (type): The type annotation to check.</p>
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>typ</code></td>
+          <td>
+                <code>type</code>
+          </td>
+          <td><p>The type annotation to check.</p></td>
+          <td>
+              <em>required</em>
+          </td>
+        </tr>
+    </tbody>
+  </table>
 
   <p><strong>Returns:</strong></p>
   <table>
@@ -2328,8 +2350,30 @@
     <div class="doc doc-contents ">
 
       <p>Returns <code>True</code> if the given type annotation is injectable.</p>
-<p>Params: 
-    typ (type): The type annotation to check.</p>
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>typ</code></td>
+          <td>
+                <code>type</code>
+          </td>
+          <td><p>The type annotation to check.</p></td>
+          <td>
+              <em>required</em>
+          </td>
+        </tr>
+    </tbody>
+  </table>
 
   <p><strong>Returns:</strong></p>
   <table>

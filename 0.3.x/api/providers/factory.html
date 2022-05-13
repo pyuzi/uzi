@@ -620,8 +620,8 @@
   
   
     <li class="md-nav__item">
-      <a href="../graph/index.html" class="md-nav__link">
-        Index
+      <a href="../graph/core.html" class="md-nav__link">
+        core
       </a>
     </li>
   
@@ -635,7 +635,7 @@
   
     <li class="md-nav__item">
       <a href="../graph/nodes.html" class="md-nav__link">
-        Nodes
+        nodes
       </a>
     </li>
   
@@ -1205,8 +1205,8 @@
           Bases: <code><a class="autorefs autorefs-internal" title="uzi.providers.Provider" href="provider.html#uzi.providers.Provider">Provider</a>[<span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="uzi.markers.T_Injected" href="../markers.html#uzi.markers.T_Injected">T_Injected</a>], <a class="autorefs autorefs-internal" title="uzi.graph.nodes" href="../graph/nodes.html#uzi.graph.nodes">nodes</a>.<a class="autorefs autorefs-internal" title="uzi.graph.nodes._T_FactoryNode" href="../graph/nodes.html#uzi.graph.nodes._T_FactoryNode">_T_FactoryNode</a>]</code>, <code><span title="typing">t</span>.<span title="typing.Generic">Generic</span>[<a class="autorefs autorefs-internal" title="uzi.markers.T_Injected" href="../markers.html#uzi.markers.T_Injected">T_Injected</a>, <a class="autorefs autorefs-internal" title="uzi.graph.nodes" href="../graph/nodes.html#uzi.graph.nodes">nodes</a>.<a class="autorefs autorefs-internal" title="uzi.graph.nodes._T_FactoryNode" href="../graph/nodes.html#uzi.graph.nodes._T_FactoryNode">_T_FactoryNode</a>]</code></p>
 
 
-      <p>Resolves to the return value of the given factory. A factory can be a 
-<code>type</code>, <code>function</code> or a <code>Callable</code> object. </p>
+      <p>Resolves to the return value of the given factory. A factory can be a
+<code>type</code>, <code>function</code> or a <code>Callable</code> object.</p>
 <p>The factory is called every time a dependency for this provider is requested.</p>
 
   <p><strong>Attributes:</strong></p>
@@ -1225,14 +1225,14 @@
                 <code>Union[type[<a class="autorefs autorefs-internal" title="uzi.markers.T_Injected" href="../markers.html#uzi.markers.T_Injected">T_Injected</a>], <span title="collections.abc">abc</span>.<span title="collections.abc.Callable">Callable</span>[..., <a class="autorefs autorefs-internal" title="uzi.markers.T_Injected" href="../markers.html#uzi.markers.T_Injected">T_Injected</a>]]</code>
           </td>
           <td><p>the factory to used
-to create the provided value. </p></td>
+to create the provided value.</p></td>
         </tr>
         <tr>
           <td><code>arguments</code></td>
           <td>
                 <code>tuple[tuple.<span title="tuple.frozendict">frozendict</span>]</code>
           </td>
-          <td><p>A tuple of positional and keyword 
+          <td><p>A tuple of positional and keyword
 arguments passed to the factory.</p></td>
         </tr>
     </tbody>
@@ -1290,9 +1290,9 @@ arguments passed to the factory.</p></td>
 <span class="c1"># will call: func(&#39;a&#39;, 32, obj, key=&#39;xyz&#39;)</span>
 </code></pre></div></td></tr></table></div>
 <h5 id="uzi.providers.Factory--values-and-dependencies">Values and Dependencies<a class="headerlink" href="#uzi.providers.Factory--values-and-dependencies" title="Permanent link">&para;</a></h5>
-<p>Arguments of type <a href="../makers/#uzi.makers.DependencyMarker"><code>DependencyMarker</code></a> 
-will automatically be resolved and passed to the factory while calling it. </p>
-<p>e.g. using <a href="../makers/#uzi.makers.Dep"><code>Dep</code></a> and 
+<p>Arguments of type <a href="../makers/#uzi.makers.DependencyMarker"><code>DependencyMarker</code></a>
+will automatically be resolved and passed to the factory while calling it.</p>
+<p>e.g. using <a href="../makers/#uzi.makers.Dep"><code>Dep</code></a> and
 <a href="../makers/#uzi.makers.Lookup"><code>Lookup</code></a>:
 <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1</span>
 <span class="normal">2</span>
@@ -1303,11 +1303,11 @@ will automatically be resolved and passed to the factory while calling it. </p>
 <span class="normal">7</span>
 <span class="normal">8</span>
 <span class="normal">9</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="n">Factory</span><span class="p">(</span>
-    <span class="n">func</span><span class="p">,</span> 
-    <span class="s1">&#39;a&#39;</span><span class="p">,</span> 
-<span class="hll">    <span class="n">uzi</span><span class="o">.</span><span class="n">makers</span><span class="o">.</span><span class="n">Dep</span><span class="p">(</span><span class="n">Foo</span><span class="p">),</span> 
-</span>    <span class="n">obj</span><span class="p">,</span> 
-    <span class="n">key</span><span class="o">=</span><span class="s1">&#39;xyz&#39;</span><span class="p">,</span> 
+    <span class="n">func</span><span class="p">,</span>
+    <span class="s1">&#39;a&#39;</span><span class="p">,</span>
+<span class="hll">    <span class="n">uzi</span><span class="o">.</span><span class="n">makers</span><span class="o">.</span><span class="n">Dep</span><span class="p">(</span><span class="n">Foo</span><span class="p">),</span>
+</span>    <span class="n">obj</span><span class="p">,</span>
+    <span class="n">key</span><span class="o">=</span><span class="s1">&#39;xyz&#39;</span><span class="p">,</span>
 <span class="hll">    <span class="n">bar</span><span class="o">=</span><span class="n">uzi</span><span class="o">.</span><span class="n">makers</span><span class="o">.</span><span class="n">Lookup</span><span class="p">(</span><span class="n">FooBar</span><span class="p">)</span><span class="o">.</span><span class="n">bar</span>
 </span><span class="p">)</span>
 <span class="c1"># will call: func(&#39;a&#39;, &lt;inject: Foo&gt;, obj, key=&#39;xyz&#39;, bar=&lt;inject: FooBar&gt;.bar)</span>
@@ -1371,8 +1371,8 @@ default behaviour.</p>
           <td>
                 <code>Union[bool, None]</code>
           </td>
-          <td><p><code>True</code> to <em>mark</em>, <code>False</code> 
-to <em>unmark</em> or <code>None</code> to revert to the default behaviour. 
+          <td><p><code>True</code> to <em>mark</em>, <code>False</code>
+to <em>unmark</em> or <code>None</code> to revert to the default behaviour.
 Defaults to <code>True</code>.</p></td>
           <td>
                 <code>True</code>
@@ -1418,7 +1418,7 @@ Defaults to <code>True</code>.</p></td>
 
     <div class="doc doc-contents ">
 
-      <p>Set the positional arguments to pass to the factory. </p>
+      <p>Set the positional arguments to pass to the factory.</p>
 <p>Updates the <code>arguments</code> attribute.</p>
 
   <p><strong>Parameters:</strong></p>
@@ -1437,7 +1437,7 @@ Defaults to <code>True</code>.</p></td>
           <td>
                 <code>Union[<a class="autorefs autorefs-internal" title="uzi.markers.Dep" href="../markers.html#uzi.markers.Dep">Dep</a>, Any]</code>
           </td>
-          <td><p>Positional arguments to pass to 
+          <td><p>Positional arguments to pass to
 the factory.</p></td>
           <td>
                 <code>()</code>
@@ -1483,7 +1483,7 @@ the factory.</p></td>
 
     <div class="doc doc-contents ">
 
-      <p>Set the keyword arguments to pass to the factory. </p>
+      <p>Set the keyword arguments to pass to the factory.</p>
 <p>Updates the <code>arguments</code> attribute.</p>
 
   <p><strong>Parameters:</strong></p>
@@ -1502,7 +1502,7 @@ the factory.</p></td>
           <td>
                 <code>Union[<a class="autorefs autorefs-internal" title="uzi.markers.Dep" href="../markers.html#uzi.markers.Dep">Dep</a>, Any]</code>
           </td>
-          <td><p>Keyword arguments to pass to 
+          <td><p>Keyword arguments to pass to
 the factory.</p></td>
           <td>
                 <code>{}</code>

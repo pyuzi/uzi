@@ -9,7 +9,7 @@ import typing as t
 from uzi.providers import UnionProvider as Provider
 
 from uzi import is_injectable
-from uzi.graph import DepGraph
+from uzi.graph import Graph
 
  
 
@@ -65,7 +65,7 @@ class UnionProviderTests(ProviderTestCase[Provider]):
         assert all(is_injectable(a) for a in result)
         return subject, result
         
-    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_graph: DepGraph):
+    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_graph: Graph):
         subject, res = super().test_resolve(cls, abstract, new, mock_graph)
         expected = self.expected[abstract][1]
         calls = [mock.call(inj) for inj in  expected]

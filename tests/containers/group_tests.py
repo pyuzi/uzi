@@ -13,7 +13,7 @@ from uzi.containers import BaseContainer, Container, Group
 from uzi.exceptions import ProError
 from uzi.markers import ProNoopPredicate, ProPredicate
 from uzi.providers import Provider, ProviderRegistryMixin
-from uzi.graph import DepGraph, DepKey
+from uzi.graph import Graph, DepKey
 
 
 from ..abc import BaseTestCase

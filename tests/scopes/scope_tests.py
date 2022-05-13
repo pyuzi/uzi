@@ -10,7 +10,7 @@ from collections import abc
 
 from uzi.containers import Container
 from uzi.exceptions import InvalidStateError
-from uzi.graph import DepGraph, _null_graph
+from uzi.graph import Graph, _null_graph
 from uzi.injectors import Injector
 from uzi.scopes import Scope
 
@@ -27,7 +27,7 @@ _T_FnNew = abc.Callable[..., Scope]
 
 
 @pytest.fixture
-def new_args(MockContainer: type[DepGraph]):
+def new_args(MockContainer: type[Graph]):
     return MockContainer(),
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def test_basic(new: _T_FnNew):
     str(sub)
     assert isinstance(sub, Scope)
     assert isinstance(sub.parent, Scope)
-    assert isinstance(sub.graph, DepGraph)
+    assert isinstance(sub.graph, Graph)
     assert isinstance(sub.container, Container)
 
 
@@ -67,7 +67,7 @@ def test_compare(new: _T_FnNew):
     assert hash(sub) != hash(cp)
 
 
-def test_create_with_graph(new: _T_FnNew, MockGraph: DepGraph):
+def test_create_with_graph(new: _T_FnNew, MockGraph: Graph):
     graph = MockGraph()
     graph.parent = _null_graph
     sub = new(graph)
@@ -75,7 +75,7 @@ def test_create_with_graph(new: _T_FnNew, MockGraph: DepGraph):
     
 
 @xfail(raises=ValueError, strict=True)
-def test_with_parent_graph_mismatch(new: _T_FnNew, MockGraph: DepGraph):
+def test_with_parent_graph_mismatch(new: _T_FnNew, MockGraph: Graph):
     sub = new(MockGraph())
     
 

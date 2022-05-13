@@ -4,17 +4,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import typing as t
 from uzi import Dep
-from uzi._common import FrozenDict
 
 
 
 
-from uzi._bindings import Callable as Dependency
+from uzi.graph.nodes import Factory as Dependency
 from uzi._functools import BoundParams
 from uzi.injectors import Injector
 
 
-from .abc import BindingsTestCase, _T_NewBinding
+from .abc import NodeTestCase, _T_NewNode
 
 
 
@@ -24,7 +23,7 @@ parametrize = pytest.mark.parametrize
 
 _T_Dep = t.TypeVar('_T_Dep', bound=Dependency, covariant=True)
 
-T_NewDep = _T_NewBinding[_T_Dep]
+T_NewDep = _T_NewNode[_T_Dep]
 
 
 
@@ -59,17 +58,14 @@ def new_kwargs(new_kwargs, bound_params):
 
 
 
-class CallableDependencyTests(BindingsTestCase[Dependency]):
 
-    _call_args: tuple = ()
-    _call_kwargs: dict = FrozenDict()
+class FactoryDependencyTests(NodeTestCase[Dependency]):
+
 
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
-        def fn(a: _Ta, b: _Tb, /, *_a,  z=dep_z, **_kw):
-            assert _a == self._call_args
-            assert _kw == self._call_kwargs
+        def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
             self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
             val = self.value = object()
             return val
@@ -77,30 +73,23 @@ class CallableDependencyTests(BindingsTestCase[Dependency]):
 
     def test_validity(self, new: T_NewDep, mock_injector: Injector):
         subject= new()
-        a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
-
-        fn = subject.bind(mock_injector)()
-        val = fn(*a, **kw)
+        fn = subject.bind(mock_injector)
+        val = fn()
         assert val is self.value
-        assert not val is fn(*a, **kw) is self.value
-        assert not val is fn(*a, **kw) is self.value
+        assert not val is fn() is self.value
+        assert not val is fn() is self.value
 
 
 
 
-from uzi._bindings import AsyncCallable as Dependency
+from uzi.graph.nodes import AsyncFactory as Dependency
 
-class AsyncCallableDependencyTests(BindingsTestCase[Dependency]):
-
-    _call_args: tuple = ()
-    _call_kwargs: dict = FrozenDict()
+class AsyncFactoryDependencyTests(NodeTestCase[Dependency]):
 
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: Injector):
         dep_z = Dep(_Tz, default=object())
-        async def fn(a: _Ta, b: _Tb, /,  *_a,  z=dep_z, **_kw):
-            assert _a == self._call_args
-            assert _kw == self._call_kwargs
+        async def fn(a: _Ta, /, b: _Tb, *, z=dep_z):
             self.check_deps({ _Ta: a, _Tb: b, dep_z: z }, mock_graph, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
@@ -108,31 +97,26 @@ class AsyncCallableDependencyTests(BindingsTestCase[Dependency]):
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
         subject= new()
-        fn = subject.bind(mock_injector)()
-        a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
-        aw = fn(*a, **kw)
+        fn = subject.bind(mock_injector)
+        aw = fn()
         assert isawaitable(aw)
         val = await aw
         assert val is self.value
-        assert not val is await fn(*a, **kw) is self.value
-        assert not val is await fn(*a, **kw) is self.value
+        assert not val is await fn() is self.value
+        assert not val is await fn() is self.value
 
 
 
-from uzi._bindings import AwaitParamsCallable as Dependency
+from uzi.graph.nodes import AwaitParamsFactory as Dependency
 
-class AwaitParamsCallableDependencyTests(BindingsTestCase[Dependency]):
+class AwaitParamsFactoryDependencyTests(NodeTestCase[Dependency]):
 
-    _call_args: tuple = ()
-    _call_kwargs: dict = FrozenDict()
 
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
         dep_z = Dep(_Tz, default=object())
         mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
-        def fn(a: _Ta, b: _Tb, x: _Tx, /, *_a, y: _Ty, z=dep_z, **_kw):
-            assert _a == self._call_args
-            assert _kw == self._call_kwargs
+        def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
             self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
             val = self.value = object()
             return val
@@ -140,33 +124,27 @@ class AwaitParamsCallableDependencyTests(BindingsTestCase[Dependency]):
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
         subject= new()
-        a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
-        fn = subject.bind(mock_injector)()
-        aw = fn(*a, **kw)
+        fn = subject.bind(mock_injector)
+        aw = fn()
         assert isawaitable(aw)
         val = await aw
 
         assert val is self.value
-        assert not val is await fn(*a, **kw) is self.value
-        assert not val is await fn(*a, **kw) is self.value
+        assert not val is await fn() is self.value
+        assert not val is await fn() is self.value
 
 
 
-from uzi._bindings import AwaitParamsAsyncCallable as Dependency
+from uzi.graph.nodes import AwaitParamsAsyncFactory as Dependency
 
-class AwaitParamsAsyncCallableDependencyTests(BindingsTestCase[Dependency]):
-
-    _call_args: tuple = ()
-    _call_kwargs: dict = FrozenDict()
+class AwaitParamsAsyncFactoryDependencyTests(NodeTestCase[Dependency]):
 
 
     @pytest.fixture
     def value_setter(self, mock_graph, mock_injector: t.Union[Injector, dict[t.Any, MagicMock]]):
         dep_z = Dep(_Tz, default=object())
         mock_graph[_Tb].is_async = mock_graph[_Ty].is_async = True
-        async def fn(a: _Ta, b: _Tb, x: _Tx, /, *_a, y: _Ty, z=dep_z, **_kw):
-            assert _a == self._call_args
-            assert _kw == self._call_kwargs
+        async def fn(a: _Ta, b: _Tb, /, x: _Tx, *, y: _Ty, z=dep_z):
             self.check_deps({ _Ta: a, _Tb: b, _Tx: x, _Ty: y, dep_z: z }, mock_graph, mock_injector)
             val = self.value = await asyncio.sleep(0, object())
             return val
@@ -174,17 +152,8 @@ class AwaitParamsAsyncCallableDependencyTests(BindingsTestCase[Dependency]):
 
     async def test_validity(self, new: T_NewDep, mock_injector: Injector):
         subject= new()
-        a, kw = self._call_args, self._call_kwargs = (object(),), dict(kwarg=object())
-        fn = subject.bind(mock_injector)()
-        val = await fn(*a, **kw)
+        fn = subject.bind(mock_injector)
+        val = await fn()
         assert val is self.value
-        assert not val is await fn(*a, **kw) is self.value
-        assert not val is await fn(*a, **kw) is self.value
-
-
-
-
-@pytest.fixture
-def bound(bound):
-    return bound()
-
+        assert not val is await fn() is self.value
+        assert not val is await fn() is self.value

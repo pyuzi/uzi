@@ -6,7 +6,7 @@ import attr
 import pytest
 from uzi import Dep, DependencyMarker, is_injectable
 from uzi.providers import AnnotationProvider as Provider
-from uzi.graph import DepGraph
+from uzi.graph import Graph
 
 from .abc import ProviderTestCase, _T_NewPro
 
@@ -74,7 +74,7 @@ class AnnotationProviderTests(ProviderTestCase[Provider]):
         assert all(is_injectable(a) for a in result)
         return subject, result
         
-    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_graph: DepGraph):
+    def test_resolve(self, cls, abstract, new: _T_NewPro, mock_graph: Graph):
         subject, res = super().test_resolve(cls, abstract, new, mock_graph)
         expected = self.expected[abstract][1]
         calls = [mock.call(inj) for inj in  expected]

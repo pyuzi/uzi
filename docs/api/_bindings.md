@@ -1,3 +1,0 @@
-# Bindings
-
-::: uzi._bindings

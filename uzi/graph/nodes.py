@@ -10,17 +10,17 @@ import typing as t
 
 from collections.abc import Callable
 
-from ._common import Missing, private_setattr
-from ._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
+from .._common import Missing, private_setattr
+from .._functools import BoundParams, _PositionalArgs, _PositionalDeps, _KeywordDeps, FutureFactoryWrapper, FutureResourceWrapper, FutureCallableWrapper
 
-from .markers import T_Injectable, T_Injected
-from .exceptions import InjectorLookupError
+from ..markers import T_Injectable, T_Injected
+from ..exceptions import InjectorLookupError
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .providers import Provider
-    from .graph import DepGraph
-    from .injectors import Injector
-    from .containers import Container
+    from ..providers import Provider
+    from ..injectors import Injector
+    from ..containers import Container
+    from . import Graph
 
 
 _object_new = object.__new__
@@ -32,15 +32,15 @@ _T_Concrete = t.TypeVar("_T_Concrete")
 
 @attr.s(slots=True, frozen=True, cmp=False)
 @private_setattr
-class Binding(ABC, t.Generic[_T_Concrete]):
-    """Marks binding an injectable as a `dependency` to be injected."""
+class Node(ABC, t.Generic[_T_Concrete]):
+    """A dependency graph node."""
     
     @abstractmethod
     def bind(self, injector: 'Injector') -> t.Union[Callable[..., T_Injected], None]: 
         raise NotImplementedError(f'{self.__class__.__name__}.bind()')  # pragma: no cover
 
     abstract: T_Injectable = attr.ib()
-    graph: "DepGraph" = attr.ib()
+    graph: "Graph" = attr.ib()
     provider: "Provider" = attr.ib(default=None, repr=lambda p: str(p and id(p)))
 
     concrete: _T_Concrete = attr.ib(kw_only=True, default=Missing, repr=True)
@@ -66,14 +66,14 @@ class Binding(ABC, t.Generic[_T_Concrete]):
     def __eq__(self, o: Self) -> bool:
         if o.__class__ is self.__class__:
             return o._v_ident == self._v_ident
-        elif isinstance(o, Binding):
+        elif isinstance(o, Node):
             return False
         return NotImplemented
 
     def __ne__(self, o: Self) -> bool:
         if o.__class__ is self.__class__:
             return o._v_ident != self._v_ident
-        elif isinstance(o, Binding):
+        elif isinstance(o, Node):
             return True
         return NotImplemented
 
@@ -83,23 +83,23 @@ class Binding(ABC, t.Generic[_T_Concrete]):
 
 
 
-_T_Binding = t.TypeVar('_T_Binding', bound=Binding, covariant=True)
-"""Dependency `TypeVar`"""
+_T_Node = t.TypeVar('_T_Node', bound=Node, covariant=True)
+"""Node `TypeVar`"""
 
 
 
 
 @private_setattr
-class LookupErrorBinding:
+class MissingNode:
 
     __slots__ = 'abstract', 'graph',
 
-    graph: 'DepGraph'
+    graph: 'Graph'
     container = None
     is_async: bool = False
     dependencies = frozenset[Self]()
 
-    def __new__(cls: type[Self], abstract=None, graph: 'DepGraph'=None, provider=None, concrete=None) -> Self:
+    def __new__(cls: type[Self], abstract=None, graph: 'Graph'=None, provider=None, concrete=None) -> Self:
         self = _object_new(cls)
         self.__setattr(abstract=abstract, graph=graph)
         return self
@@ -126,7 +126,7 @@ class LookupErrorBinding:
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class SimpleBinding(Binding[_T_Concrete]):
+class SimpleNode(Node[_T_Concrete]):
 
     def bind(self, injector: 'Injector'):
         return self.concrete(injector)
@@ -137,8 +137,8 @@ class SimpleBinding(Binding[_T_Concrete]):
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class Value(Binding[T_Injected]):
-    """Value binding
+class Value(Node[T_Injected]):
+    """Value node
     """
 
     concrete: T_Injected = attr.ib(kw_only=True, default=None)
@@ -153,15 +153,15 @@ class Value(Binding[T_Injected]):
 
 
 
-_T_ValueBinding = t.TypeVar('_T_ValueBinding', bound=Value, covariant=True)
-"""Value binding `TypeVar`"""
+_T_ValueNode = t.TypeVar('_T_ValueNode', bound=Value, covariant=True)
+"""Value node `TypeVar`"""
 
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
-class Factory(Binding[T_Injected]):
-    """Factory binding"""
+class Factory(Node[T_Injected]):
+    """Factory node"""
 
     concrete: T_Injected = attr.ib(kw_only=True)
     params: 'BoundParams' = attr.ib(kw_only=True, default=BoundParams.make(()))
@@ -206,14 +206,14 @@ class Factory(Binding[T_Injected]):
 
 
 
-_T_FactoryBinding = t.TypeVar('_T_FactoryBinding', bound=Factory, covariant=True)
-"""Factory binding `TypeVar`"""
+_T_FactoryNode = t.TypeVar('_T_FactoryNode', bound=Factory, covariant=True)
+"""Factory node `TypeVar`"""
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncFactory(Factory[T_Injected]):
-    """AsyncFactory binding"""
+    """AsyncFactory node"""
 
     is_async: bool = True
     async_call: bool = True
@@ -223,7 +223,7 @@ class AsyncFactory(Factory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsFactory(Factory[T_Injected]):
-    """AwaitParamsFactory binding"""
+    """AwaitParamsFactory node"""
     
     is_async: bool = True
     async_call: bool = False
@@ -252,7 +252,7 @@ class AwaitParamsFactory(Factory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncFactory(AwaitParamsFactory[T_Injected]):
-    """AwaitParamsAsyncFactory binding"""
+    """AwaitParamsAsyncFactory node"""
     
     async_call: bool = True
 
@@ -262,7 +262,7 @@ class AwaitParamsAsyncFactory(AwaitParamsFactory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Singleton(Factory[T_Injected]):
-    """Singleton binding"""
+    """Singleton node"""
 
     # aw_enter: bool = attr.ib(kw_only=True, default=False)
 
@@ -297,14 +297,14 @@ class Singleton(Factory[T_Injected]):
         return factory
 
 
-_T_SingletonBinding = t.TypeVar('_T_SingletonBinding', bound=Singleton, covariant=True)
-"""Singleton binding `TypeVar`"""
+_T_SingletonNode = t.TypeVar('_T_SingletonNode', bound=Singleton, covariant=True)
+"""Singleton node `TypeVar`"""
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncSingleton(Singleton[T_Injected]):
-    """AsyncSingleton binding"""
+    """AsyncSingleton node"""
 
     is_async: bool = True
     async_call: bool = True
@@ -321,7 +321,7 @@ class AsyncSingleton(Singleton[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsSingleton(Singleton[T_Injected], AwaitParamsFactory[T_Injected]):
-    """AwaitParamsSingleton binding"""
+    """AwaitParamsSingleton node"""
 
     is_async: bool = True
     async_call: bool = False
@@ -333,7 +333,7 @@ class AwaitParamsSingleton(Singleton[T_Injected], AwaitParamsFactory[T_Injected]
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncSingleton(AwaitParamsSingleton[T_Injected]):
-    """AwaitParamsAsyncSingleton binding"""
+    """AwaitParamsAsyncSingleton node"""
     
     async_call: bool = True
 
@@ -345,8 +345,8 @@ class Resource(Singleton[T_Injected]):
     """
 
 
-_T_ResourceBinding = t.TypeVar('_T_ResourceBinding', bound=Resource, covariant=True)
-"""Resource binding `TypeVar`"""
+_T_ResourceNode = t.TypeVar('_T_ResourceNode', bound=Resource, covariant=True)
+"""Resource node `TypeVar`"""
 
 
 
@@ -354,7 +354,7 @@ _T_ResourceBinding = t.TypeVar('_T_ResourceBinding', bound=Resource, covariant=T
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Partial(Factory[T_Injected]):
-    """Partial binding"""
+    """Partial node"""
 
     def factory(self: Self, injector: "Injector"):
         args = self.resolve_args(injector)
@@ -373,14 +373,14 @@ class Partial(Factory[T_Injected]):
 
 
 
-_T_PartialBinding  = t.TypeVar('_T_PartialBinding', bound=Partial, covariant=True)
-"""Partial binding `TypeVar`"""
+_T_PartialNode  = t.TypeVar('_T_PartialNode', bound=Partial, covariant=True)
+"""Partial node `TypeVar`"""
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncPartial(Partial[T_Injected]):
-    """AsyncPartial binding"""
+    """AsyncPartial node"""
 
     async_call: bool = True
     is_async: bool = True
@@ -389,7 +389,7 @@ class AsyncPartial(Partial[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsPartial(Partial[T_Injected], AwaitParamsFactory[T_Injected]):
-    """AwaitParamsPartial binding"""
+    """AwaitParamsPartial node"""
     
     async_call: bool = False
     is_async: bool = True
@@ -402,7 +402,7 @@ class AwaitParamsPartial(Partial[T_Injected], AwaitParamsFactory[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncPartial(AwaitParamsPartial[T_Injected]):
-    """AwaitParamsAsyncPartial binding"""
+    """AwaitParamsAsyncPartial node"""
     
     async_call: bool = True
 
@@ -413,34 +413,34 @@ class AwaitParamsAsyncPartial(AwaitParamsPartial[T_Injected]):
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class Callable(Partial[T_Injected]):
-    """Callable binding"""
+    """Callable node"""
 
     def bind(self: Self, injector: "Injector"):
         func = self.factory(injector)
         return lambda: func
 
 
-_T_CallableBinding = t.TypeVar('_T_CallableBinding', bound=Callable, covariant=True)
-"""Callable binding `TypeVar`"""
+_T_CallableNode = t.TypeVar('_T_CallableNode', bound=Callable, covariant=True)
+"""Callable node `TypeVar`"""
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AsyncCallable(Callable[T_Injected], AsyncPartial[T_Injected]):
-    """AsyncCallable binding"""
+    """AsyncCallable node"""
     is_async: bool = True
 
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsCallable(Callable[T_Injected], AwaitParamsPartial[T_Injected]):
-    """AwaitParamsCallable binding"""
+    """AwaitParamsCallable node"""
     
     is_async: bool = True
 
 
 @attr.s(slots=True, frozen=True, cmp=False)
 class AwaitParamsAsyncCallable(Callable[T_Injected], AwaitParamsAsyncPartial[T_Injected]):
-    """AwaitParamsAsyncCallable binding"""
+    """AwaitParamsAsyncCallable node"""
     
     async_call: bool = True

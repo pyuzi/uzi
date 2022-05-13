@@ -8,12 +8,12 @@ from uzi import Dep
 
 
 
-from uzi._bindings import Singleton as Dependency
+from uzi.graph.nodes import Singleton as Dependency
 from uzi.injectors import Injector
 from uzi._functools import BoundParams
 
 
-from .abc import _T_NewBinding, BindingsTestCase
+from .abc import _T_NewNode, NodeTestCase
 
 
 
@@ -23,7 +23,7 @@ parametrize = pytest.mark.parametrize
 
 
 
-T_NewDep = _T_NewBinding[Dependency]
+T_NewDep = _T_NewNode[Dependency]
 
 
 _Ta = t.TypeVar('_Ta')
@@ -44,7 +44,7 @@ def new_kwargs(new_kwargs, bound_params):
 
 
 
-class SingletonDependencyTests(BindingsTestCase[Dependency]):
+class SingletonDependencyTests(NodeTestCase[Dependency]):
 
 
     @pytest.fixture
@@ -57,7 +57,7 @@ class SingletonDependencyTests(BindingsTestCase[Dependency]):
 
         return fn
 
-    def test_validity(self, new: _T_NewBinding, mock_injector: Injector):
+    def test_validity(self, new: _T_NewNode, mock_injector: Injector):
         subject= new()
         fn = subject.bind(mock_injector)
         val = fn()
@@ -67,9 +67,9 @@ class SingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from uzi._bindings import AsyncSingleton as Dependency
+from uzi.graph.nodes import AsyncSingleton as Dependency
 
-class AsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
+class AsyncSingletonDependencyTests(NodeTestCase[Dependency]):
 
 
     @pytest.fixture
@@ -93,9 +93,9 @@ class AsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from uzi._bindings import AwaitParamsSingleton as Dependency
+from uzi.graph.nodes import AwaitParamsSingleton as Dependency
 
-class AwaitParamsSingletonDependencyTests(BindingsTestCase[Dependency]):
+class AwaitParamsSingletonDependencyTests(NodeTestCase[Dependency]):
 
 
     @pytest.fixture
@@ -121,9 +121,9 @@ class AwaitParamsSingletonDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from uzi._bindings import AwaitParamsAsyncSingleton as Dependency
+from uzi.graph.nodes import AwaitParamsAsyncSingleton as Dependency
 
-class AwaitParamsAsyncSingletonDependencyTests(BindingsTestCase[Dependency]):
+class AwaitParamsAsyncSingletonDependencyTests(NodeTestCase[Dependency]):
 
 
     @pytest.fixture

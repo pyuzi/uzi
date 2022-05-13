@@ -9,8 +9,8 @@ from uzi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC
 
 
 from uzi.providers import Provider
-from uzi._bindings import Binding
-from uzi.graph import DepGraph
+from uzi.graph.nodes import Node
+from uzi.graph import Graph
 
 
 from ..abc import BaseTestCase
@@ -195,7 +195,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         assert tuple(subject.when(replace=True).filters) == ()
         return subject
 
-    def test_apply_filters(self, abstract, new: _T_New_, mock_graph: DepGraph):
+    def test_apply_filters(self, abstract, new: _T_New_, mock_graph: Graph):
         subject = new()
         
         f0, f1, f2, f3, f4 = (Mock(Callable, return_value=True, name=f'filter[{i}]') for i in range(5))
@@ -218,7 +218,7 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         return subject
     
 
-    def test__can_resolve_calls__freeze(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: DepGraph):
+    def test__can_resolve_calls__freeze(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph):
         with patch.object(cls, '_freeze'):
             subject = new()
             # subject._freeze.return_value = True
@@ -262,36 +262,36 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
     #     assert res == subject.can_resolve(abstract, mock_graph)
     #     return subject, res
 
-    def test__binding_kwargs(self, new: _T_New_):
+    def test__node_kwargs(self, new: _T_New_):
         subject = new()
         kwds = dict(_x__aGgYh0RdYvYa__x_=object(), _a_xRbYf78PxKsT4x_a_=object())
-        res = subject._binding_kwargs(**kwds)
+        res = subject._node_kwargs(**kwds)
         assert res['_x__aGgYh0RdYvYa__x_'] is kwds['_x__aGgYh0RdYvYa__x_'] 
         assert res['_a_xRbYf78PxKsT4x_a_'] is kwds['_a_xRbYf78PxKsT4x_a_'] 
         return subject
         
 
     @xfail(raises=NotImplementedError, strict=False)
-    def test__make_binding(self, cls: type[_T_Pro], abstract, mock_graph: DepGraph, new: _T_New_):
-        orig = cls._binding_kwargs
-        with patch.object(cls, '_binding_kwargs', wraps=lambda *a, **kw: orig(subject, *a, **kw)):
+    def test__make_node(self, cls: type[_T_Pro], abstract, mock_graph: Graph, new: _T_New_):
+        orig = cls._node_kwargs
+        with patch.object(cls, '_node_kwargs', wraps=lambda *a, **kw: orig(subject, *a, **kw)):
             subject = new()
-            dep = subject._make_binding(abstract, mock_graph)
-            assert isinstance(dep, Binding)
-            subject._binding_kwargs.assert_called_once()
+            dep = subject._make_node(abstract, mock_graph)
+            assert isinstance(dep, Node)
+            subject._node_kwargs.assert_called_once()
             return subject, dep
 
-    def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: DepGraph):
+    def test_resolve(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph):
         subject = new()
         res = subject._resolve(abstract, mock_graph)
-        assert isinstance(res, Binding)
+        assert isinstance(res, Node)
         return subject, res    
 
-    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: DepGraph, mock_injector):
+    async def test_inject(self, cls: type[_T_Pro], abstract, new: _T_New_, mock_graph: Graph, mock_injector):
         subject = new()
         dep = subject._resolve(abstract, mock_graph)
 
-        assert isinstance(dep, Binding)
+        assert isinstance(dep, Node)
         func = dep.bind(mock_injector)
         assert callable(func)
         res = func()

@@ -11,8 +11,8 @@ from collections.abc import Callable, Iterator, Mapping
 from uzi.containers import Container
 from uzi.exceptions import FinalProviderOverrideError, ProError
 from uzi.providers import Provider
-from uzi._bindings import Binding
-from uzi.graph import NullGraph, DepGraph
+from uzi.graph.nodes import Node
+from uzi.graph import NullGraph, Graph
 
 
 from .. import checks
@@ -24,7 +24,7 @@ parametrize = pytest.mark.parametrize
 
 _T = t.TypeVar('_T')
 
-_T_FnNew = Callable[..., DepGraph]
+_T_FnNew = Callable[..., Graph]
 
    
    
@@ -35,7 +35,7 @@ def new_args(MockContainer: type[Container]):
 
 @pytest.fixture
 def cls():
-    return DepGraph
+    return Graph
 
 
 
@@ -44,9 +44,9 @@ def immutable_attrs(cls):
     return [a for a in dir(cls) if not (a[:2] == '__' == a[-2:] or isfunction(getattr(cls, a)))]
 
 
-def test_basic(new: _T_FnNew, MockBinding):
+def test_basic(new: _T_FnNew, MockNode):
     sub = new()
-    assert isinstance(sub, DepGraph)
+    assert isinstance(sub, Graph)
     assert isinstance(sub.container, Container)
     assert isinstance(sub.parent, NullGraph)
     assert isinstance(sub.pros, Mapping)
@@ -242,35 +242,35 @@ def test_getitem(new: _T_FnNew, MockContainer: type[Container], MockProvider: ty
 def test_fail_invalid_getitem(new: _T_FnNew):
     new()[2345.6789]
     
-def _test_find_local(new: _T_FnNew, mock_graph: DepGraph):
+def _test_find_local(new: _T_FnNew, mock_graph: Graph):
     mock_graph.__contains__.return_value = False
     sub = new(parent=mock_graph)
     dep = mock_graph[_T]
-    assert isinstance(dep, Binding)
+    assert isinstance(dep, Node)
     assert sub.find_local(_T) is None
     assert sub[_T] is dep
     assert sub.find_local(_T) is None 
 
-def _test_find_local_existing(new: _T_FnNew, mock_graph: DepGraph, mock_provider: Provider):
+def _test_find_local_existing(new: _T_FnNew, mock_graph: Graph, mock_provider: Provider):
     mock_graph.__contains__.return_value = False
     sub = new(parent=mock_graph)
     sub.container.__getitem__.return_value = mock_provider
     dep = mock_provider._resolve(_T, sub)
-    assert isinstance(dep, Binding)
+    assert isinstance(dep, Node)
     assert sub.find_local(_T) is dep
     assert sub[_T] is dep
     
-def _test_find_remote(new: _T_FnNew, mock_graph: DepGraph, mock_provider: Provider):
+def _test_find_remote(new: _T_FnNew, mock_graph: Graph, mock_provider: Provider):
     mock_graph.__contains__.return_value = False
     sub = new(parent=mock_graph)
     sub.container.__getitem__.return_value = mock_provider
     rdep = mock_graph[_T]
 
-    assert isinstance(rdep, Binding)
+    assert isinstance(rdep, Node)
     assert sub.find_remote(_T) is rdep
 
     ldep = mock_provider._resolve(_T, sub)
-    assert isinstance(ldep, Binding)
+    assert isinstance(ldep, Node)
     assert sub[_T] is ldep
     assert sub.find_remote(_T) is rdep
 

@@ -9,12 +9,12 @@ from uzi._common import FrozenDict
 
 
 
-from uzi._bindings import Partial as Dependency
+from uzi.graph.nodes import Partial as Dependency
 from uzi._functools import BoundParams
 from uzi.injectors import Injector
 
 
-from .abc import BindingsTestCase, _T_NewBinding
+from .abc import NodeTestCase, _T_NewNode
 
 
 
@@ -24,7 +24,7 @@ parametrize = pytest.mark.parametrize
 
 _T_Dep = t.TypeVar('_T_Dep', bound=Dependency, covariant=True)
 
-T_NewDep = _T_NewBinding[_T_Dep]
+T_NewDep = _T_NewNode[_T_Dep]
 
 
 
@@ -60,7 +60,7 @@ def new_kwargs(new_kwargs, bound_params):
 
 
 
-class PartialDependencyTests(BindingsTestCase[Dependency]):
+class PartialDependencyTests(NodeTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()
@@ -89,9 +89,9 @@ class PartialDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from uzi._bindings import AsyncPartial as Dependency
+from uzi.graph.nodes import AsyncPartial as Dependency
 
-class AsyncPartialDependencyTests(BindingsTestCase[Dependency]):
+class AsyncPartialDependencyTests(NodeTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()
@@ -120,9 +120,9 @@ class AsyncPartialDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from uzi._bindings import AwaitParamsPartial as Dependency
+from uzi.graph.nodes import AwaitParamsPartial as Dependency
 
-class AwaitParamsPartialDependencyTests(BindingsTestCase[Dependency]):
+class AwaitParamsPartialDependencyTests(NodeTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()
@@ -153,9 +153,9 @@ class AwaitParamsPartialDependencyTests(BindingsTestCase[Dependency]):
 
 
 
-from uzi._bindings import AwaitParamsAsyncPartial as Dependency
+from uzi.graph.nodes import AwaitParamsAsyncPartial as Dependency
 
-class AwaitParamsAsyncPartialDependencyTests(BindingsTestCase[Dependency]):
+class AwaitParamsAsyncPartialDependencyTests(NodeTestCase[Dependency]):
 
     _call_args: tuple = ()
     _call_kwargs: dict = FrozenDict()

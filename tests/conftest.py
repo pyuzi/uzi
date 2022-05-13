@@ -11,8 +11,8 @@ from uzi.injectors import Injector
 from uzi.markers import ProPredicate
 from uzi.providers import Provider
 
-from uzi._bindings import Binding
-from uzi.graph import DepGraph, DepKey, DepSrc
+from uzi.graph.nodes import Node
+from uzi.graph import Graph, DepKey, DepSrc
 from uzi.scopes import Scope
 
 
@@ -77,7 +77,7 @@ def MockContainer(request: pytest.FixtureRequest):
         def mock_graph(k):
             if k in G:
                 return G[k]
-            mg = MagicMock(DepGraph)
+            mg = MagicMock(Graph)
             mg.container = mi
             mg.parent = k
             return G.setdefault(k, mg)
@@ -113,7 +113,7 @@ def MockGroup(MockContainer, request: pytest.FixtureRequest):
         def mock_graph(k):
             if k in G:
                 return G[k]
-            mg = MagicMock(DepGraph)
+            mg = MagicMock(Graph)
             mg.container = mi
             mg.parent = k
             return G.setdefault(k, mg)
@@ -131,9 +131,9 @@ def MockGroup(MockContainer, request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def MockBinding():
+def MockNode():
     def make(abstract=None, graph=None, **kw):
-        mk = MagicMock(Binding)
+        mk = MagicMock(Node)
 
         if not abstract is None:
             kw['abstract'] = abstract
@@ -147,7 +147,7 @@ def MockBinding():
             setattr(mk, k, v)
         return mk
 
-    return MagicMock(type[Binding], wraps=make)
+    return MagicMock(type[Node], wraps=make)
 
 
 
@@ -179,13 +179,13 @@ def MockInjector(MockGraph):
 
 
 @pytest.fixture
-def MockProvider(MockBinding):
+def MockProvider(MockNode):
     def make(spec=Provider, **kw):
         mi: Provider = MagicMock(spec, **kw)
         deps = {}
         def mock_dep(a, s):
             if not (a, s) in deps:
-                deps[a,s] = MockBinding(a, s, provider=mi)
+                deps[a,s] = MockNode(a, s, provider=mi)
             return deps[a,s]
 
         mi._resolve = MagicMock(wraps=mock_dep)
@@ -200,7 +200,7 @@ def MockProvider(MockBinding):
 
 
 @pytest.fixture
-def MockScope(MockGraph: type[DepGraph]):
+def MockScope(MockGraph: type[Graph]):
     def make(spec=Scope, *, parent=True, **kw):
         mi: Scope = NonCallableMagicMock(spec, **kw)
 
@@ -208,7 +208,7 @@ def MockScope(MockGraph: type[DepGraph]):
             kw['parent'] = parent = make(parent=parent-1) if parent is True else parent
 
         if not 'graph' in kw:
-            kw['graph'] = MockGraph(bindings=mi, parent=parent and parent.graph or None)
+            kw['graph'] = MockGraph(parent=parent and parent.graph or None)
         
         if not 'container' in kw:
             kw['container'] = kw['graph'].container
@@ -223,9 +223,9 @@ def MockScope(MockGraph: type[DepGraph]):
 
 
 @pytest.fixture
-def MockGraph(MockContainer, MockBinding):
-    def make(spec=DepGraph, *, parent=True, **kw):
-        mi: DepGraph = NonCallableMagicMock(spec)
+def MockGraph(MockContainer, MockNode):
+    def make(*, parent=True, **kw):
+        mi: Graph = NonCallableMagicMock(Graph)
         
         deps = {}
 
@@ -235,7 +235,7 @@ def MockGraph(MockContainer, MockBinding):
             elif not isinstance(k, DepKey):
                 return deps.setdefault(k, getitem(DepKey(k, mi.container)))
                 
-            return deps.setdefault(k, MockBinding(abstract=k, graph=mi))
+            return deps.setdefault(k, MockNode(abstract=k, graph=mi))
 
         if parent:
             kw['parent'] = parent = make(parent=parent-1) if parent is True else parent
@@ -256,7 +256,7 @@ def MockGraph(MockContainer, MockBinding):
             setattr(mi, k, v)
 
         return mi
-    return MagicMock(type[DepGraph], wraps=make)
+    return MagicMock(type[Graph], wraps=make)
 
 
 @pytest.fixture

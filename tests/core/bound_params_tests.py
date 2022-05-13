@@ -13,7 +13,7 @@ from uzi._common import FrozenDict
 
 
 from uzi._functools import BoundParams, BoundParam
-from uzi.graph import DepGraph
+from uzi.graph import Graph
 
 
 
@@ -24,7 +24,7 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=DepGraph)
+_T_Scp = t.TypeVar('_T_Scp', bound=Graph)
 
 _T_FnNew = Callable[..., _T_Scp]
 
@@ -56,7 +56,7 @@ class BoundParamsTests(BaseTestCase[BoundParams]):
 
 
 
-    def test__iter_bind(self, cls: type[BoundParams], mock_graph: DepGraph):
+    def test__iter_bind(self, cls: type[BoundParams], mock_graph: Graph):
         def func(foo: Foo, /, *args, bar: Bar, baz: Baz=None, **kwds):
             pass
         
@@ -67,7 +67,7 @@ class BoundParamsTests(BaseTestCase[BoundParams]):
         for i,n in enumerate(['foo', 'args', 'bar', 'baz', 'kwds']):
             assert ls[i].name == n
       
-    def test_bind(self, cls: type[BoundParams], mock_graph: DepGraph):
+    def test_bind(self, cls: type[BoundParams], mock_graph: Graph):
         def func(foo: Foo, /, *args, bar: Bar, baz: Baz=None, **kwds):
             pass
         
@@ -75,7 +75,7 @@ class BoundParamsTests(BaseTestCase[BoundParams]):
         assert isinstance(sub, cls)
         
         
-    def test_make(self, cls: type[BoundParams], mock_graph: DepGraph):
+    def test_make(self, cls: type[BoundParams], mock_graph: Graph):
         def func(foo: Foo, x=None, /, *args, bar: Bar, baz: Baz=None, foobar=Dep(FooBar), **kwds):
             pass
         

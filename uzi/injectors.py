@@ -11,11 +11,11 @@ from . import providers
 from .markers import Injectable, T_Injectable, T_Injected
 from .exceptions import InjectorLookupError
 from ._common import Missing, FrozenDict, ReadonlyDict, private_setattr
-from ._bindings import Binding
+from .graph.nodes import Node
 
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .graph import DepGraph, NullGraph
+    from .graph import Graph, NullGraph
     from .scopes import Scope
 
 
@@ -25,7 +25,7 @@ _T = t.TypeVar('_T')
 _object_new = object.__new__
 
 
-TContextBinding = Callable[
+TContextNode = Callable[
     ["Injector", t.Optional[Injectable]], Callable[..., T_Injected]
 ]
 
@@ -46,10 +46,10 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     """
     __slots__ = 'graph', 'parent', '__weakref__',
 
-    graph: "DepGraph"
+    graph: "Graph"
     parent: Self
 
-    def __init__(self, graph: 'DepGraph', parent: Self):
+    def __init__(self, graph: 'Graph', parent: Self):
         self.__setattr(graph=graph, parent= parent)
 
     @property
@@ -82,7 +82,7 @@ class Injector(ReadonlyDict[T_Injectable, Callable[[], T_Injected]]):
     def __contains__(self, x) -> bool:
         return self.__contains(x) or x in self.parent
 
-    def __missing__(self, dep: Binding):
+    def __missing__(self, dep: Node):
         try:
             return self.__setdefault(dep, (dep.graph is self.graph and dep.bind(self)) or self.parent[dep])   
         except AttributeError as e:
@@ -155,7 +155,7 @@ class NullInjector(Injector):
     
     def __reduce__(self): return self.__class__, ()
 
-    def __getitem__(self, dep: Binding):
+    def __getitem__(self, dep: Node):
         try:
             dep.bind(self)
         except (AttributeError, TypeError) as e:

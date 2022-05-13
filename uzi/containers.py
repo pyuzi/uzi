@@ -1,25 +1,21 @@
-from abc import ABC, ABCMeta, abstractmethod
-from itertools import groupby, zip_longest
+from abc import ABCMeta, abstractmethod
 import re
 import sys
-from types import MappingProxyType
 import typing as t
 from logging import getLogger
-from collections import ChainMap, abc, defaultdict
+from collections import ChainMap, abc
 from typing_extensions import Self
-from weakref import WeakKeyDictionary, WeakSet, WeakValueDictionary, ref
+from weakref import WeakKeyDictionary
 from importlib import import_module
 from .exceptions import ProError
 
 
 from . import signals
-from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, _PredicateOpsMixin, Injectable, ProInvertPredicate, ProPredicate, is_injectable
+from .markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, AccessLevel, _PredicateOpsMixin, Injectable, ProPredicate, is_injectable
 from ._common import ReadonlyDict, ordered_set, private_setattr, FrozenDict
 from .providers import Provider, ProviderRegistryMixin
 
-
-if t.TYPE_CHECKING: # pragma: no cover
-    from .graph import DepGraph, DepKey, DepSrc
+from .graph import Graph, DepKey, DepSrc
 
 
 logger = getLogger(__name__)
@@ -152,7 +148,7 @@ class _ContainerRegistry(ReadonlyDict[str, dict['BaseContainer', None]]):
 
 
 
-class ProEntries(FrozenDict['BaseContainer', None]):
+class ProEntrySet(FrozenDict['BaseContainer', None]):
     
     __slots__ = ()
 
@@ -165,7 +161,7 @@ class ProEntries(FrozenDict['BaseContainer', None]):
     fromkeys = make
 
     def atomic(self):
-        return AtomicProEntries.make(self)
+        return AtomicProEntrySet.make(self)
 
     def _eval_hashable(self):
         return tuple(self.atomic())
@@ -181,21 +177,21 @@ class ProEntries(FrozenDict['BaseContainer', None]):
             return all(a in self for a in k.atomic) 
 
     def __eq__(self, o: Self) -> bool:
-        if isinstance(o, ProEntries):
+        if isinstance(o, ProEntrySet):
             return self._eval_hashable() == o._eval_hashable()
         elif isinstance(o, abc.Mapping):
             return False
         return NotImplemented
 
     def __ne__(self, o: Self) -> bool:
-        if isinstance(o, ProEntries):
+        if isinstance(o, ProEntrySet):
             return self._eval_hashable() != o._eval_hashable()
         elif isinstance(o, abc.Mapping):
             return True
         return NotImplemented
 
 
-class AtomicProEntries(ProEntries):
+class AtomicProEntrySet(ProEntrySet):
     
     __slots__ = ()
 
@@ -289,7 +285,7 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
 
     @property
     @abstractmethod
-    def g(self) -> ReadonlyDict['DepGraph', 'DepGraph']: ...
+    def g(self) -> ReadonlyDict['Graph', 'Graph']: ...
 
     @property
     @abstractmethod
@@ -314,17 +310,16 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
         # else:
         #     return all(self.extends(x) for x in other.atomic)
 
-    def get_graph(self, base: 'DepGraph'):
+    def get_graph(self, base: 'Graph'):
         try:
             return self.g[base]
         except KeyError:
             return _dict_setdefault(self.g, base, self.create_graph(base))
 
-    def create_graph(self, base: 'DepGraph'):
-        return DepGraph(self, base)
+    def create_graph(self, base: 'Graph'):
+        return Graph(self, base)
 
-
-    def pro_entries(self, it: abc.Iterable['Container'], bindings: 'DepGraph', src: 'DepSrc') -> abc.Iterable['Container']:
+    def pro_entries(self, it: abc.Iterable['Container'], graph: 'Graph', src: 'DepSrc') -> abc.Iterable['Container']:
         pro = self.pro
         return tuple(c for c in it if c in pro)
         
@@ -359,7 +354,7 @@ class BaseContainer(_PredicateOpsMixin, metaclass=ContainerMeta):
                 else:
                     ml.pop(i)
 
-        return AtomicProEntries.fromkeys(res)
+        return AtomicProEntrySet.fromkeys(res)
 
     def __eq__(self, o) -> bool:
         if isinstance(o, BaseContainer):
@@ -407,9 +402,9 @@ class Container(BaseContainer, ProviderRegistryMixin):
     __slots__ = 'module', 'name', 'providers', 'bases', 'default_access_level', 'g', '_pro', '__weakref__',
     
     name: str
-    bases: ProEntries
+    bases: ProEntrySet
     default_access_level: AccessLevel 
-    g: ReadonlyDict['DepGraph', 'DepGraph']
+    g: ReadonlyDict['Graph', 'Graph']
     providers: ReadonlyDict[Injectable, Provider]
     _pro: FrozenDict[Self, int]
     is_atomic: t.Final = True
@@ -428,7 +423,7 @@ class Container(BaseContainer, ProviderRegistryMixin):
         
         self.__setattr(
             _pro=None, 
-            bases=ProEntries(),
+            bases=ProEntrySet(),
             name=name or f'__anonymous__', 
             providers=ReadonlyDict(),
             module=module, 
@@ -444,7 +439,7 @@ class Container(BaseContainer, ProviderRegistryMixin):
     def atomic(self):
         """`AtomicProEntries`(s) 
         """
-        return AtomicProEntries(((self, None),))
+        return AtomicProEntrySet(((self, None),))
 
     def extend(self, *bases: Self) -> Self:
         """Adds containers to extended by this container.
@@ -454,7 +449,7 @@ class Container(BaseContainer, ProviderRegistryMixin):
         Returns:
             Self: this container
         """
-        self.__setattr(bases=self.bases | ProEntries.make(bases))
+        self.__setattr(bases=self.bases | ProEntrySet.make(bases))
         return self
 
     def access_level(self, accessor: Self):
@@ -510,12 +505,12 @@ class Container(BaseContainer, ProviderRegistryMixin):
             if isinstance(k, Provider) and (k.container or self) is self:
                 return k
         
-    def _resolve(self, key: 'DepKey', bindings: 'DepGraph'):
+    def _resolve(self, key: 'DepKey', graph: 'Graph'):
         if prov := self[key.abstract]:
             access = prov.access_level or self.default_access_level
 
             if access in self.access_level(key.container):
-                if prov._can_resolve(key, bindings):
+                if prov._can_resolve(key, graph):
                     return prov,
         return ()
 
@@ -530,7 +525,7 @@ class Group(BaseContainer):
     __slots__ = 'g', 'bases', 'name', 'module', '_pro', '__weakref__',
     is_atomic = False
     
-    bases: ProEntries
+    bases: ProEntrySet
     _pro: FrozenDict[Self, int]
     
     @t.overload
@@ -543,10 +538,10 @@ class Group(BaseContainer):
                 return it
             else:
                 kwds['bases'], kwds['_pro'] = it.bases, it._pro
-        elif typ is ProEntries:
+        elif typ is ProEntrySet:
             kwds['bases'], kwds['_pro'] = it, None
         else:
-            kwds['bases'] = it = ProEntries.make(it)
+            kwds['bases'] = it = ProEntrySet.make(it)
             kwds['_pro'] = None
 
         kwds.setdefault('name', None)
@@ -593,5 +588,3 @@ class Group(BaseContainer):
 ContainerMeta.register = None
 
 
-
-from .graph import DepGraph, _null_graph

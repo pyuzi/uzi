@@ -5,7 +5,7 @@ import pytest
 from collections.abc import Callable
 
 
-from uzi.graph import NullGraph, DepGraph
+from uzi.graph import NullGraph, Graph
 
 
 
@@ -16,7 +16,7 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=DepGraph)
+_T_Scp = t.TypeVar('_T_Scp', bound=Graph)
 
 _T_FnNew = Callable[..., _T_Scp]
 
@@ -28,7 +28,7 @@ class NullGraphTests(BaseTestCase[NullGraph]):
     def test_basic(self, new: _T_FnNew):
         sub = new()
         assert isinstance(sub, NullGraph)
-        assert isinstance(sub, DepGraph)
+        assert isinstance(sub, Graph)
         assert sub.parent is None
         assert sub.level == -1
         assert not sub

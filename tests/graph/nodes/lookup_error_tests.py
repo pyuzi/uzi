@@ -8,7 +8,7 @@ from tests.abc import BaseTestCase
 from uzi import InjectorLookupError
 
 
-from uzi._bindings import LookupErrorBinding as Dependency, SimpleBinding
+from uzi.graph.nodes import MissingNode as Dependency, SimpleNode
 from uzi.injectors import Injector
 
 
@@ -53,7 +53,7 @@ class LookupErrorDependencyTests(BaseTestCase[Dependency]):
 
     def test_compare(self, new: _T_NewDep, abstract, mock_graph):
         subject, subject_2 = new(), new()
-        simp = SimpleBinding(abstract, mock_graph)
+        simp = SimpleNode(abstract, mock_graph)
         assert subject.__class__ is subject_2.__class__
         assert subject == subject_2 == abstract
         assert subject != object()

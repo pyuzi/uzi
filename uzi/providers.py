@@ -12,8 +12,7 @@ from typing_extensions import Self
 
 from ._common import lookups
 
-from . import _bindings as bindings
-from ._bindings import _T_Binding, _T_Concrete, Binding
+from .graph import nodes, _T_Node, _T_Concrete, Node
 from ._common import Missing, FrozenDict, private_setattr, typed_signature
 from ._functools import BoundParams
 from .markers import Injectable, T_Injectable, T_Injected, is_injectable
@@ -30,7 +29,7 @@ _AnnotatedType = type(t.Annotated[t.Any, 'ann'])
 
 if t.TYPE_CHECKING:  # pragma: no cover
     from .containers import Container
-    from .graph import DepKey, DepGraph
+    from .graph import DepKey, Graph
 
 
 
@@ -66,7 +65,7 @@ def _fluent_decorator(fn=None,  default=Missing, *, fluent: bool = False):
 @DependencyMarker.register
 @private_setattr(frozen='_frozen')
 @attr.s(slots=True, frozen=True, cache_hash=True, cmp=True)
-class Provider(t.Generic[_T_Concrete, _T_Binding]):
+class Provider(t.Generic[_T_Concrete, _T_Node]):
     """The base class for all providers.
 
     Subclasses can implement the `resolve()` method to return the appropriate
@@ -101,10 +100,10 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     
     is_async: bool = attr.ib(init=False, default=None)
     
-    filters: tuple[abc.Callable[['DepGraph', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
+    filters: tuple[abc.Callable[['Graph', Injectable], bool]] = attr.ib(kw_only=True, default=(), converter=tuple)
     
-    _binding_class: t.ClassVar[type[_T_Binding]] = None
-    _default_binding_kwargs: t.ClassVar = {}
+    _node_type: t.ClassVar[type[_T_Node]] = None
+    _default_node_kwargs: t.ClassVar = {}
 
     __class_getitem__ = classmethod(GenericAlias)
 
@@ -189,7 +188,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
         self.__setattr(access_level=PUBLIC)
         return self
  
-    def _can_resolve(self, dep: 'DepKey', scope: "DepGraph") -> bool:
+    def _can_resolve(self, dep: 'DepKey', scope: "Graph") -> bool:
         """Check whether this provider is avaliable to the given dep.
 
         Unlike `_resolve`, this method will be called on all matching dependencies.
@@ -211,7 +210,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
                 return False
         return True
 
-    def _resolve(self, abstract: T_Injectable, scope: 'DepGraph') -> _T_Binding:
+    def _resolve(self, abstract: T_Injectable, scope: 'Graph') -> _T_Node:
         """Resolves the given dependency.
 
         Args:
@@ -219,9 +218,9 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
             scope (Scope): Scope within which the dependency is getting resolved.
 
         Returns:
-            binding (Binding): 
+            node (Node): 
         """
-        return self._make_binding(abstract, scope)
+        return self._make_node(abstract, scope)
 
     def _setup(self, container: "Container", abstract: T_Injectable=None) -> Self:
         """Called when the provider is added to a container. 
@@ -308,12 +307,12 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
     def _onfreeze(self):
         ...
 
-    def _binding_kwargs(self, **kwds):
-        return self._default_binding_kwargs | kwds
+    def _node_kwargs(self, **kwds):
+        return self._default_node_kwargs | kwds
 
-    def _make_binding(self, abstract: T_Injectable, scope: 'DepGraph', **kwds):
-        if cls := self._binding_class:
-            return cls(abstract, scope, self, **self._binding_kwargs(**kwds))
+    def _make_node(self, abstract: T_Injectable, scope: 'Graph', **kwds):
+        if cls := self._node_type:
+            return cls(abstract, scope, self, **self._node_kwargs(**kwds))
         raise NotImplementedError(f'{self.__class__.__name__}._make_dependency()') # pragma: no cover
 
 
@@ -322,7 +321,7 @@ class Provider(t.Generic[_T_Concrete, _T_Binding]):
 
 
 @attr.s(slots=True, frozen=True)
-class Alias(Provider[T_Injectable, bindings._T_Binding]):
+class Alias(Provider[T_Injectable, nodes._T_Node]):
     """Used to proxy another existing dependency. It resolves to the given `concrete`.
     
     For example. To use `_Ta` for dependency `_Tb`.
@@ -333,14 +332,14 @@ class Alias(Provider[T_Injectable, bindings._T_Binding]):
         concrete (Injectable): The dependency to be proxied
     """
 
-    def _resolve(self, abstract: T_Injectable, scope: 'DepGraph'):
+    def _resolve(self, abstract: T_Injectable, scope: 'Graph'):
         return scope[self.concrete]
   
   
 
 
 @attr.s(slots=True, frozen=True)
-class Value(Provider[T_Injected, bindings._T_ValueBinding]):
+class Value(Provider[T_Injected, nodes._T_ValueNode]):
     """Provides the given object as it is. 
 
     Example:
@@ -353,18 +352,18 @@ class Value(Provider[T_Injected, bindings._T_ValueBinding]):
         concrete (T_Injected): The object to be provided
     """
 
-    _binding_class = bindings.Value
+    _node_type = nodes.Value
 
-    def _binding_kwargs(self, **kwds):
+    def _node_kwargs(self, **kwds):
         kwds.setdefault('concrete', self.concrete)
-        return super()._binding_kwargs(**kwds)
+        return super()._node_kwargs(**kwds)
 
 
 
 
 
 @attr.s(slots=True, cmp=True, init=False, frozen=True)
-class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding], t.Generic[T_Injected, bindings._T_FactoryBinding]):
+class Factory(Provider[abc.Callable[..., T_Injected], nodes._T_FactoryNode], t.Generic[T_Injected, nodes._T_FactoryNode]):
     """Resolves to the return value of the given factory. A factory can be a 
     `type`, `function` or a `Callable` object. 
 
@@ -426,10 +425,10 @@ class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding
         Parameter('__Parameter_var_keyword', Parameter.VAR_KEYWORD),
     ])
 
-    _sync_binding_class: t.ClassVar = bindings.Factory
-    _asyns_binding_class: t.ClassVar = bindings.AsyncFactory
-    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsFactory
-    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncFactory
+    _sync_node_type: t.ClassVar = nodes.Factory
+    _asyns_node_type: t.ClassVar = nodes.AsyncFactory
+    _await_params_sync_node_type: t.ClassVar = nodes.AwaitParamsFactory
+    _await_params_async_node_type: t.ClassVar = nodes.AwaitParamsAsyncFactory
 
     def __init__(self, concrete: abc.Callable[[], T_Injectable] = None, /, *args, **kwargs):
         self.__attrs_init__(
@@ -544,37 +543,37 @@ class Factory(Provider[abc.Callable[..., T_Injected], bindings._T_FactoryBinding
     def _is_async_factory(self) -> bool:
         return iscoroutinefunction(self.concrete)
 
-    def _bind_params(self, scope: "DepGraph", abstract: Injectable, *, sig=None, arguments=()):
+    def _bind_params(self, scope: "Graph", abstract: Injectable, *, sig=None, arguments=()):
         sig = sig or self.get_signature(abstract)
         args, kwargs = arguments or self.arguments
         return BoundParams.bind(sig, scope, self.container, args, kwargs)
 
-    def _binding_kwargs(self, **kwds):
+    def _node_kwargs(self, **kwds):
         kwds.setdefault('concrete', self.concrete)
-        return super()._binding_kwargs(**kwds)
+        return super()._node_kwargs(**kwds)
 
-    def _make_binding(self, abstract: T_Injectable, scope: 'DepGraph', **kwds):
+    def _make_node(self, abstract: T_Injectable, scope: 'Graph', **kwds):
         params = self._bind_params(scope, abstract)
         if params.is_async:
             if self.is_async:
-                cls = self._await_params_async_binding_class
+                cls = self._await_params_async_node_type
             else:
-                cls = self._await_params_sync_binding_class
+                cls = self._await_params_sync_node_type
         elif self.is_async:
-            cls = self._asyns_binding_class
+            cls = self._asyns_node_type
         else:
-            cls = self._sync_binding_class
+            cls = self._sync_node_type
 
         return cls(
             abstract, scope, self, 
             params=params, 
-            **self._binding_kwargs(**kwds),
+            **self._node_kwargs(**kwds),
         )
         
 
 
 @attr.s(slots=True, cmp=True, init=False)
-class Singleton(Factory[T_Injected, bindings._T_SingletonBinding]):
+class Singleton(Factory[T_Injected, nodes._T_SingletonNode]):
     """A `Singleton` provider is a `Factory` that returns same instance on every
     call.
 
@@ -590,10 +589,10 @@ class Singleton(Factory[T_Injected, bindings._T_SingletonBinding]):
     is_shared: t.ClassVar[bool] = True
     is_thread_safe: bool = attr.ib(init=False, default=None)
 
-    _sync_binding_class: t.ClassVar = bindings.Singleton
-    _async_binding_class: t.ClassVar = bindings.AsyncSingleton
-    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsSingleton
-    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncSingleton
+    _sync_node_type: t.ClassVar = nodes.Singleton
+    _async_node_type: t.ClassVar = nodes.AsyncSingleton
+    _await_params_sync_node_type: t.ClassVar = nodes.AwaitParamsSingleton
+    _await_params_async_node_type: t.ClassVar = nodes.AwaitParamsAsyncSingleton
 
     def thread_safe(self, is_thread_safe: bool=True) -> Self:
         """_Mark/Unmark_ this provider as thread safe. Updates the `is_thread_safe`
@@ -612,16 +611,16 @@ class Singleton(Factory[T_Injected, bindings._T_SingletonBinding]):
         self.__setattr(is_thread_safe=is_thread_safe)
         return self
 
-    def _binding_kwargs(self, **kwds):
+    def _node_kwargs(self, **kwds):
         kwds.setdefault('thread_safe', self.is_thread_safe)
-        return super()._binding_kwargs(**kwds)
+        return super()._node_kwargs(**kwds)
 
 
 
 
 
 @attr.s(slots=True, cmp=True, init=False)
-class Resource(Singleton[T_Injected, bindings._T_ResourceBinding]):
+class Resource(Singleton[T_Injected, nodes._T_ResourceNode]):
     """A `Resource` provider is a `Singleton` that has initialization and/or 
     teardown.
     
@@ -635,23 +634,23 @@ class Resource(Singleton[T_Injected, bindings._T_ResourceBinding]):
         self.__setattr(is_awaitable=is_awaitable)
         return self
         
-    def _binding_kwargs(self, **kwds):
+    def _node_kwargs(self, **kwds):
         # kwds.setdefault('aw_enter', self.is_awaitable)
-        return super()._binding_kwargs(**kwds)
+        return super()._node_kwargs(**kwds)
 
 
 
 @attr.s(slots=True, init=False)
-class Partial(Factory[T_Injected, bindings._T_PartialBinding]):
+class Partial(Factory[T_Injected, nodes._T_PartialNode]):
     """A `Factory` provider that accepts extra arguments during resolution.
 
     Used internally to inject entry-point functions.
     """
 
-    _sync_binding_class: t.ClassVar = bindings.Partial
-    _async_binding_class: t.ClassVar = bindings.AsyncPartial
-    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsPartial
-    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncPartial
+    _sync_node_type: t.ClassVar = nodes.Partial
+    _async_node_type: t.ClassVar = nodes.AsyncPartial
+    _await_params_sync_node_type: t.ClassVar = nodes.AwaitParamsPartial
+    _await_params_async_node_type: t.ClassVar = nodes.AwaitParamsAsyncPartial
 
     def _fallback_signature(self):
         return self._arbitrary_signature
@@ -661,16 +660,16 @@ class Partial(Factory[T_Injected, bindings._T_PartialBinding]):
 
 
 @attr.s(slots=True, init=False)
-class Callable(Partial[T_Injected, bindings._T_CallableBinding]):
+class Callable(Partial[T_Injected, nodes._T_CallableNode]):
     """Similar to a `Factory` provider, a `Callable` provider resolves to a 
     callable that wraps the factory.
     
     """
 
-    _sync_binding_class: t.ClassVar = bindings.Callable
-    _async_binding_class: t.ClassVar = bindings.AsyncCallable
-    _await_params_sync_binding_class: t.ClassVar = bindings.AwaitParamsCallable
-    _await_params_async_binding_class: t.ClassVar = bindings.AwaitParamsAsyncCallable
+    _sync_node_type: t.ClassVar = nodes.Callable
+    _async_node_type: t.ClassVar = nodes.AsyncCallable
+    _await_params_sync_node_type: t.ClassVar = nodes.AwaitParamsCallable
+    _await_params_async_node_type: t.ClassVar = nodes.AwaitParamsAsyncCallable
 
 
 
@@ -678,14 +677,14 @@ class Callable(Partial[T_Injected, bindings._T_CallableBinding]):
 
 
 @attr.s(slots=True, frozen=True)
-class LookupMarkerProvider(Factory[lookups.look, bindings._T_FactoryBinding]):
+class LookupMarkerProvider(Factory[lookups.look, nodes._T_FactoryNode]):
     """Provider for resolving `uzi.Lookup` dependencies. 
     """
     
     abstract = Lookup
     concrete = attr.ib(init=False, default=lookups.look)
 
-    def _bind_params(self, scope: "DepGraph", marker: Lookup, *, sig=None, arguments=()):
+    def _bind_params(self, scope: "Graph", marker: Lookup, *, sig=None, arguments=()):
         if not arguments:
             abstract = marker.__abstract__
             arguments = (lookups.Lookup(*marker),), FrozenDict(root=Dep(abstract))
@@ -707,7 +706,7 @@ class UnionProvider(Provider[_T_Concrete]):
     def get_injectable_args(self, abstract: Injectable):
         return filter(is_injectable, self.get_all_args(abstract))
 
-    def _resolve(self, abstract: T_Injectable, scope: 'DepGraph'):
+    def _resolve(self, abstract: T_Injectable, scope: 'Graph'):
         for arg in self.get_injectable_args(abstract):
             if rv := scope[arg]:
                 return rv
@@ -741,16 +740,16 @@ class DepMarkerProvider(Provider[_T_Concrete]):
     """
     abstract = Dep
     concrete = attr.ib(init=False, default=Dep)
-    _binding_class = bindings.Value
+    _node_type = nodes.Value
 
-    def _resolve(self, marker: Dep, scope: 'DepGraph') -> bindings.Binding:
+    def _resolve(self, marker: Dep, scope: 'Graph') -> nodes.Node:
         dep = scope.make_key(marker.abstract, predicate=marker.predicate)
         if bind := scope[dep]:
             return bind
         elif marker.injects_default:
             return scope[marker.default]
         elif marker.has_default:
-            return self._make_binding(marker, scope, concrete=marker.default)
+            return self._make_node(marker, scope, concrete=marker.default)
 
 
 

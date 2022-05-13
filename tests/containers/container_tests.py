@@ -9,11 +9,11 @@ from collections.abc import Callable
 from uzi._common import FrozenDict, ReadonlyDict
 
 
-from uzi.containers import BaseContainer, Container, Group, ProEntries
+from uzi.containers import BaseContainer, Container, Group, ProEntrySet
 from uzi.exceptions import ProError
 from uzi.markers import GUARDED, PRIVATE, PROTECTED, PUBLIC, ProNoopPredicate, ProPredicate
 from uzi.providers import Provider, ProviderRegistryMixin
-from uzi.graph import DepGraph, DepKey
+from uzi.graph import Graph, DepKey
 
 
 from ..abc import BaseTestCase
@@ -104,7 +104,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         c1.extend(c2.extend(c4.extend(c5, c6)))
         c1.extend(c3.extend(c5))
         pro = c1._evaluate_pro()
-        assert isinstance(pro, ProEntries)
+        assert isinstance(pro, ProEntrySet)
         print(*(f'{c}' for c in c1.pro), sep='\n  - ')
         assert pro == c1.pro
         assert tuple(pro) == (c1, c2, c4, c3, c5, c6)
@@ -178,7 +178,7 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert sub[pro2] is pro2
         assert sub[pro3] is None
 
-    def test__resolve(self, new: _T_FnNew, mock_graph: DepGraph, MockDepKey: type[DepKey], MockProvider: type[Provider]):
+    def test__resolve(self, new: _T_FnNew, mock_graph: Graph, MockDepKey: type[DepKey], MockProvider: type[Provider]):
         T1, T2, T3, T4 = t.TypeVar('T1'), t.TypeVar('T2'), t.TypeVar('T3'), t.TypeVar('T4'),
         c1, c2, c3 = new('child'), new('subject'), new('base')
         c1.extend(c2.extend(c3))

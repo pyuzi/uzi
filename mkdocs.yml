@@ -39,7 +39,9 @@ nav:
     - 'uzi': 'api/index.md'
     - 'uzi.containers': 'api/containers.md'
     - 'uzi.exceptions': 'api/exceptions.md'
-    - 'uzi.graph': 'api/graph.md'
+    - 'uzi.graph': 
+      - 'api/graph/index.md'
+      - 'api/graph/nodes.md'
     - 'uzi.injectors': 'api/injectors.md'
     - 'uzi.markers': 'api/markers.md'
     - 'uzi.providers':
@@ -57,7 +59,6 @@ nav:
       - 'api/providers/union.md'
       - 'api/providers/value.md'
     - 'uzi.scopes': 'api/scopes.md'
-    - 'uzi._bindings': 'api/_bindings.md'
     - 'uzi._common': 'api/_common.md'
     - 'uzi._functools': 'api/_functools.md'
     

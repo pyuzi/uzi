@@ -4,11 +4,11 @@ import typing as t
 
 
 
-from uzi._bindings import Value as Dependency
+from uzi.graph.nodes import Value as Dependency
 
 
 Dependency = Dependency
-from .abc import BindingsTestCase, _T_NewBinding
+from .abc import NodeTestCase, _T_NewNode
 
 
 
@@ -18,16 +18,16 @@ parametrize = pytest.mark.parametrize
 
 
 
-_T_NewBinding = _T_NewBinding[Dependency]
+_T_NewNode = _T_NewNode[Dependency]
 
 
-class ValueDependencyTests(BindingsTestCase[Dependency]):
+class ValueDependencyTests(NodeTestCase[Dependency]):
 
     @pytest.fixture
     def concrete(self, value_setter):
         return value_setter()
 
-    def test_validity(self, new: _T_NewBinding, mock_injector):
+    def test_validity(self, new: _T_NewNode, mock_injector):
         subject= new()
         fn = subject.bind(mock_injector)
         val = fn()

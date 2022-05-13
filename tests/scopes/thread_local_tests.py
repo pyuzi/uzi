@@ -8,7 +8,7 @@ import pytest
 from collections import abc
 
 
-from uzi.graph import DepGraph
+from uzi.graph import Graph
 from uzi.scopes import ThreadLocalScope, Scope
 
 from .. import checks
@@ -25,7 +25,7 @@ from .scope_tests import test_push_pop_multiple_times, test_push_multiple_times,
 
 
 @pytest.fixture
-def new_args(MockContainer: type[DepGraph]):
+def new_args(MockContainer: type[Graph]):
     return MockContainer(),
 
 @pytest.fixture

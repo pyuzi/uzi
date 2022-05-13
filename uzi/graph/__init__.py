@@ -7,22 +7,21 @@ from logging import getLogger
 from collections import abc
 from typing_extensions import Self
 
-import attr
 
-from .exceptions import FinalProviderOverrideError, ProError
+from ..exceptions import FinalProviderOverrideError, ProError
 
 
-from . import Injectable, signals
-from ._bindings import _T_Binding, LookupErrorBinding
-from .markers import _noop_pred, ProNoopPredicate, ProPredicate, is_injectable, is_dependency_marker
-from ._common import ReadonlyDict, private_setattr, FrozenDict, Missing
-from .providers import Provider, ProviderRegistryMixin
+from .. import Injectable
+from .nodes import _T_Node, Node, _T_Concrete, MissingNode
+from ..markers import _noop_pred, ProNoopPredicate, ProPredicate, is_injectable, is_dependency_marker
+from .._common import ReadonlyDict, private_setattr, FrozenDict, Missing
 
 
 
 if t.TYPE_CHECKING: # pragma: no cover
-    from .scopes import Scope
-    from .containers import Container
+    from ..providers import Provider
+    from ..scopes import Scope
+    from ..containers import Container
 
 
 logger = getLogger(__name__)
@@ -35,7 +34,7 @@ _object_new = object.__new__
 
 
 class DepSrc(t.NamedTuple):
-    graph: 'DepGraph'
+    graph: 'Graph'
     container: 'Container'
     predicate: ProPredicate = _noop_pred
 
@@ -50,7 +49,7 @@ class DepKey:
     abstract: Injectable
     src: DepSrc
 
-    graph: 'DepGraph' = None
+    graph: 'Graph' = None
 
     def __init_subclass__(cls, scope=None) -> None:
         cls.graph = scope
@@ -99,16 +98,16 @@ class DepKey:
 
 
 @private_setattr
-class ProPathMap(ReadonlyDict[DepSrc, _T_Pro]):
+class ProPaths(ReadonlyDict[DepSrc, _T_Pro]):
     __slots__ = 'graph', 'pro',
 
-    graph: 'DepGraph'
+    graph: 'Graph'
     pro: FrozenDict['Container', int]
 
     __contains = dict.__contains__
     __setdefault = dict.setdefault
 
-    def __init__(self, graph: 'DepGraph'):
+    def __init__(self, graph: 'Graph'):
         base = graph.parent.pros
         pro = {c:i for i,c in enumerate(graph.container.pro) if not c in base}
         if not pro:
@@ -128,39 +127,39 @@ class ProPathMap(ReadonlyDict[DepSrc, _T_Pro]):
    
 
 @private_setattr
-class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
+class Graph(ReadonlyDict[_T_BindKey, _T_Node]):
     """An isolated dependency resolution `graph` for a given container. 
 
-    Bindingss assemble the dependency graphs of dependencies registered in their container.
+    Assembles the dependency graphs of dependencies registered in their container.
 
     Attributes:
         container (Container): The container who's graph we are creating
-        parent (Bindings): The parent graph. Defaults to None
+        parent (Graph): The parent graph. Defaults to None
 
     Args:
         container (Container): The container who's graph we are creating
-        parent (Bindings, optional): The parent graph. Defaults to NullGraph
+        parent (Graph, optional): The parent graph. Defaults to NullGraph
 
     """
     __slots__ = 'container', 'parent', 'pros', 'stack', 'keyclass'
     
     container: 'Container'
     parent: Self
-    pros: ProPathMap
+    pros: ProPaths
     stack: 'ResolutionStack'
     keyclass: type[DepKey]
 
     __contains = dict.__contains__
     __setdefault = dict.setdefault
 
-    def __init__(self, container: 'Container', parent: 'DepGraph'=None):
+    def __init__(self, container: 'Container', parent: 'Graph'=None):
         self.__setattr(
             container=container,
             parent=_null_graph if parent is None else parent,
             keyclass=type(f'BindKey', (DepKey,), {'graph': self}),
         )
         self.__setattr(
-            pros=ProPathMap(self),
+            pros=ProPaths(self),
             stack=ResolutionStack(container),
         )
     
@@ -177,7 +176,7 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
         from the current `parent` to the root graph.
 
         Yields:
-            ancestor (Bindings): an ancestor.
+            ancestor (Graph): an ancestor.
         """
         parent = self.parent
         while parent:
@@ -213,12 +212,12 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
                         raise FinalProviderOverrideError(dep, final, overrides)
             return rv[0]
     
-    def resolve_binding(self, dep_: _T_BindKey, *, recursive: bool=True):
+    def resolve(self, dep_: _T_BindKey, *, recursive: bool=True):
         if not (bind := self.get(dep_, Missing)) is Missing:
             if recursive or not bind or self is bind.graph:
                 return bind
         elif dep_ != (dep := self.make_key(dep_)):
-            bind = self.resolve_binding(dep)
+            bind = self.resolve(dep)
             if dep in self:
                 bind = self.__setdefault(dep_, bind)
             if recursive or not bind or self is bind.graph:
@@ -240,7 +239,7 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
                         with self.stack.push(prov, abstract):
                             if bind := prov._resolve(abstract, self):
                                 return self.__setdefault(dep, bind)
-                elif bind := self.resolve_binding(dep.replace(abstract=origin), recursive=False):
+                elif bind := self.resolve(dep.replace(abstract=origin), recursive=False):
                     return self.__setdefault(dep, bind)
                 
             if recursive and ((bind := self.parent[dep]) or dep in self.parent):
@@ -248,15 +247,15 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
         else:
             raise TypeError(f'expected an `Injectable` not `{dep.abstract.__class__.__qualname__}`')
 
-    __missing__ = resolve_binding
+    __missing__ = resolve
 
     def __eq__(self, o) -> bool:
-        if isinstance(o, DepGraph):
+        if isinstance(o, Graph):
             return o is self
         return NotImplemented
 
     def __ne__(self, o) -> bool:
-        if isinstance(o, DepGraph):
+        if isinstance(o, Graph):
             return not o is self
         return NotImplemented
 
@@ -267,8 +266,8 @@ class DepGraph(ReadonlyDict[_T_BindKey, _T_Binding]):
 
 
 
-class NullGraph(DepGraph):
-    """A 'noop' `Bindings` used as the parent of root scopes.  
+class NullGraph(Graph):
+    """A 'noop' `Graph` used as the parent of root scopes.  
 
     Attributes:
         container (frozendict): 
@@ -300,11 +299,11 @@ class NullGraph(DepGraph):
         return False
     def __getitem__(self, key):
         if is_injectable(key):
-            return LookupErrorBinding(key, self)
+            return MissingNode(key, self)
         elif isinstance(key, DepKey) and is_injectable(key.abstract):
-            return LookupErrorBinding(key.abstract, self)
+            return MissingNode(key.abstract, self)
         else:
-            raise TypeError(f'Bindings keys must be `Injectable` not `{key.__class__.__qualname__}`')
+            raise TypeError(f'Graph keys must be `Injectable` not `{key.__class__.__qualname__}`')
         
     def __eq__(self, o) -> bool:
         return o.__class__ is self.__class__
@@ -327,7 +326,7 @@ class ResolutionStack(abc.Sequence):
     class StackItem(t.NamedTuple):
         container: 'Container'
         abstract: Injectable = None
-        provider: Provider = None
+        provider: 'Provider' = None
 
     __var: ContextVar[tuple[StackItem]]
 
@@ -340,7 +339,7 @@ class ResolutionStack(abc.Sequence):
     def top(self):
         return self[0]
      
-    def push(self, provider: Provider, abstract: Injectable=None):
+    def push(self, provider: 'Provider', abstract: Injectable=None):
         top = self.top
         new = self.StackItem(
             provider.container or top.container, 

@@ -8,11 +8,11 @@ import pytest
 from collections.abc import Callable, Iterator, Set, MutableSet
 from uzi.exceptions import InjectorLookupError
 from uzi._common import FrozenDict
-from uzi._bindings import SimpleBinding
+from uzi.graph.nodes import SimpleNode
 from uzi.injectors import Injector, NullInjector
 
 
-from uzi.graph import NullGraph, DepGraph
+from uzi.graph import NullGraph, Graph
 
 
 
@@ -35,7 +35,7 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         sub = new()
         assert isinstance(sub, Injector)
         assert isinstance(sub, NullInjector)
-        assert isinstance(sub.graph, DepGraph)
+        assert isinstance(sub.graph, Graph)
         assert sub.parent is None
         assert not sub
         assert not sub.graph
@@ -58,7 +58,7 @@ class NullInjectorTests(BaseTestCase[NullInjector]):
         self.assert_immutable(new(), immutable_attrs)
 
     @xfail(raises=InjectorLookupError, strict=True)
-    @parametrize('key', [_T, SimpleBinding(_T, NullGraph(), concrete=MagicMock())])
+    @parametrize('key', [_T, SimpleNode(_T, NullGraph(), concrete=MagicMock())])
     def test_lookup_error(self, new: _T_FnNew, key):
         new()[key]
    

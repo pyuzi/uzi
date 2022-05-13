@@ -11,7 +11,7 @@ from ._common import private_setattr
 
 from .exceptions import InvalidStateError, InvalidStateError
 from .containers import BaseContainer, Container
-from .graph import DepGraph, _null_graph
+from .graph import Graph, _null_graph
 from .injectors import Injector, NullInjector, _null_injector
 
 logger = getLogger(__name__)
@@ -46,7 +46,7 @@ class Scope(t.Generic[_T_Injector]):
         "parent",
     )
 
-    graph: DepGraph
+    graph: Graph
     parent: Self
     current: _T_Injector
     initial: _T_Initial[_T_Injector]
@@ -55,7 +55,7 @@ class Scope(t.Generic[_T_Injector]):
 
     def __init__(
         self,
-        graph: t.Union[Container, DepGraph],
+        graph: t.Union[Container, Graph],
         parent: Self = None,
         *,
         initial: _T_Initial[_T_Injector] = None,
@@ -65,7 +65,7 @@ class Scope(t.Generic[_T_Injector]):
 
         if isinstance(graph, BaseContainer):
             graph = graph.get_graph(parent.graph)
-        elif isinstance(graph, DepGraph):
+        elif isinstance(graph, Graph):
             if not graph.parent is parent.graph:
                 raise ValueError(f'graph mismatch')
         else:

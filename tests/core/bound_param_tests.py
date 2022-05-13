@@ -13,7 +13,7 @@ from uzi._common import FrozenDict
 
 
 from uzi._functools import BoundParam
-from uzi.graph import DepGraph
+from uzi.graph import Graph
 
 
 
@@ -24,7 +24,7 @@ parametrize = pytest.mark.parametrize
 
 
 _T = t.TypeVar('_T')
-_T_Scp = t.TypeVar('_T_Scp', bound=DepGraph)
+_T_Scp = t.TypeVar('_T_Scp', bound=Graph)
 
 _T_FnNew = Callable[..., _T_Scp]
 

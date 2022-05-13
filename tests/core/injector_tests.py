@@ -11,10 +11,10 @@ from collections.abc import Callable, Iterator, Set, MutableSet
 from uzi.exceptions import InjectorLookupError
 from uzi._common import FrozenDict
 from uzi.injectors import Injector, NullInjector, _null_injector
-from uzi._bindings import SimpleBinding, Binding, LookupErrorBinding
+from uzi.graph.nodes import SimpleNode, Node, MissingNode
 
 
-from uzi.graph import NullGraph, DepGraph
+from uzi.graph import NullGraph, Graph
 
 
 
@@ -36,7 +36,7 @@ class InjectorTests(BaseTestCase[Injector]):
 
     @pytest.fixture
     def mock_graph(self, mock_graph):
-        mock_graph[_T_Miss] = LookupErrorBinding(_T_Miss, mock_graph)
+        mock_graph[_T_Miss] = MissingNode(_T_Miss, mock_graph)
         return mock_graph
 
     @pytest.fixture
@@ -46,7 +46,7 @@ class InjectorTests(BaseTestCase[Injector]):
     def test_basic(self, new: _T_FnNew):
         sub = new()
         assert isinstance(sub, Injector)
-        assert isinstance(sub.graph, DepGraph)
+        assert isinstance(sub.graph, Graph)
         assert isinstance(sub.parent, Injector)
         assert isinstance(sub.bound(_T), abc.Callable)
         assert sub
@@ -74,12 +74,12 @@ class InjectorTests(BaseTestCase[Injector]):
     @xfail(raises=(InjectorLookupError, TypeError), strict=True)
     @parametrize('key', [
         _T_Miss, 
-        SimpleBinding(_T_Miss, NullGraph(), concrete=MagicMock(_T_Miss))
+        SimpleNode(_T_Miss, NullGraph(), concrete=MagicMock(_T_Miss))
     ])
     def test_lookup_error(self, new: _T_FnNew, key):
         sub = new()
         assert not key in sub
-        if isinstance(key, Binding):
+        if isinstance(key, Node):
             sub[key]
         else:
             sub.make(key)

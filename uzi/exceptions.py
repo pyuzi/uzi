@@ -33,7 +33,7 @@ class InjectorLookupError(KeyError, UziException):
     """
 
     abstract: "Injectable" = attr.ib(default=None)
-    scope: "DepGraph" = attr.ib(default=None)
+    scope: "Graph" = attr.ib(default=None)
 
 
 
@@ -50,4 +50,4 @@ class ProError(TypeError, UziException):
 
 from .providers import Provider
 from .markers import Injectable
-from .graph import DepGraph
+from .graph import Graph

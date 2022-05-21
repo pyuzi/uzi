@@ -144,15 +144,15 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         assert not sub.extends(c1 | c4)
         assert not sub.extends(sub | c4 | c2)
 
-    def test_access_level(self, new: _T_FnNew):
+    def test_access_modifier(self, new: _T_FnNew):
         c1, c2, c3, c4, c5, c6, c7 = tuple(new(f"c{i}") for i in range(7))
         c1.extend(c2.extend(c4.extend(c5, c6)))
         c1.extend(c3.extend(c5))
-        assert c1.access_level(c1) is PRIVATE
-        assert c1.access_level(c7) is PUBLIC
-        assert c3.access_level(c2) is PUBLIC
-        assert c1.access_level(c4) is GUARDED
-        assert c5.access_level(c1) is PROTECTED
+        assert c1.access_modifier(c1) is PRIVATE
+        assert c1.access_modifier(c7) is PUBLIC
+        assert c3.access_modifier(c2) is PUBLIC
+        assert c1.access_modifier(c4) is GUARDED
+        assert c5.access_modifier(c1) is PROTECTED
 
     def test_setitem(self, new: _T_FnNew, mock_provider: Provider):
         sub = new()
@@ -199,39 +199,39 @@ class ContainerTest(BaseTestCase[_T_Ioc]):
         )
         c1, c2, c3 = new("child"), new("subject"), new("base")
         c1.extend(c2.extend(c3))
-        c2[T1] = MockProvider(access_level=PRIVATE)
+        c2[T1] = MockProvider(access_modifier=PRIVATE)
         kt1 = MockDepKey(abstract=T1, container=c1)
 
         assert tuple(c2._resolve(kt1, mock_graph)) == ()
 
-        c2[T1].access_level = GUARDED
+        c2[T1].access_modifier = GUARDED
         assert tuple(c2._resolve(kt1, mock_graph)) == ()
 
-        c2[T1].access_level = PROTECTED
+        c2[T1].access_modifier = PROTECTED
         assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
-        c2[T1].access_level = PUBLIC
+        c2[T1].access_modifier = PUBLIC
         assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
         c2[T1]._can_resolve.assert_called_with(kt1, mock_graph)
 
-        c2[T1].access_level = PRIVATE
+        c2[T1].access_modifier = PRIVATE
         kt1.container = c3
 
         assert tuple(c2._resolve(kt1, mock_graph)) == ()
 
-        c2[T1].access_level = GUARDED
+        c2[T1].access_modifier = GUARDED
         assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
-        c2[T1].access_level = PROTECTED
+        c2[T1].access_modifier = PROTECTED
         assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
-        c2[T1].access_level = PUBLIC
+        c2[T1].access_modifier = PUBLIC
         assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)
 
         c2[T1]._can_resolve.assert_called_with(kt1, mock_graph)
 
-        c2[T1].access_level = PRIVATE
+        c2[T1].access_modifier = PRIVATE
         kt1.container = c2
 
         assert tuple(c2._resolve(kt1, mock_graph)) == (c2[T1],)

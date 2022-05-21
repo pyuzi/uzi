@@ -296,24 +296,24 @@ class ProEnumPredicate(_PredicateBase, _PredicateOpsMixin, _PredicateCompareMixi
     #     return self
 
 
-class AccessLevel(ProEnumPredicate, Enum):
-    """Access level for dependencies
+class AccessModifier(ProEnumPredicate, Enum):
+    """Access modifier for dependencies 
 
     Attributes:
-        public (AccessLevel): public
-        protected (AccessLevel): protected
-        guarded (AccessLevel): guarded
-        private (AccessLevel): private
+        public (AccessModifier): public
+        protected (AccessModifier): protected
+        guarded (AccessModifier): guarded
+        private (AccessModifier): private
     """
 
-    public: "AccessLevel" = 1
-    protected: "AccessLevel" = 2
-    guarded: "AccessLevel" = 3
-    private: "AccessLevel" = 4
+    public: "AccessModifier" = 1
+    protected: "AccessModifier" = 2
+    guarded: "AccessModifier" = 3
+    private: "AccessModifier" = 4
 
     @classmethod
     def _missing_(cls, val):
-        if val in _empty_access_levels:
+        if val in _empty_access_modifiers:
             return cls.public
         elif val in _access_lavel_rawvalues:
             return _access_lavel_rawvalues[val]
@@ -322,14 +322,14 @@ class AccessLevel(ProEnumPredicate, Enum):
     def pro_entries(
         self, it: abc.Iterable["Container"], scope: "Graph", src: "DepSrc"
     ) -> abc.Iterable["Container"]:
-        return tuple(c for c in it if self in c.access_level(src.container))
+        return tuple(c for c in it if self in c.access_modifier(src.container))
 
     def __contains__(self, obj) -> bool:
-        return isinstance(obj, AccessLevel) and self.vars >= obj.vars
+        return isinstance(obj, AccessModifier) and self.vars >= obj.vars
 
 
-_empty_access_levels = frozenset((None, 0, (0,), (None,)))
-_access_lavel_rawvalues = {l._rawvalue_: l for l in AccessLevel}
+_empty_access_modifiers = frozenset((None, 0, (0,), (None,)))
+_access_lavel_rawvalues = {l._rawvalue_: l for l in AccessModifier}
 
 
 class ScopePredicate(ProEnumPredicate, Enum):
@@ -356,17 +356,17 @@ class ScopePredicate(ProEnumPredicate, Enum):
 _scope_predicate_rawvalues = {l._rawvalue_: l for l in ScopePredicate}
 
 
-PUBLIC: AccessLevel = AccessLevel.public
-"""public access level"""
+PUBLIC: AccessModifier = AccessModifier.public
+"""public access modifier"""
 
-PROTECTED: AccessLevel = AccessLevel.protected
-"""protected access level"""
+PROTECTED: AccessModifier = AccessModifier.protected
+"""protected access modifier"""
 
-GUARDED: AccessLevel = AccessLevel.guarded
-"""guarded access level"""
+GUARDED: AccessModifier = AccessModifier.guarded
+"""guarded access modifier"""
 
-PRIVATE: AccessLevel = AccessLevel.private
-"""private access level"""
+PRIVATE: AccessModifier = AccessModifier.private
+"""private access modifier"""
 
 ONLY_SELF: ScopePredicate = ScopePredicate.only_self
 """Only inject from the current scope without considering parents"""

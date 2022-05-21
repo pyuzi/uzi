@@ -2,7 +2,7 @@ import random
 from unittest.mock import MagicMock
 import pytest
 
-from uzi.markers import AccessLevel as Predicate
+from uzi.markers import AccessModifier as Predicate
 
 
 xfail = pytest.mark.xfail
@@ -44,13 +44,13 @@ def test_pro_entries(
     n = len(members)
     x = -1
 
-    def fn_access_level(c):
+    def fn_access_modifier(c):
         nonlocal x
         x += 1
         return members[x]
 
     containers = tuple(
-        MockContainer(access_level=MagicMock(wraps=fn_access_level)) for _ in range(n)
+        MockContainer(access_modifier=MagicMock(wraps=fn_access_modifier)) for _ in range(n)
     )
     res = tuple(
         containers[i] for i in range(n) if members[i]._rawvalue_ >= sub._rawvalue_

@@ -16,7 +16,7 @@ from .markers import (
     PRIVATE,
     PROTECTED,
     PUBLIC,
-    AccessLevel,
+    AccessModifier,
     _PredicateOpsMixin,
     Injectable,
     ProPredicate,
@@ -426,7 +426,7 @@ class Container(BaseContainer, ProviderRegistryMixin):
     Attributes:
         name (str): The container's name
         bases (tuple[Container]): The container's bases
-        default_access_level (AccessLevel): The default `access_level` to assign
+        default_access_modifier (AccessModifier): The default `access_modifier` to assign
         to providers registered in this container
     """
 
@@ -435,7 +435,7 @@ class Container(BaseContainer, ProviderRegistryMixin):
         "name",
         "providers",
         "bases",
-        "default_access_level",
+        "default_access_modifier",
         "g",
         "_pro",
         "__weakref__",
@@ -443,7 +443,7 @@ class Container(BaseContainer, ProviderRegistryMixin):
 
     name: str
     bases: ProEntrySet
-    default_access_level: AccessLevel
+    default_access_modifier: AccessModifier
     g: ReadonlyDict["Graph", "Graph"]
     providers: ReadonlyDict[Injectable, Provider]
     _pro: FrozenDict[Self, int]
@@ -454,14 +454,14 @@ class Container(BaseContainer, ProviderRegistryMixin):
         name: str = None,
         *bases: Self,
         module: str,
-        access_level: AccessLevel = PUBLIC,
+        access_modifier: AccessModifier = PUBLIC,
     ) -> None:
         """Create a container.
 
         Params:
             name (str, optional): Name of the container
             *bases (Container, optional): Base container.
-            access_level (AccessLevel, optional): The default `access_level`
+            access_modifier (AccessModifier, optional): The default `access_modifier`
                 to assign providers
         """
         if name and not name.isidentifier():
@@ -474,7 +474,7 @@ class Container(BaseContainer, ProviderRegistryMixin):
             providers=ReadonlyDict(),
             module=module,
             g=ReadonlyDict(),
-            default_access_level=AccessLevel(access_level),
+            default_access_modifier=AccessModifier(access_modifier),
         )
 
         bases and self.extend(*bases)
@@ -496,14 +496,14 @@ class Container(BaseContainer, ProviderRegistryMixin):
         self.__setattr(bases=self.bases | ProEntrySet.make(bases))
         return self
 
-    def access_level(self, accessor: Self):
-        """Get the `AccessLevel`
+    def access_modifier(self, accessor: Self):
+        """Get the `AccessModifier`
 
         Params:
             accessor (Container):
 
         Returns:
-            access_level (AccessLevel):
+            access_modifier (AccessModifier):
         """
         if accessor is self:
             return PRIVATE
@@ -553,9 +553,9 @@ class Container(BaseContainer, ProviderRegistryMixin):
 
     def _resolve(self, key: "DepKey", graph: "Graph"):
         if prov := self[key.abstract]:
-            access = prov.access_level or self.default_access_level
+            access = prov.access_modifier or self.default_access_modifier
 
-            if access in self.access_level(key.container):
+            if access in self.access_modifier(key.container):
                 if prov._can_resolve(key, graph):
                     return (prov,)
         return ()

@@ -134,22 +134,22 @@ class ProviderTestCase(BaseTestCase[_T_Pro]):
         assert subject.is_final is False
         return subject
 
-    def test_access_level(self, new: _T_New_):
+    def test_access_modifier(self, new: _T_New_):
         subject = new()
         assert subject is subject.public()
-        assert subject.access_level is PUBLIC
+        assert subject.access_modifier is PUBLIC
 
         assert subject is subject.protected()
-        assert subject.access_level is PROTECTED
+        assert subject.access_modifier is PROTECTED
 
         assert subject is subject.guarded()
-        assert subject.access_level is GUARDED
+        assert subject.access_modifier is GUARDED
 
         assert subject is subject.private()
-        assert subject.access_level is PRIVATE
+        assert subject.access_modifier is PRIVATE
 
         assert subject is subject.public()
-        assert subject.access_level is PUBLIC
+        assert subject.access_modifier is PUBLIC
         return subject
 
     @xfail(raises=AttributeError, strict=True)

@@ -162,12 +162,12 @@ class GroupTest(BaseTestCase[_T_Ioc]):
         assert sub.extends(sub2)
         assert not sub2.extends(sub)
 
-    # def test_access_level(self, new: _T_FnNew):
+    # def test_access_modifier(self, new: _T_FnNew):
     #     c1, c2, c3, c4, c5, c6, c7 = tuple(new(f'c{i}') for i in range(7))
     #     c1.extend(c2.extend(c4.extend(c5, c6)))
     #     c1.extend(c3.extend(c5))
-    #     assert c1.access_level(c1) is PRIVATE
-    #     assert c1.access_level(c7) is PUBLIC
-    #     assert c3.access_level(c2) is PUBLIC
-    #     assert c1.access_level(c4) is GUARDED
-    #     assert c5.access_level(c1) is PROTECTED
+    #     assert c1.access_modifier(c1) is PRIVATE
+    #     assert c1.access_modifier(c7) is PUBLIC
+    #     assert c3.access_modifier(c2) is PUBLIC
+    #     assert c1.access_modifier(c4) is GUARDED
+    #     assert c5.access_modifier(c1) is PROTECTED

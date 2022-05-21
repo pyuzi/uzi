@@ -23,7 +23,7 @@ from .markers import (
     PRIVATE,
     PROTECTED,
     PUBLIC,
-    AccessLevel,
+    AccessModifier,
     Dep,
     DependencyMarker,
     Lookup,
@@ -84,7 +84,7 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
     Attributes:
         concrete (Any): The object used to resolve
         container (Container): The Container where this provider is defined.
-        access_level (t.Optional[AccessLevel]): The minimum access level required
+        access_modifier (t.Optional[AccessModifier]): The minimum access modifier required
             to access provider
         is_default (bool): Whether this provider is the default.
             A default provider only gets used if none other was provided to override it.
@@ -103,7 +103,7 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
 
     concrete: _T_Concrete = attr.ib(default=Missing)
     container: "Container" = attr.ib(kw_only=True, default=None)
-    access_level: t.Optional[AccessLevel] = attr.ib(kw_only=True, default=None)
+    access_modifier: t.Optional[AccessModifier] = attr.ib(kw_only=True, default=None)
 
     is_default: bool = attr.ib(kw_only=True, default=False)
     is_final: bool = attr.ib(kw_only=True, default=False)
@@ -153,7 +153,7 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
         return self
 
     def private(self) -> Self:
-        """Set the `access_level` for this provider to `AccessLevel.private`.
+        """Set the `access_modifier` for this provider to `AccessModifier.private`.
 
         A private provider is only avaliable to dependants declared in the same
         container.
@@ -161,11 +161,11 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=PRIVATE)
+        self.__setattr(access_modifier=PRIVATE)
         return self
 
     def guarded(self) -> Self:
-        """Set the `access_level` for this provider to `AccessLevel.guarded`.
+        """Set the `access_modifier` for this provider to `AccessModifier.guarded`.
 
         A guarded provider is only visible to dependants declared in the
         provider's container and it's bases.
@@ -173,11 +173,11 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=GUARDED)
+        self.__setattr(access_modifier=GUARDED)
         return self
 
     def protected(self) -> Self:
-        """Set the `access_level` for this provider to `AccessLevel.protected`.
+        """Set the `access_modifier` for this provider to `AccessModifier.protected`.
 
         A protected provider is only visible to dependants declared in containers
         within the inheritance heirachy of the provider's container. This includes
@@ -186,18 +186,18 @@ class Provider(t.Generic[_T_Concrete, _T_Node]):
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=PROTECTED)
+        self.__setattr(access_modifier=PROTECTED)
         return self
 
     def public(self) -> Self:
-        """Set the `access_level` for this provider to `AccessLevel.public`.
+        """Set the `access_modifier` for this provider to `AccessModifier.public`.
 
         A public provider is visible to all dependants within it's scope.
 
         Returns:
             self (Provider): this provider
         """
-        self.__setattr(access_level=PUBLIC)
+        self.__setattr(access_modifier=PUBLIC)
         return self
 
     def _can_resolve(self, dep: "DepKey", scope: "Graph") -> bool:

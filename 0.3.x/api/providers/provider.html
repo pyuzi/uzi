@@ -1264,11 +1264,11 @@
           <td><p>The Container where this provider is defined.</p></td>
         </tr>
         <tr>
-          <td><code>access_level</code></td>
+          <td><code>access_modifier</code></td>
           <td>
-                <code><span title="typing">t</span>.<span title="typing.Optional">Optional</span>[<a class="autorefs autorefs-internal" title="uzi.markers.AccessLevel" href="../markers.html#uzi.markers.AccessLevel">AccessLevel</a>]</code>
+                <code><span title="typing">t</span>.<span title="typing.Optional">Optional</span>[<a class="autorefs autorefs-internal" title="uzi.markers.AccessModifier" href="../markers.html#uzi.markers.AccessModifier">AccessModifier</a>]</code>
           </td>
-          <td><p>The minimum access level required
+          <td><p>The minimum access modifier required
 to access provider</p></td>
         </tr>
         <tr>
@@ -1478,7 +1478,7 @@ Defaults to <code>True</code>.</p></td>
 
     <div class="doc doc-contents ">
 
-      <p>Set the <code>access_level</code> for this provider to <code>AccessLevel.private</code>.</p>
+      <p>Set the <code>access_modifier</code> for this provider to <code>AccessModifier.private</code>.</p>
 <p>A private provider is only avaliable to dependants declared in the same
 container.</p>
 
@@ -1519,7 +1519,7 @@ container.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Set the <code>access_level</code> for this provider to <code>AccessLevel.guarded</code>.</p>
+      <p>Set the <code>access_modifier</code> for this provider to <code>AccessModifier.guarded</code>.</p>
 <p>A guarded provider is only visible to dependants declared in the
 provider's container and it's bases.</p>
 
@@ -1560,7 +1560,7 @@ provider's container and it's bases.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Set the <code>access_level</code> for this provider to <code>AccessLevel.protected</code>.</p>
+      <p>Set the <code>access_modifier</code> for this provider to <code>AccessModifier.protected</code>.</p>
 <p>A protected provider is only visible to dependants declared in containers
 within the inheritance heirachy of the provider's container. This includes
 both base and derived containers.</p>
@@ -1602,7 +1602,7 @@ both base and derived containers.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Set the <code>access_level</code> for this provider to <code>AccessLevel.public</code>.</p>
+      <p>Set the <code>access_modifier</code> for this provider to <code>AccessModifier.public</code>.</p>
 <p>A public provider is visible to all dependants within it's scope.</p>
 
   <p><strong>Returns:</strong></p>
